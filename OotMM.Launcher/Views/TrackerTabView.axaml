@@ -1,0 +1,44 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:OotMM.Launcher.ViewModels"
+             x:Class="OotMM.Launcher.Views.TrackerTabView"
+             x:DataType="vm:TrackerTabViewModel">
+
+    <StackPanel Spacing="8">
+        <TextBox PlaceholderText="filter checks…" Text="{Binding FilterText}" />
+        <StackPanel Orientation="Horizontal" Spacing="10">
+            <ComboBox SelectedIndex="{Binding GameFilterIndex}" MinWidth="130">
+                <ComboBoxItem Content="Both games" />
+                <ComboBoxItem Content="Ocarina of Time" />
+                <ComboBoxItem Content="Majora's Mask" />
+            </ComboBox>
+            <CheckBox Content="Hide collected" IsChecked="{Binding HideCollected}" />
+            <CheckBox Content="In logic" IsChecked="{Binding OnlyInLogic}"
+                      ToolTip.Tip="Only checks reachable with your current items, per the reverse-logic solver." />
+        </StackPanel>
+        <TextBlock Classes="dim" Text="{Binding SummaryText}" />
+
+        <ItemsControl ItemsSource="{Binding VisibleChecks}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:CheckRowViewModel">
+                    <Grid ColumnDefinitions="Auto,8,*" Margin="0,2">
+                        <Border Grid.Column="0" CornerRadius="4" Padding="5,1"
+                                Background="{DynamicResource AccentFaintBrush}"
+                                VerticalAlignment="Top">
+                            <TextBlock Classes="dim" FontSize="11" Text="{Binding GameTag}" />
+                        </Border>
+                        <StackPanel Grid.Column="2">
+                            <!-- Collected rows go green; unreachable rows go dim. -->
+                            <TextBlock Text="{Binding Name}" TextWrapping="Wrap"
+                                       Classes.success="{Binding Collected}"
+                                       Classes.dim="{Binding !InLogic}" />
+                            <TextBlock Classes="dim" FontSize="12" Text="{Binding ItemText}"
+                                       IsVisible="{Binding Collected}" />
+                        </StackPanel>
+                    </Grid>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </StackPanel>
+
+</UserControl>

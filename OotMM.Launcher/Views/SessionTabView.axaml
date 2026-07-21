@@ -1,0 +1,22 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:OotMM.Launcher.ViewModels"
+             x:Class="OotMM.Launcher.Views.SessionTabView"
+             x:DataType="vm:SessionTabViewModel">
+
+    <StackPanel Spacing="8">
+        <TextBlock Classes="sectionTitle" Text="Session" />
+        <Button Content="Restart active game" HorizontalAlignment="Stretch"
+                Command="{Binding RestartGameCommand}" />
+        <Button Content="Switch to the other game" HorizontalAlignment="Stretch"
+                Command="{Binding SwitchGameCommand}" />
+        <Button Content="End session" HorizontalAlignment="Stretch"
+                Command="{Binding EndSessionCommand}" />
+        <Separator Margin="0,6" />
+        <Button Content="Reset seed progress…" HorizontalAlignment="Stretch"
+                Command="{Binding ResetProgressCommand}" />
+        <TextBlock Classes="dim" TextWrapping="Wrap" Margin="0,8,0,0"
+                   Text="{Binding UnavailableNote}" />
+    </StackPanel>
+
+</UserControl>

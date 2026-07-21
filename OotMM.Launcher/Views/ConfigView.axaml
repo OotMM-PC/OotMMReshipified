@@ -1,0 +1,157 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:OotMM.Launcher.ViewModels"
+             xmlns:views="using:OotMM.Launcher.Views"
+             x:Class="OotMM.Launcher.Views.ConfigView"
+             x:DataType="vm:ConfigViewModel">
+
+    <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+        <!-- Single centered column, like the original config screen. -->
+        <StackPanel Width="900" Margin="0,36" HorizontalAlignment="Center" Spacing="14">
+
+            <!-- Hero header -->
+            <StackPanel Spacing="6" HorizontalAlignment="Center">
+                <Path Classes="icon pulse" Data="{StaticResource IconTriforce}"
+                      Width="52" Height="46" HorizontalAlignment="Center" />
+                <TextBlock Classes="h1" Text="OoTMM PC" HorizontalAlignment="Center" />
+                <TextBlock Classes="subtitle" HorizontalAlignment="Center"
+                           Text="OCARINA OF TIME  ×  MAJORA'S MASK" />
+            </StackPanel>
+
+            <!-- Quest seed banner -->
+            <ContentControl Classes="bracketCard">
+                <Grid ColumnDefinitions="Auto,16,*">
+                    <Image Grid.Column="0" Source="avares://OotMM.Launcher/Assets/Icons/Compass.png"
+                           Width="38" Height="38" VerticalAlignment="Top" />
+                    <StackPanel Grid.Column="2" Spacing="8">
+                        <TextBlock Classes="sectionTitle" Text="Quest Seed" />
+                        <Grid ColumnDefinitions="*,8,Auto">
+                            <TextBox Grid.Column="0" PlaceholderText="path to seed .json"
+                                     Text="{Binding SeedPath}" />
+                            <Button Grid.Column="2" Content="Browse"
+                                    Command="{Binding BrowseSeedCommand}" />
+                        </Grid>
+                        <StackPanel Spacing="2" IsVisible="{Binding HasSeed}">
+                            <TextBlock Classes="success" TextWrapping="Wrap"
+                                       Text="{Binding Seed.SeedId}" />
+                            <TextBlock Classes="dim" TextWrapping="Wrap"
+                                       Text="{Binding SeedSummary}" />
+                        </StackPanel>
+                        <TextBlock Classes="error" TextWrapping="Wrap"
+                                   IsVisible="{Binding HasSeedError}"
+                                   Text="{Binding SeedError}" />
+                        <TextBlock Classes="dim" Text="Choose the seed to play."
+                                   IsVisible="{Binding !HasSeed}" />
+                    </StackPanel>
+                </Grid>
+            </ContentControl>
+
+            <!-- Game cards side by side -->
+            <Grid ColumnDefinitions="*,14,*">
+                <views:GameCardView Grid.Column="0" DataContext="{Binding OotCard}" />
+                <views:GameCardView Grid.Column="2" DataContext="{Binding MmCard}" />
+            </Grid>
+
+            <!-- Multiworld: only when the seed is multiworld -->
+            <ContentControl Classes="bracketCard" IsVisible="{Binding ShowMultiworld}">
+                <Grid ColumnDefinitions="Auto,16,*">
+                    <Image Grid.Column="0" Source="avares://OotMM.Launcher/Assets/Icons/MoonsTear.png"
+                           Width="38" Height="38" VerticalAlignment="Top" />
+                    <StackPanel Grid.Column="2" Spacing="8">
+                        <TextBlock Classes="sectionTitle" Text="Multiworld" />
+                        <TextBlock Text="{Binding PlayerSlotText}" />
+
+                        <CheckBox Content="Host the relay server on this machine"
+                                  IsChecked="{Binding HostRelay}" />
+                        <StackPanel Spacing="6" IsVisible="{Binding HostRelay}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="Port" VerticalAlignment="Center" />
+                                <TextBox Width="90" Text="{Binding RelayPort}" />
+                            </StackPanel>
+                            <TextBlock Classes="dim"
+                                       Text="Other players connect to this machine's IP on that port." />
+                            <CheckBox Content="Enable PvP (server rule)"
+                                      IsChecked="{Binding HostPvp}"
+                                      ToolTip.Tip="Player-vs-player combat for every player on this server: attacks damage and knock back other players. Set by the server host; players cannot override it. (Dedicated server: OotMM.Server --pvp)" />
+                        </StackPanel>
+                        <Grid ColumnDefinitions="110,8,260" IsVisible="{Binding !HostRelay}">
+                            <TextBlock Grid.Column="0" Text="Server address" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="2" PlaceholderText="host:port"
+                                     Text="{Binding MultiworldAddress}" />
+                        </Grid>
+
+                        <Grid ColumnDefinitions="110,8,260">
+                            <TextBlock Grid.Column="0" Text="Player name" VerticalAlignment="Center" />
+                            <TextBox Grid.Column="2" Text="{Binding PlayerName}" />
+                        </Grid>
+
+                        <TextBlock Classes="sectionTitle" Text="Co-op player model" />
+                        <TextBlock Classes="dim" TextWrapping="Wrap"
+                                   Text="Check every archive your model needs (child + adult + textures + voice). The set is synced to the other players; none checked = vanilla Link." />
+                        <Expander Header="{Binding OotModelSummary}">
+                            <ItemsControl ItemsSource="{Binding OotModelPicks}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:ModelPickViewModel">
+                                        <CheckBox Content="{Binding Name}"
+                                                  IsChecked="{Binding IsSelected}" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Expander>
+                        <Expander Header="{Binding MmModelSummary}">
+                            <ItemsControl ItemsSource="{Binding MmModelPicks}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:ModelPickViewModel">
+                                        <CheckBox Content="{Binding Name}"
+                                                  IsChecked="{Binding IsSelected}" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </Expander>
+                    </StackPanel>
+                </Grid>
+            </ContentControl>
+
+            <!-- Status, validation, launch -->
+            <TextBlock Classes="warn" HorizontalAlignment="Center" TextWrapping="Wrap"
+                       Text="{Binding StatusMessage}" />
+            <ItemsControl ItemsSource="{Binding ValidationErrors}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="x:String">
+                        <TextBlock Classes="error" TextWrapping="Wrap"
+                                   Text="{Binding StringFormat='• {0}'}" />
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+
+            <!-- Framed hero button, like the original's double-bordered launch box. -->
+            <Border HorizontalAlignment="Center" CornerRadius="12" Padding="4"
+                    BorderThickness="1" BorderBrush="{DynamicResource AccentDimBrush}">
+                <Button Classes="hero" MinWidth="380" Command="{Binding LaunchCommand}">
+                    <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center">
+                        <Image Source="avares://OotMM.Launcher/Assets/Icons/MasterSword.png"
+                               Width="26" Height="26" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding LaunchButtonText}" VerticalAlignment="Center" />
+                    </StackPanel>
+                </Button>
+            </Border>
+            <TextBlock Classes="dim" HorizontalAlignment="Center" TextWrapping="Wrap"
+                       TextAlignment="Center" IsVisible="{Binding ShowSetupHint}"
+                       Text="First-time setup: each game opens once and asks for your ROM to extract its assets; the launcher then builds the cross-game model archives." />
+            <TextBlock Classes="dim" HorizontalAlignment="Center" TextWrapping="Wrap"
+                       TextAlignment="Center" IsVisible="{Binding ShowMqHint}"
+                       Text="This seed uses Master Quest dungeons — an OoT Master Quest ROM is also required." />
+
+            <!-- Footer -->
+            <StackPanel HorizontalAlignment="Center" Spacing="2" Margin="0,10,0,0">
+                <TextBlock Classes="dim" HorizontalAlignment="Center"
+                           Text="Settings persist to launcher.ui.json next to the launcher." />
+                <Button Classes="link" HorizontalAlignment="Center"
+                        Content="Preview the runtime layout →"
+                        Command="{Binding PreviewRuntimeCommand}" />
+            </StackPanel>
+
+        </StackPanel>
+    </ScrollViewer>
+
+</UserControl>

@@ -1,0 +1,89 @@
+{
+  "format": "ootmm.pc.seed.v2",
+  "generatorVersion": "31.1",
+  "seedId": "TESTSEED01",
+  "settingsHash": "abc123",
+  "playerId": 2,
+  "playerCount": 3,
+  "teamId": "alpha",
+  "sessionEpoch": 7,
+  "startingGame": "mm",
+  "cosmetics": {
+    "gerudoTunic": true,
+    "musicCategories": false,
+    "musicNames": true,
+    "musicCompanion": { "fileName": "music.ocm" }
+  },
+  "songEventsOot": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17],
+  "songEventsMm": [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+  "prices": [10, 20, 99],
+  "entrancesSong": [64, 2147483712],
+  "entrancesOwl": [128],
+  "dungeonWarps": [2147483653],
+  "bossIds": [3, 1, 4],
+  "settings": {
+    "openForest": true,
+    "doorOfTime": "open",
+    "triforceGoal": 20,
+    "specialConds": {
+      "BRIDGE": { "count": 9, "stones": true, "medallions": false }
+    }
+  },
+  "worldFlags": {
+    "everything": "all",
+    "nothing": "none",
+    "explicit": ["MEMBER_A", "MEMBER_B"]
+  },
+  "preCompletedDungeons": ["Woodfall"],
+  "placements": [
+    {
+      "checkGame": "oot",
+      "checkId": "OOT_MQ_DEKU_TREE_MAP_CHEST",
+      "checkName": "Deku Tree MQ Map Chest",
+      "checkAliases": ["OOT_DEKU_MQ_ALT"],
+      "checkScene": 0,
+      "checkType": "chest",
+      "checkFlag": 3,
+      "itemGame": "mm",
+      "itemId": "MM_SONG_SOARING",
+      "itemName": "Song of Soaring",
+      "cloakItemGame": "oot",
+      "cloakItemId": "OOT_RUPEE_GREEN",
+      "cloakItemName": "Green Rupee",
+      "ownerPlayer": 1,
+      "sourcePlayer": 2,
+      "major": true
+    },
+    {
+      "checkGame": "mm",
+      "checkId": "MM_CLOCK_TOWN_POSTBOX",
+      "itemGame": "oot",
+      "itemId": "OOT_SLINGSHOT",
+      "itemName": "Slingshot"
+    }
+  ],
+  "entrances": [
+    {
+      "fromGame": "oot",
+      "from": "OOT_MASK_SHOP_PORTAL",
+      "fromNativeId": 68,
+      "toGame": "mm",
+      "to": "MM_CLOCK_TOWN_SOUTH",
+      "toNativeId": 3446
+    }
+  ],
+  "startingItems": [
+    {
+      "itemGame": "mm",
+      "itemId": "MM_OCARINA",
+      "itemName": "Ocarina of Time",
+      "count": 1
+    },
+    {
+      "itemGame": "mm",
+      "itemId": "MM_SHIELD_HERO",
+      "itemName": "Hero's Shield",
+      "count": 2
+    }
+  ]
+}

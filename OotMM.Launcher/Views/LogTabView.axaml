@@ -1,0 +1,27 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:OotMM.Launcher.ViewModels"
+             x:Class="OotMM.Launcher.Views.LogTabView"
+             x:DataType="vm:LogTabViewModel">
+
+    <StackPanel Spacing="6">
+        <TextBlock Classes="dim" IsVisible="{Binding IsEmpty}"
+                   Text="Nothing yet — found checks and received items will appear here." />
+        <ItemsControl ItemsSource="{Binding Entries}">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:LogEntryViewModel">
+                    <Grid ColumnDefinitions="Auto,10,*" Margin="0,2">
+                        <TextBlock Grid.Column="0" Classes="dim" FontSize="12"
+                                   Text="{Binding Time}" VerticalAlignment="Top" />
+                        <!-- Remote (multiworld) events tinted amber to stand out
+                             from local pickups. -->
+                        <TextBlock Grid.Column="2" TextWrapping="Wrap"
+                                   Classes.warn="{Binding IsRemote}"
+                                   Text="{Binding Message}" />
+                    </Grid>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </StackPanel>
+
+</UserControl>

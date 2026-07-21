@@ -1,0 +1,75 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:OotMM.Launcher.ViewModels"
+             x:Class="OotMM.Launcher.Views.GameCardView"
+             x:DataType="vm:GameCardViewModel">
+
+    <ContentControl Classes="bracketCard" VerticalAlignment="Stretch">
+        <StackPanel Spacing="8">
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <Image Source="avares://OotMM.Launcher/Assets/Icons/OcarinaOfTime.png"
+                       Width="34" Height="34" IsVisible="{Binding IsOot}" />
+                <Image Source="avares://OotMM.Launcher/Assets/Icons/FierceDeityMask.png"
+                       Width="34" Height="34" IsVisible="{Binding !IsOot}" />
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Classes="sectionTitle" Classes.violet="{Binding !IsOot}"
+                               Text="{Binding Title}" />
+                    <TextBlock Classes="dim" FontSize="12" Text="{Binding PortSubtitle}" />
+                </StackPanel>
+            </StackPanel>
+
+            <Grid ColumnDefinitions="*,8,Auto">
+                <TextBox Grid.Column="0" PlaceholderText="{Binding ExeHint}"
+                         Text="{Binding ExePath}" />
+                <Button Grid.Column="2" Content="Browse"
+                        Command="{Binding BrowseExeCommand}" />
+            </Grid>
+
+            <Grid ColumnDefinitions="*,8,Auto">
+                <TextBlock Grid.Column="0" Classes="dim" Classes.error="{Binding StatusIsError}"
+                           TextWrapping="Wrap" VerticalAlignment="Center"
+                           Text="{Binding StatusText}" />
+                <Button Grid.Column="2" Content="Settings…" IsEnabled="False"
+                        ToolTip.Tip="Per-game settings editor arrives with the GameConfig module." />
+            </Grid>
+
+            <Expander Header="{Binding ModsSummary}" IsVisible="{Binding HasMods}">
+                <StackPanel Spacing="4">
+                    <TextBlock Classes="dim" FontSize="12"
+                               Text="Load order: the top mod overrides everything below it." />
+                    <TextBlock Classes="dim" FontSize="12"
+                               Text="Order changes apply on the next game launch." />
+                    <ItemsControl ItemsSource="{Binding Mods}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ModEntryViewModel">
+                                <Grid ColumnDefinitions="Auto,4,Auto,10,*" Margin="0,2">
+                                    <Button Grid.Column="0" Classes="orderArrow" Content="▲"
+                                            Command="{Binding MoveUpCommand}"
+                                            IsEnabled="{Binding !IsFirst}"
+                                            ToolTip.Tip="Raise priority (load over the mod above)." />
+                                    <Button Grid.Column="2" Classes="orderArrow" Content="▼"
+                                            Command="{Binding MoveDownCommand}"
+                                            IsEnabled="{Binding !IsLast}"
+                                            ToolTip.Tip="Lower priority (let the mod above load over this one)." />
+                                    <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6">
+                                        <CheckBox Content="{Binding Name}"
+                                                  IsChecked="{Binding Enabled}"
+                                                  IsEnabled="{Binding !Required}" />
+                                        <TextBlock Classes="dim" Text="(required)"
+                                                   VerticalAlignment="Center"
+                                                   IsVisible="{Binding Required}"
+                                                   ToolTip.Tip="Cross-game item models — the port needs this archive." />
+                                    </StackPanel>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Classes="error" TextWrapping="Wrap"
+                               IsVisible="{Binding HasLoadOrderError}"
+                               Text="{Binding LoadOrderError}" />
+                </StackPanel>
+            </Expander>
+        </StackPanel>
+    </ContentControl>
+
+</UserControl>

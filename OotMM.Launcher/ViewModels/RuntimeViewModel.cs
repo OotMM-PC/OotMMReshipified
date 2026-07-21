@@ -11,7 +11,9 @@ public sealed class RuntimeViewModel : ViewModelBase
     private readonly UiSettings _settings;
     private readonly ViewModelBase[] _tabs;
     private readonly Dictionary<string, CheckRowViewModel> _checkRows = [];
+    private readonly List<(ItemPlacement Placement, CheckRowViewModel Row)> _placementRows = [];
     private SessionCoordinator? _coordinator;
+    private LogicSolver? _solver;
     private Game _activeGame;
     private bool _showSidebar;
     private int _selectedTabIndex;
@@ -85,13 +87,25 @@ public sealed class RuntimeViewModel : ViewModelBase
                 GameInfo.ToSeedTag(check.Game).ToUpperInvariant(),
                 check.Name.Length > 0 ? check.Name : check.Id,
                 placement.Item.Name) { InLogic = true };
-            vm._checkRows.TryAdd(Identity.CheckKey(check.Game, check.Id), row);
+            if (vm._checkRows.TryAdd(Identity.CheckKey(check.Game, check.Id), row))
+            {
+                vm._placementRows.Add((placement, row));
+            }
         }
 
         vm.Tracker.SetChecks(vm._checkRows.Values);
+
+        var solver = new LogicSolver();
+        if (solver.LoadFromSeedFile(coordinator.Session.SeedPath))
+        {
+            vm._solver = solver;
+        }
+
         coordinator.StateChanged += vm.RefreshFromCoordinator;
         coordinator.EventLogged += message => vm.Log.Add(DateTime.Now.ToString("HH:mm"), message);
         vm.RefreshFromCoordinator();
+        vm.RecomputeLogic();
+        vm.Tracker.NotifyCheckStatesChanged();
         return vm;
     }
 
@@ -207,7 +221,51 @@ public sealed class RuntimeViewModel : ViewModelBase
 
         if (changed)
         {
+            RecomputeLogic();
             Tracker.NotifyCheckStatesChanged();
+        }
+    }
+
+    private void RecomputeLogic()
+    {
+        if (_solver is null || _coordinator is null)
+        {
+            return;
+        }
+
+        var seed = _coordinator.Session.Seed;
+        var input = new LogicSolver.Input();
+        foreach (var starting in seed.StartingItems)
+        {
+            input.Items[starting.Item.Id] = input.Items.GetValueOrDefault(starting.Item.Id) + starting.Count;
+            // The generator seeds license counts (but not renewables) from starting items.
+            input.Licenses[starting.Item.Id] = input.Licenses.GetValueOrDefault(starting.Item.Id) + starting.Count;
+        }
+
+        foreach (var (placement, row) in _placementRows)
+        {
+            if (!row.Collected || placement.OwnerPlayer != seed.PlayerId)
+            {
+                continue;
+            }
+
+            var itemId = placement.Item.Id;
+            input.Items[itemId] = input.Items.GetValueOrDefault(itemId) + 1;
+            if (_solver.IsRenewableLocation(placement.Check.Name))
+            {
+                input.Renewables[itemId] = input.Renewables.GetValueOrDefault(itemId) + 1;
+            }
+
+            if (_solver.IsLicenseLocation(placement.Check.Name))
+            {
+                input.Licenses[itemId] = input.Licenses.GetValueOrDefault(itemId) + 1;
+            }
+        }
+
+        var reachable = _solver.Solve(input);
+        foreach (var (placement, row) in _placementRows)
+        {
+            row.InLogic = reachable.Contains(placement.Check.Name);
         }
     }
 

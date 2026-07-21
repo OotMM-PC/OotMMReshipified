@@ -120,30 +120,10 @@ public static class FactLog
         $"v4:p{fact.SourcePlayer}:{GameInfo.ToSeedTag(fact.Game)}:{fact.CheckId}"
         + $":to:{GameInfo.ToSeedTag(destination)}";
 
-    // SimpleJson's exact escape set, for byte-identical lines.
-    internal static string EscapeJson(string value)
-    {
-        var text = new StringBuilder(value.Length + 2).Append('"');
-        foreach (var c in value)
-        {
-            switch (c)
-            {
-                case '"': text.Append("\\\""); break;
-                case '\\': text.Append("\\\\"); break;
-                case '\n': text.Append("\\n"); break;
-                case '\r': text.Append("\\r"); break;
-                case '\t': text.Append("\\t"); break;
-                default: text.Append(c); break;
-            }
-        }
-
-        return text.Append('"').ToString();
-    }
-
     private static void AppendNaturalKey(StringBuilder line, Fact fact) =>
         line.Append("\"p\":").Append(fact.SourcePlayer)
-            .Append(",\"g\":").Append(EscapeJson(GameInfo.ToSeedTag(fact.Game)))
-            .Append(",\"c\":").Append(EscapeJson(fact.CheckId));
+            .Append(",\"g\":").Append(JsonText.EscapeString(GameInfo.ToSeedTag(fact.Game)))
+            .Append(",\"c\":").Append(JsonText.EscapeString(fact.CheckId));
 
     private static JsonDocument? ParseV4Frame(string line)
     {

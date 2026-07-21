@@ -73,21 +73,15 @@ public sealed class MainWindowViewModel : ViewModelBase
             return;
         }
 
+        MultiworldSync? multiworld = null;
         if (seed.IsMultiworld)
         {
-            DurableFile.WriteAtomic(Path.Combine(session.SessionDir, "multiworld.v4"), "4\n");
-            // Never clobber a sidecar with real coverage from an earlier relay
-            // session; without a relay client we could only write an empty one.
-            var sidecarPath = Path.Combine(session.SessionDir, "foreignplacements.v4.json");
-            if (!File.Exists(sidecarPath))
-            {
-                DurableFile.WriteAtomic(sidecarPath,
-                    V4Transport.BuildForeignPlacementsSidecar(seed, new Dictionary<ushort, Seed>()));
-            }
+            var (host, port) = ResolveRelayEndpoint();
+            multiworld = new MultiworldSync(session, host, port, _settings.PlayerName);
         }
 
         _coordinator?.Dispose();
-        _coordinator = new SessionCoordinator(session);
+        _coordinator = new SessionCoordinator(session, multiworld);
         _coordinator.Ended += EndSessionToConfig;
         _coordinator.StateChanged += ApplyAccent;
 
@@ -101,14 +95,39 @@ public sealed class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        if (seed.IsMultiworld)
+        if (multiworld is not null)
         {
+            var (host, port) = ResolveRelayEndpoint();
             _runtime.Log.Add(DateTime.Now.ToString("HH:mm"),
-                "Relay not connected — multiworld sync arrives with the RelayClient module.", isRemote: true);
+                $"Multiworld: player {seed.PlayerId} → {host}:{port} (protocol v4); "
+                + multiworld.ResumeSummary, isRemote: true);
+            if (_settings.HostRelay)
+            {
+                _runtime.Log.Add(DateTime.Now.ToString("HH:mm"),
+                    "Relay hosting arrives with the server module — run ootmm_server on this machine meanwhile.",
+                    isRemote: true);
+            }
         }
 
         Config.IsActive = false;
         CurrentViewModel = _runtime;
+    }
+
+    private (string Host, ushort Port) ResolveRelayEndpoint()
+    {
+        if (_settings.HostRelay)
+        {
+            return ("127.0.0.1", (ushort)Math.Clamp(_settings.RelayPort, 1, 65535));
+        }
+
+        var address = _settings.MultiworldAddress.Trim();
+        var colon = address.LastIndexOf(':');
+        if (colon > 0 && ushort.TryParse(address[(colon + 1)..], out var port) && port > 0)
+        {
+            return (address[..colon], port);
+        }
+
+        return (address.Length > 0 ? address : "127.0.0.1", RelayProtocol.DefaultPort);
     }
 
     private void EndSessionToConfig(string reason)

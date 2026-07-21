@@ -19,6 +19,8 @@ public sealed class RuntimeViewModel : ViewModelBase
     private int _selectedTabIndex;
     private bool _isRunning;
     private bool _isFinalizingSync;
+    private long _seenReceiptRevision;
+    private string _multiworldStatus = "";
 
     private RuntimeViewModel(
         UiSettings settings,
@@ -103,6 +105,8 @@ public sealed class RuntimeViewModel : ViewModelBase
 
         coordinator.StateChanged += vm.RefreshFromCoordinator;
         coordinator.EventLogged += message => vm.Log.Add(DateTime.Now.ToString("HH:mm"), message);
+        coordinator.RemoteEventLogged += message =>
+            vm.Log.Add(DateTime.Now.ToString("HH:mm"), message, isRemote: true);
         vm.RefreshFromCoordinator();
         vm.RecomputeLogic();
         vm.RebuildProgress();
@@ -208,6 +212,7 @@ public sealed class RuntimeViewModel : ViewModelBase
 
         ActiveGame = _coordinator.ActiveGame;
         IsRunning = _coordinator.IsRunning;
+        UpdateMultiworldStatus();
 
         var changed = false;
         foreach (var (key, row) in _checkRows)
@@ -220,12 +225,51 @@ public sealed class RuntimeViewModel : ViewModelBase
             }
         }
 
+        // Remote receipts change item counts without touching any check row.
+        if (_coordinator.Multiworld is { } sync && sync.ReceiptRevision != _seenReceiptRevision)
+        {
+            _seenReceiptRevision = sync.ReceiptRevision;
+            changed = true;
+        }
+
         if (changed)
         {
             RecomputeLogic();
             RebuildProgress();
             Tracker.NotifyCheckStatesChanged();
         }
+    }
+
+    public string MultiworldStatus
+    {
+        get => _multiworldStatus;
+        private set
+        {
+            if (Set(ref _multiworldStatus, value))
+            {
+                Raise(nameof(ShowMultiworldStatus));
+            }
+        }
+    }
+
+    public bool ShowMultiworldStatus => MultiworldStatus.Length > 0;
+
+    private void UpdateMultiworldStatus()
+    {
+        if (_coordinator?.Multiworld is not { } sync)
+        {
+            return;
+        }
+
+        MultiworldStatus = sync.State switch
+        {
+            TransportState.Connecting => "Relay: connecting…",
+            TransportState.Offline => $"Relay: offline — {sync.PendingChecks} check(s) waiting",
+            TransportState.Syncing => $"Relay: syncing ({sync.PendingChecks} pending)",
+            TransportState.Healthy => "Relay: in sync",
+            TransportState.LocalError => "Relay: local write error — retrying",
+            _ => "Relay: protocol error",
+        };
     }
 
     private void RebuildProgress()
@@ -250,6 +294,14 @@ public sealed class RuntimeViewModel : ViewModelBase
             if (collected && placement.OwnerPlayer == seed.PlayerId)
             {
                 counts[placement.Item.Id] = counts.GetValueOrDefault(placement.Item.Id) + 1;
+            }
+        }
+
+        if (_coordinator.Multiworld is { } sync)
+        {
+            foreach (var (itemId, count) in sync.RemoteItemCounts)
+            {
+                counts[itemId] = counts.GetValueOrDefault(itemId) + count;
             }
         }
 
@@ -393,6 +445,15 @@ public sealed class RuntimeViewModel : ViewModelBase
             if (_solver.IsLicenseLocation(placement.Check.Name))
             {
                 input.Licenses[itemId] = input.Licenses.GetValueOrDefault(itemId) + 1;
+            }
+        }
+
+        // Multiworld receipts count as plain items (no renewable/license credit).
+        if (_coordinator.Multiworld is { } sync)
+        {
+            foreach (var (itemId, count) in sync.RemoteItemCounts)
+            {
+                input.Items[itemId] = input.Items.GetValueOrDefault(itemId) + count;
             }
         }
 

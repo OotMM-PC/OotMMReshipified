@@ -11,6 +11,7 @@ public sealed class SessionCoordinator : IDisposable
 {
     private readonly Core.Session _session;
     private readonly DispatcherTimer _timer;
+    private readonly MultiworldSync? _multiworld;
     private GameProcess? _process;
     private long _outboxOffset;
     private CrossGameTransition? _pendingTransition;
@@ -18,15 +19,35 @@ public sealed class SessionCoordinator : IDisposable
     private DateTime _stateStamp = DateTime.MinValue;
     private bool _ended;
 
-    public SessionCoordinator(Core.Session session)
+    public SessionCoordinator(Core.Session session, MultiworldSync? multiworld = null)
     {
         _session = session;
+        _multiworld = multiworld;
         ActiveGame = session.RecoveredTransition?.ToGame ?? session.Seed.ResolveStartingGame();
         _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         _timer.Tick += (_, _) => Tick();
+
+        if (_multiworld is not null)
+        {
+            _multiworld.EventLogged += (message, isRemote) =>
+            {
+                if (isRemote)
+                {
+                    RemoteEventLogged?.Invoke(message);
+                }
+                else
+                {
+                    LogEvent(message);
+                }
+            };
+            _multiworld.OwnFactConfirmed += OnOwnFactConfirmed;
+            _multiworld.SyncChanged += () => StateChanged?.Invoke();
+        }
     }
 
     public Core.Session Session => _session;
+
+    public MultiworldSync? Multiworld => _multiworld;
 
     public Game ActiveGame { get; private set; }
 
@@ -36,6 +57,7 @@ public sealed class SessionCoordinator : IDisposable
 
     public event Action? StateChanged;
     public event Action<string>? EventLogged;
+    public event Action<string>? RemoteEventLogged;
     public event Action<string>? Ended;
 
     public string? Start()
@@ -86,6 +108,7 @@ public sealed class SessionCoordinator : IDisposable
         _process?.Terminate();
         _process?.Dispose();
         _process = null;
+        _multiworld?.Dispose();
         Ended?.Invoke(reason);
     }
 
@@ -150,6 +173,7 @@ public sealed class SessionCoordinator : IDisposable
         _timer.Stop();
         _process?.Terminate();
         _process?.Dispose();
+        _multiworld?.Dispose();
     }
 
     private string? StartActiveGame(uint? bootEntrance, uint? ootAge)
@@ -210,6 +234,8 @@ public sealed class SessionCoordinator : IDisposable
 
         DrainActiveOutbox();
         SyncCompletedFromState(force: false);
+        _multiworld?.Tick(CompletedChecks,
+                          ActiveGame == Game.Oot ? _session.OotInbox : _session.MmInbox);
 
         if (_pendingTransition is { } transition)
         {
@@ -307,6 +333,21 @@ public sealed class SessionCoordinator : IDisposable
         {
             // Mid-write journal reads retry next tick.
         }
+    }
+
+    private void OnOwnFactConfirmed(Game game, string checkId)
+    {
+        if (!CompletedChecks.Add(Identity.CheckKey(game, checkId)))
+        {
+            return;
+        }
+
+        var placement = _session.Seed.FindPlacement(game, checkId);
+        var name = placement?.Check.Name;
+        var itemName = placement?.Item.Name ?? "";
+        LogEvent($"{(string.IsNullOrEmpty(name) ? checkId : name)}"
+                 + (itemName.Length > 0 ? $": found {itemName}" : ""));
+        StateChanged?.Invoke();
     }
 
     private void LogEvent(string message) => EventLogged?.Invoke(message);

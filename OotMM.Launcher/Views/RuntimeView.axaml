@@ -82,6 +82,9 @@
                                 <TextBlock Classes.success="{Binding IsRunning}"
                                            Classes.error="{Binding !IsRunning}"
                                            Text="{Binding RunStatusText}" />
+                                <TextBlock Classes="dim" FontSize="11"
+                                           IsVisible="{Binding ShowMultiworldStatus}"
+                                           Text="{Binding MultiworldStatus}" />
                             </StackPanel>
                         </StackPanel>
                     </Border>

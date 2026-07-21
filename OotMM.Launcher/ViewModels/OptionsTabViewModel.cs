@@ -34,6 +34,8 @@ public sealed class OptionsTabViewModel : ViewModelBase
         }
     }
 
+    /// <summary>Live drag value; the window rescales only on CommitUiScale so the
+    /// slider never moves under a captured pointer.</summary>
     public double UiScale
     {
         get => _uiScale;
@@ -41,11 +43,12 @@ public sealed class OptionsTabViewModel : ViewModelBase
         {
             if (Set(ref _uiScale, value))
             {
-                _onUiScaleChanged(value);
                 Raise(nameof(UiScalePercent));
             }
         }
     }
+
+    public void CommitUiScale() => _onUiScaleChanged(_uiScale);
 
     public string UiScalePercent => $"{Math.Round(UiScale * 100)}%";
 }

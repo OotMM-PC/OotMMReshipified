@@ -16,7 +16,7 @@
 
         <TextBlock Text="UI scale" Margin="0,6,0,0" />
         <StackPanel Orientation="Horizontal" Spacing="10">
-            <Slider Width="200" Minimum="0.75" Maximum="1.5"
+            <Slider x:Name="ScaleSlider" Width="200" Minimum="0.75" Maximum="1.5"
                     TickFrequency="0.05" IsSnapToTickEnabled="True"
                     Value="{Binding UiScale}" />
             <TextBlock Classes="dim" Text="{Binding UiScalePercent}"

@@ -35,7 +35,8 @@
         </Border>
 
         <!-- Sidebar: exactly one of the three states renders. -->
-        <Panel Grid.Column="1">
+        <LayoutTransformControl Grid.Column="1" LayoutTransform="{Binding SidebarScaleTransform}">
+        <Panel>
 
             <!-- 1) End-of-session drain: no controls on purpose. Exposing
                  relaunch/reset while the last durable inbox writes are pending
@@ -120,6 +121,7 @@
             </Border>
 
         </Panel>
+        </LayoutTransformControl>
     </Grid>
 
 </UserControl>

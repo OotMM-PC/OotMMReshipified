@@ -9,12 +9,8 @@
         Background="{StaticResource BgDeepBrush}"
         Foreground="{StaticResource TextBrush}">
 
-    <!-- Whole-window zoom (the old launcher's uiScale): a layout transform so
-         everything, including hit targets, scales together. -->
-    <LayoutTransformControl LayoutTransform="{Binding UiScaleTransform}">
-        <!-- Stage swap: ConfigViewModel or RuntimeViewModel, resolved to a view
-             by the ViewLocator registered in App.axaml. -->
-        <ContentControl Content="{Binding CurrentViewModel}" />
-    </LayoutTransformControl>
+    <!-- Stage swap: ConfigViewModel or RuntimeViewModel, resolved to a view
+         by the ViewLocator registered in App.axaml. -->
+    <ContentControl Content="{Binding CurrentViewModel}" />
 
 </Window>

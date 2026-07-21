@@ -30,6 +30,18 @@ public static class GameWindow
 
     public static bool IsAlive(nint window) => window != 0 && IsWindow(window);
 
+    /// <summary>The host's true client size in pixels — the one source the game
+    /// child is laid out against, immune to UI-scale transforms.</summary>
+    public static (int Width, int Height) ClientSize(nint window)
+    {
+        if (!IsAlive(window) || !GetClientRect(window, out var rect))
+        {
+            return (0, 0);
+        }
+
+        return (rect.Right - rect.Left, rect.Bottom - rect.Top);
+    }
+
     public static void Layout(nint child, int width, int height) =>
         MoveWindow(child, 0, 0, Math.Max(width, 0), Math.Max(height, 0), true);
 
@@ -79,6 +91,17 @@ public static class GameWindow
 
     [DllImport("user32.dll")]
     private static extern bool IsWindow(nint hwnd);
+
+    private struct Rect
+    {
+        public int Left;
+        public int Top;
+        public int Right;
+        public int Bottom;
+    }
+
+    [DllImport("user32.dll")]
+    private static extern bool GetClientRect(nint hwnd, out Rect rect);
 
     [DllImport("user32.dll")]
     private static extern bool MoveWindow(nint hwnd, int x, int y, int width, int height, bool repaint);

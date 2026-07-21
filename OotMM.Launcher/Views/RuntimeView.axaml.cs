@@ -9,8 +9,6 @@ public partial class RuntimeView : UserControl
     {
         InitializeComponent();
         GameHost.HandleCreated += handle =>
-            (DataContext as RuntimeViewModel)?.NotifyGameHostCreated(handle, GameHost.CurrentPixelSize());
-        GameHost.PixelSizeChanged += size =>
-            (DataContext as RuntimeViewModel)?.NotifyGameHostResized(size);
+            (DataContext as RuntimeViewModel)?.NotifyGameHostCreated(handle);
     }
 }

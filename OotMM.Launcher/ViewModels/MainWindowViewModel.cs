@@ -1,4 +1,3 @@
-using Avalonia.Media;
 using OotMM.Core;
 using OotMM.Launcher.Models;
 using OotMM.Launcher.Services;
@@ -50,12 +49,9 @@ public sealed class MainWindowViewModel : ViewModelBase
             {
                 _settings.UiScale = clamped;
                 _settings.Save();
-                Raise(nameof(UiScaleTransform));
             }
         }
     }
-
-    public ScaleTransform UiScaleTransform => new(UiScale, UiScale);
 
     private void StartSession(Seed seed, string seedPath, string ootExe, string mmExe)
     {

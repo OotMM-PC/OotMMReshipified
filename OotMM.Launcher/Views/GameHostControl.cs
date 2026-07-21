@@ -1,17 +1,15 @@
-using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Platform;
 
 namespace OotMM.Launcher.Views;
 
 /// <summary>Native child window the game render window is parented into
-/// (via OOTMM_PARENT_HWND). Reports its handle and pixel size to the owner.</summary>
+/// (via OOTMM_PARENT_HWND).</summary>
 public sealed class GameHostControl : NativeControlHost
 {
     public nint Handle { get; private set; }
 
     public event Action<nint>? HandleCreated;
-    public event Action<PixelSize>? PixelSizeChanged;
 
     protected override IPlatformHandle CreateNativeControlCore(IPlatformHandle parent)
     {
@@ -25,17 +23,5 @@ public sealed class GameHostControl : NativeControlHost
     {
         Handle = 0;
         base.DestroyNativeControlCore(control);
-    }
-
-    protected override void OnSizeChanged(SizeChangedEventArgs e)
-    {
-        base.OnSizeChanged(e);
-        PixelSizeChanged?.Invoke(CurrentPixelSize());
-    }
-
-    public PixelSize CurrentPixelSize()
-    {
-        var scaling = TopLevel.GetTopLevel(this)?.RenderScaling ?? 1.0;
-        return new PixelSize((int)(Bounds.Width * scaling), (int)(Bounds.Height * scaling));
     }
 }

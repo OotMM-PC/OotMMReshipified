@@ -59,8 +59,6 @@ public sealed class SessionCoordinator : IDisposable
     /// is 0 open their own top-level window instead.</summary>
     public nint GameHostHandle { get; set; }
 
-    public (int Width, int Height) GameHostSize { get; set; }
-
     public void OpenInGameMenu() => GameWindow.PostEscape(_gameChild);
 
     public HashSet<string> CompletedChecks { get; } = [];
@@ -354,24 +352,25 @@ public sealed class SessionCoordinator : IDisposable
             return;
         }
 
+        var size = GameWindow.ClientSize(GameHostHandle);
         if (!GameWindow.IsAlive(_gameChild))
         {
             // (Re)discover after a launch; size and focus it once found.
             _gameChild = GameWindow.FindGameChild(GameHostHandle, _process?.Pid ?? 0);
             if (_gameChild != 0)
             {
-                _laidOutSize = GameHostSize;
-                GameWindow.Layout(_gameChild, GameHostSize.Width, GameHostSize.Height);
+                _laidOutSize = size;
+                GameWindow.Layout(_gameChild, size.Width, size.Height);
                 GameWindow.Focus(_gameChild);
             }
 
             return;
         }
 
-        if (_laidOutSize != GameHostSize)
+        if (_laidOutSize != size)
         {
-            _laidOutSize = GameHostSize;
-            GameWindow.Layout(_gameChild, GameHostSize.Width, GameHostSize.Height);
+            _laidOutSize = size;
+            GameWindow.Layout(_gameChild, size.Width, size.Height);
         }
     }
 

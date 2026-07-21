@@ -21,6 +21,7 @@ public sealed class RuntimeViewModel : ViewModelBase
     private bool _isFinalizingSync;
     private long _seenReceiptRevision;
     private string _multiworldStatus = "";
+    private double _sidebarScale = 1.0;
 
     private RuntimeViewModel(
         UiSettings settings,
@@ -38,7 +39,12 @@ public sealed class RuntimeViewModel : ViewModelBase
         Tracker = new TrackerTabViewModel();
         Log = new LogTabViewModel();
         SessionTab = sessionTab;
-        Options = new OptionsTabViewModel(settings.Theme, currentUiScale, setTheme, setUiScale);
+        _sidebarScale = currentUiScale;
+        Options = new OptionsTabViewModel(settings.Theme, currentUiScale, setTheme, scale =>
+        {
+            setUiScale(scale);
+            SidebarScale = scale;
+        });
         Progress = new ProgressTabViewModel();
         _tabs = [Tracker, Log, SessionTab, Options, Progress];
 
@@ -162,7 +168,7 @@ public sealed class RuntimeViewModel : ViewModelBase
     /// then so it embeds from its first frame.</summary>
     public event Action? GameHostAttached;
 
-    public void NotifyGameHostCreated(nint handle, Avalonia.PixelSize size)
+    public void NotifyGameHostCreated(nint handle)
     {
         if (_coordinator is null)
         {
@@ -170,16 +176,7 @@ public sealed class RuntimeViewModel : ViewModelBase
         }
 
         _coordinator.GameHostHandle = handle;
-        _coordinator.GameHostSize = (size.Width, size.Height);
         GameHostAttached?.Invoke();
-    }
-
-    public void NotifyGameHostResized(Avalonia.PixelSize size)
-    {
-        if (_coordinator is not null)
-        {
-            _coordinator.GameHostSize = (size.Width, size.Height);
-        }
     }
 
     /// <summary>End-of-session drain: while pending durable writes flush, the
@@ -227,6 +224,22 @@ public sealed class RuntimeViewModel : ViewModelBase
     }
 
     public ViewModelBase CurrentTab => _tabs[_selectedTabIndex];
+
+    /// <summary>UI scale zooms the sidebar only; the config screen and the
+    /// embedded game are never transformed.</summary>
+    public double SidebarScale
+    {
+        get => _sidebarScale;
+        private set
+        {
+            if (Set(ref _sidebarScale, value))
+            {
+                Raise(nameof(SidebarScaleTransform));
+            }
+        }
+    }
+
+    public Avalonia.Media.ScaleTransform SidebarScaleTransform => new(SidebarScale, SidebarScale);
 
     private void RefreshFromCoordinator()
     {

@@ -112,10 +112,9 @@
                         </ListBoxItem>
                     </ListBox>
 
-                    <!-- Active tab body (ViewLocator resolves the tab view). -->
-                    <ScrollViewer Margin="0,10,0,0">
-                        <ContentControl Content="{Binding CurrentTab}" />
-                    </ScrollViewer>
+                    <!-- Active tab body; each tab owns its scrolling so long
+                         lists can virtualize. -->
+                    <ContentControl Margin="0,10,0,0" Content="{Binding CurrentTab}" />
 
                 </DockPanel>
             </Border>

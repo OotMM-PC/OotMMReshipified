@@ -4,6 +4,7 @@
              x:Class="OotMM.Launcher.Views.ProgressTabView"
              x:DataType="vm:ProgressTabViewModel">
 
+    <ScrollViewer>
     <ItemsControl ItemsSource="{Binding Sections}">
         <ItemsControl.ItemTemplate>
             <DataTemplate x:DataType="vm:ProgressSectionViewModel">
@@ -29,5 +30,6 @@
             </DataTemplate>
         </ItemsControl.ItemTemplate>
     </ItemsControl>
+    </ScrollViewer>
 
 </UserControl>

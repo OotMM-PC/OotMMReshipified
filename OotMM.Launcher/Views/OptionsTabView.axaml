@@ -4,6 +4,7 @@
              x:Class="OotMM.Launcher.Views.OptionsTabView"
              x:DataType="vm:OptionsTabViewModel">
 
+    <ScrollViewer>
     <StackPanel Spacing="10">
         <TextBlock Classes="sectionTitle" Text="Appearance" />
 
@@ -23,5 +24,6 @@
                        VerticalAlignment="Center" />
         </StackPanel>
     </StackPanel>
+    </ScrollViewer>
 
 </UserControl>

@@ -19,6 +19,7 @@ public sealed class SessionCoordinator : IDisposable
     private CrossGameTransition? _pendingTransition;
     private DateTime _handoffDeadline;
     private DateTime _stateStamp = DateTime.MinValue;
+    private bool _stateDirty;
     private bool _ended;
 
     public SessionCoordinator(Core.Session session, MultiworldSync? multiworld = null)
@@ -43,7 +44,7 @@ public sealed class SessionCoordinator : IDisposable
                 }
             };
             _multiworld.OwnFactConfirmed += OnOwnFactConfirmed;
-            _multiworld.SyncChanged += () => StateChanged?.Invoke();
+            _multiworld.SyncChanged += () => _stateDirty = true;
         }
     }
 
@@ -247,6 +248,14 @@ public sealed class SessionCoordinator : IDisposable
                           ActiveGame == Game.Oot ? _session.OotInbox : _session.MmInbox);
         LayoutEmbeddedGame();
 
+        // Check bursts (drain, catch-up replay) coalesce into one refresh per tick;
+        // per-packet notifications made the sidebar recompute logic N times over.
+        if (_stateDirty)
+        {
+            _stateDirty = false;
+            StateChanged?.Invoke();
+        }
+
         if (_pendingTransition is { } transition)
         {
             if (DateTime.UtcNow >= _handoffDeadline)
@@ -282,7 +291,7 @@ public sealed class SessionCoordinator : IDisposable
                     var name = _session.Seed.FindPlacement(check.CheckGame, check.CheckId)?.Check.Name;
                     LogEvent($"{(string.IsNullOrEmpty(name) ? check.CheckId : name)}"
                              + (check.ItemName.Length > 0 ? $": found {check.ItemName}" : ""));
-                    StateChanged?.Invoke();
+                    _stateDirty = true;
                 }
             }
             else if (_pendingTransition is null
@@ -336,7 +345,7 @@ public sealed class SessionCoordinator : IDisposable
 
             if (changed)
             {
-                StateChanged?.Invoke();
+                _stateDirty = true;
             }
         }
         catch (Exception ex) when (ex is IOException or System.Text.Json.JsonException)
@@ -386,7 +395,7 @@ public sealed class SessionCoordinator : IDisposable
         var itemName = placement?.Item.Name ?? "";
         LogEvent($"{(string.IsNullOrEmpty(name) ? checkId : name)}"
                  + (itemName.Length > 0 ? $": found {itemName}" : ""));
-        StateChanged?.Invoke();
+        _stateDirty = true;
     }
 
     private void LogEvent(string message) => EventLogged?.Invoke(message);

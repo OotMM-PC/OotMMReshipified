@@ -45,8 +45,9 @@ public sealed class TrackerTabViewModel : ViewModelBase
     private List<CheckRowViewModel> _allChecks = [];
     private string _filterText = "";
     private int _gameFilterIndex; // 0 = both, 1 = OoT, 2 = MM
-    private bool _hideCollected;
-    private bool _onlyInLogic;
+    // The play view by default: what is still to do, and reachable right now.
+    private bool _hideCollected = true;
+    private bool _onlyInLogic = true;
 
     public string FilterText
     {

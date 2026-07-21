@@ -15,6 +15,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     private RuntimeViewModel? _runtime;
     private SessionCoordinator? _coordinator;
     private double _uiScale;
+    private bool _relayStarted;
 
     public MainWindowViewModel(UiSettings settings, IFilePicker picker)
     {
@@ -77,7 +78,13 @@ public sealed class MainWindowViewModel : ViewModelBase
         if (seed.IsMultiworld)
         {
             var (host, port) = ResolveRelayEndpoint();
+            if (_settings.HostRelay)
+            {
+                StartHostedRelay(port);
+            }
+
             multiworld = new MultiworldSync(session, host, port, _settings.PlayerName);
+            multiworld.AutoHostWanted += () => StartHostedRelay(port);
         }
 
         _coordinator?.Dispose();
@@ -101,16 +108,31 @@ public sealed class MainWindowViewModel : ViewModelBase
             _runtime.Log.Add(DateTime.Now.ToString("HH:mm"),
                 $"Multiworld: player {seed.PlayerId} → {host}:{port} (protocol v4); "
                 + multiworld.ResumeSummary, isRemote: true);
-            if (_settings.HostRelay)
+            if (_relayStarted)
             {
                 _runtime.Log.Add(DateTime.Now.ToString("HH:mm"),
-                    "Relay hosting arrives with the server module — run ootmm_server on this machine meanwhile.",
-                    isRemote: true);
+                    $"Hosting the relay on port {port}.", isRemote: true);
             }
         }
 
         Config.IsActive = false;
         CurrentViewModel = _runtime;
+    }
+
+    /// <summary>Hosts the relay engine on a background thread; it outlives
+    /// sessions, so re-hosting is a no-op once started.</summary>
+    private void StartHostedRelay(ushort port)
+    {
+        if (_relayStarted)
+        {
+            return;
+        }
+
+        _relayStarted = true;
+        var storeDir = Path.Combine(AppContext.BaseDirectory, "world_state");
+        var rules = new OotMM.Core.Relay.RelayRules();
+        var engine = new OotMM.Core.Relay.RelayEngine(storeDir, rules);
+        new Thread(() => engine.Run(port, CancellationToken.None)) { IsBackground = true }.Start();
     }
 
     private (string Host, ushort Port) ResolveRelayEndpoint()

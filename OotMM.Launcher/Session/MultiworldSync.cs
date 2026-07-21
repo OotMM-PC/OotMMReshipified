@@ -33,6 +33,7 @@ public sealed class MultiworldSync : IDisposable
     private ulong _relaySeq;
     private ulong _catchUpGeneration;
     private TimeSpan _lastGapCatchUp = TimeSpan.MinValue;
+    private TimeSpan _nextAutoHostPrompt;
     private bool _sidecarDirty = true;
     private bool _sidecarWriteFailed;
     private bool _receiptReplayNeeded;
@@ -80,12 +81,21 @@ public sealed class MultiworldSync : IDisposable
     public event Action<Game, string>? OwnFactConfirmed;
     /// <summary>Remote receipts or transport state changed; refresh logic/progress.</summary>
     public event Action? SyncChanged;
+    /// <summary>A loopback relay target is not answering; the owner may host it.</summary>
+    public event Action? AutoHostWanted;
 
     public void Tick(HashSet<string> completedChecks, string activeInbox)
     {
         var inbound = new List<string>();
         _relay.Pump(inbound);
         var now = Now;
+
+        if (!_relay.Connected && _relay.Host is "127.0.0.1" or "localhost" or "::1"
+            && now >= _nextAutoHostPrompt)
+        {
+            _nextAutoHostPrompt = now + TimeSpan.FromSeconds(10);
+            AutoHostWanted?.Invoke();
+        }
 
         // One catch-up per connection generation: since=highestFerriedSeq streams
         // exactly the ferry suffix.

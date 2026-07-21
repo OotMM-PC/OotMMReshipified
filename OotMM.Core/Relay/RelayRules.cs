@@ -1,0 +1,97 @@
+namespace OotMM.Core.Relay;
+
+/// <summary>Server-side session rules, announced to every joiner via
+/// OOTMM_SESSION_META; players cannot override them.</summary>
+public sealed class RelayRules
+{
+    public bool Pvp { get; set; }
+    public bool DeathLink { get; set; }
+    public bool TimerEnabled { get; set; } = true;
+    public int TimerMinPercent { get; set; }
+    public int TimerMaxPercent { get; set; } = 250;
+    public bool AllowManifestBootstrap { get; set; } = true;
+}
+
+/// <summary>Identity bound by the protocol-v4 hello, used to validate the
+/// ephemeral side channels that ride the same socket.</summary>
+public sealed record VerifiedClientIdentity(
+    string Room,
+    string SettingsHash,
+    string TeamId,
+    ushort PlayerId,
+    ushort PlayerCount);
+
+/// <summary>Strict allowlist for the ephemeral side channels; progress traffic
+/// is v4 fact lines validated separately.</summary>
+public static class SideChannelPolicy
+{
+    public static bool IsRoomPacketAllowed(string line, VerifiedClientIdentity client)
+    {
+        if (client.Room.Length == 0 || client.PlayerId == 0 || client.PlayerId > client.PlayerCount
+            || RelayProtocol.ExtractStringField(line, "seedId") != client.Room
+            || RelayProtocol.ExtractStringField(line, "teamId") != client.TeamId)
+        {
+            return false;
+        }
+
+        var type = RelayProtocol.ExtractStringField(line, "type");
+        var sourcePlayer = RelayProtocol.ExtractIntField(line, "sourcePlayer");
+        switch (type)
+        {
+            case RelayProtocol.WorldFlag:
+            {
+                var kind = RelayProtocol.ExtractStringField(line, "kind");
+                return (kind is "chest" or "switch" or "collect")
+                       && GameInfo.TryFromSeedTag(RelayProtocol.ExtractStringField(line, "flagGame")) is not null
+                       && RelayProtocol.ExtractIntField(line, "sceneId", -1) >= 0
+                       && RelayProtocol.ExtractIntField(line, "flagIndex", -1) >= 0
+                       && RelayProtocol.ExtractIntField(line, "playerId") == client.PlayerId
+                       && RelayProtocol.ExtractIntField(line, "playerCount") == client.PlayerCount
+                       && RelayProtocol.ExtractStringField(line, "settingsHash") == client.SettingsHash;
+            }
+            case PresencePackets.PlayerState:
+                return GameInfo.TryFromSeedTag(RelayProtocol.ExtractStringField(line, "game")) is not null
+                       && sourcePlayer == client.PlayerId;
+            case PresencePackets.PvpHit:
+            {
+                var target = RelayProtocol.ExtractIntField(line, "targetPlayer");
+                return sourcePlayer == client.PlayerId && target != 0 && target <= client.PlayerCount
+                       && RelayProtocol.ExtractIntField(line, "seq") != 0;
+            }
+            case PresencePackets.DeathLink:
+                return sourcePlayer == client.PlayerId
+                       && RelayProtocol.ExtractIntField(line, "seq") != 0;
+            case PresencePackets.ModAnnounce:
+                return sourcePlayer == client.PlayerId
+                       && RelayProtocol.ExtractStringField(line, "hash").Length > 0
+                       && RelayProtocol.ExtractU64Field(line, "size") != 0;
+            case PresencePackets.ModRequest:
+            {
+                var target = RelayProtocol.ExtractIntField(line, "targetPlayer");
+                return sourcePlayer == client.PlayerId && target != 0 && target <= client.PlayerCount
+                       && RelayProtocol.ExtractStringField(line, "hash").Length > 0;
+            }
+            case PresencePackets.ModChunk:
+            {
+                var total = RelayProtocol.ExtractU64Field(line, "total");
+                return sourcePlayer == client.PlayerId
+                       && RelayProtocol.ExtractStringField(line, "hash").Length > 0
+                       && total != 0 && RelayProtocol.ExtractU64Field(line, "seq") < total
+                       && RelayProtocol.ExtractStringField(line, "data").Length > 0;
+            }
+            default:
+                return false;
+        }
+    }
+}
+
+/// <summary>Ephemeral presence packet types that ride the relay socket.</summary>
+public static class PresencePackets
+{
+    public const string PlayerState = "OOTMM_PLAYER_STATE";
+    public const string PvpHit = "OOTMM_PVP_HIT";
+    public const string DeathLink = "OOTMM_DEATH_LINK";
+    public const string ModAnnounce = "OOTMM_MOD_ANNOUNCE";
+    public const string ModRequest = "OOTMM_MOD_REQUEST";
+    public const string ModChunk = "OOTMM_MOD_CHUNK";
+}

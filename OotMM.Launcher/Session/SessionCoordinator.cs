@@ -20,6 +20,7 @@ public sealed class SessionCoordinator : IDisposable
     private DateTime _handoffDeadline;
     private DateTime _stateStamp = DateTime.MinValue;
     private bool _stateDirty;
+    private bool _initialSyncDone;
     private bool _ended;
 
     public SessionCoordinator(Core.Session session, MultiworldSync? multiworld = null)
@@ -286,11 +287,10 @@ public sealed class SessionCoordinator : IDisposable
             var packet = read.Packets[i];
             if (AnchorPackets.ParseCheckComplete(packet) is { } check)
             {
-                if (CompletedChecks.Add(Identity.CheckKey(check.CheckGame, check.CheckId)))
+                var key = Identity.CheckKey(check.CheckGame, check.CheckId);
+                if (CompletedChecks.Add(key))
                 {
-                    var name = _session.Seed.FindPlacement(check.CheckGame, check.CheckId)?.Check.Name;
-                    LogEvent($"{(string.IsNullOrEmpty(name) ? check.CheckId : name)}"
-                             + (check.ItemName.Length > 0 ? $": found {check.ItemName}" : ""));
+                    LogCheckCollected(key);
                     _stateDirty = true;
                 }
             }
@@ -337,9 +337,16 @@ public sealed class SessionCoordinator : IDisposable
             var changed = false;
             foreach (var entry in checks.EnumerateArray())
             {
-                if (entry.ValueKind == System.Text.Json.JsonValueKind.String)
+                if (entry.ValueKind == System.Text.Json.JsonValueKind.String
+                    && CompletedChecks.Add(entry.GetString()!))
                 {
-                    changed |= CompletedChecks.Add(entry.GetString()!);
+                    changed = true;
+                    // The first sync reconciles resumed progress and must not
+                    // flood the log; later syncs log fresh collections.
+                    if (_initialSyncDone)
+                    {
+                        LogCheckCollected(entry.GetString()!);
+                    }
                 }
             }
 
@@ -352,6 +359,29 @@ public sealed class SessionCoordinator : IDisposable
         {
             // Mid-write journal reads retry next tick.
         }
+        finally
+        {
+            if (force)
+            {
+                _initialSyncDone = true;
+            }
+        }
+    }
+
+    private void LogCheckCollected(string checkKey)
+    {
+        var colon = checkKey.IndexOf(':');
+        if (colon <= 0 || GameInfo.TryFromSeedTag(checkKey[..colon]) is not { } game)
+        {
+            return;
+        }
+
+        var checkId = checkKey[(colon + 1)..];
+        var placement = _session.Seed.FindPlacement(game, checkId);
+        var name = placement?.Check.Name;
+        var itemName = placement?.Item.Name ?? "";
+        LogEvent($"{(string.IsNullOrEmpty(name) ? checkId : name)}"
+                 + (itemName.Length > 0 ? $": found {itemName}" : ""));
     }
 
     private void LayoutEmbeddedGame()
@@ -385,17 +415,12 @@ public sealed class SessionCoordinator : IDisposable
 
     private void OnOwnFactConfirmed(Game game, string checkId)
     {
-        if (!CompletedChecks.Add(Identity.CheckKey(game, checkId)))
+        var key = Identity.CheckKey(game, checkId);
+        if (CompletedChecks.Add(key))
         {
-            return;
+            LogCheckCollected(key);
+            _stateDirty = true;
         }
-
-        var placement = _session.Seed.FindPlacement(game, checkId);
-        var name = placement?.Check.Name;
-        var itemName = placement?.Item.Name ?? "";
-        LogEvent($"{(string.IsNullOrEmpty(name) ? checkId : name)}"
-                 + (itemName.Length > 0 ? $": found {itemName}" : ""));
-        _stateDirty = true;
     }
 
     private void LogEvent(string message) => EventLogged?.Invoke(message);

@@ -399,7 +399,7 @@ public sealed class MultiworldSync : IDisposable
         }
     }
 
-    private bool AddRemoteReceipt(ushort sourcePlayer, Game game, string checkId)
+    private bool AddRemoteReceipt(ushort sourcePlayer, Game game, string checkId, bool quiet = false)
     {
         // A foreign fact counts only when its placement's reward is addressed to us.
         if (_otherWorlds.GetValueOrDefault(sourcePlayer) is not { } world
@@ -417,8 +417,12 @@ public sealed class MultiworldSync : IDisposable
 
         _remoteCounts[placement.Item.Id] = _remoteCounts.GetValueOrDefault(placement.Item.Id) + 1;
         ReceiptRevision++;
-        EventLogged?.Invoke(
-            $"Received {placement.Item.Name} from player {sourcePlayer}.", true);
+        if (!quiet)
+        {
+            EventLogged?.Invoke(
+                $"Received {placement.Item.Name} from player {sourcePlayer}.", true);
+        }
+
         return true;
     }
 
@@ -431,7 +435,8 @@ public sealed class MultiworldSync : IDisposable
             if (FactLog.DecodeFact(line) is { Seq: not 0 } fact
                 && fact.SourcePlayer != _session.Seed.PlayerId)
             {
-                changed |= AddRemoteReceipt(fact.SourcePlayer, fact.Game, fact.CheckId);
+                // Historical receipts count for logic but must not flood the log.
+                changed |= AddRemoteReceipt(fact.SourcePlayer, fact.Game, fact.CheckId, quiet: true);
             }
         }
 

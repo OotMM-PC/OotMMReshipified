@@ -16,6 +16,7 @@
         <Button Content="Reset seed progress…" HorizontalAlignment="Stretch"
                 Command="{Binding ResetProgressCommand}" />
         <TextBlock Classes="dim" TextWrapping="Wrap" Margin="0,8,0,0"
+                   IsVisible="{Binding ShowUnavailableNote}"
                    Text="{Binding UnavailableNote}" />
     </StackPanel>
 

@@ -153,6 +153,9 @@ public sealed class TrackerTabViewModel : ViewModelBase
         Raise(nameof(SummaryText));
     }
 
+    /// <summary>Call after mutating row Collected/InLogic flags in place.</summary>
+    public void NotifyCheckStatesChanged() => RaiseListChanged();
+
     /// <summary>Representative rows for the layout preview (real check names
     /// from the seed format, hand-picked states to show every row style).</summary>
     public void LoadSampleData()

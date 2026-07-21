@@ -34,3 +34,11 @@ public sealed record EntranceMapping(
 }
 
 public sealed record StartingItem(ItemRef Item, ushort Count);
+
+/// <summary>A cross-game load-zone handoff: exit one game, boot the other at an entrance.</summary>
+public sealed record CrossGameTransition(
+    Game FromGame,
+    Game ToGame,
+    string ToEntrance,
+    uint? ToNativeId,
+    uint? OotAge);

@@ -2,27 +2,25 @@ using Avalonia.Media;
 using OotMM.Core;
 using OotMM.Launcher.Models;
 using OotMM.Launcher.Services;
+using OotMM.Launcher.Session;
 
 namespace OotMM.Launcher.ViewModels;
 
-/// <summary>
-/// Owns the two top-level stages (config form, runtime screen) and the
-/// app-wide appearance settings (accent, UI scale). Mirrors the old launcher's
-/// Stage enum: exactly one stage is visible at a time and the accent follows
-/// the stage unless the user pinned a theme.
-/// </summary>
+/// <summary>Owns the two top-level stages (config form, runtime screen), the
+/// live session coordinator, and app-wide appearance (accent, UI scale).</summary>
 public sealed class MainWindowViewModel : ViewModelBase
 {
     private readonly UiSettings _settings;
     private ViewModelBase _currentViewModel;
     private RuntimeViewModel? _runtime;
+    private SessionCoordinator? _coordinator;
     private double _uiScale;
 
     public MainWindowViewModel(UiSettings settings, IFilePicker picker)
     {
         _settings = settings;
         _uiScale = Math.Clamp(settings.UiScale, 0.75, 1.5);
-        Config = new ConfigViewModel(settings, picker, ShowRuntimePreview);
+        Config = new ConfigViewModel(settings, picker, ShowRuntimePreview, StartSession);
         _currentViewModel = Config;
         ApplyAccent();
     }
@@ -41,8 +39,6 @@ public sealed class MainWindowViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Whole-window zoom, applied via a LayoutTransform on the window
-    /// content — the equivalent of the old launcher's uiScale.</summary>
     public double UiScale
     {
         get => _uiScale;
@@ -60,9 +56,71 @@ public sealed class MainWindowViewModel : ViewModelBase
 
     public ScaleTransform UiScaleTransform => new(UiScale, UiScale);
 
-    /// <summary>Runtime layout preview: shows the session screen with sample
-    /// data so the sidebar can be designed and exercised before the process
-    /// coordinator exists. Entered from a link on the config screen.</summary>
+    private void StartSession(Seed seed, string seedPath, string ootExe, string mmExe)
+    {
+        var session = new Core.Session
+        {
+            SeedPath = seedPath,
+            OotExe = ootExe,
+            MmExe = mmExe,
+            Seed = seed,
+            V4Planned = seed.IsMultiworld,
+        };
+
+        if (SessionPaths.PrepareSession(session) is { } prepareError)
+        {
+            Config.ShowStatus(prepareError);
+            return;
+        }
+
+        if (seed.IsMultiworld)
+        {
+            DurableFile.WriteAtomic(Path.Combine(session.SessionDir, "multiworld.v4"), "4\n");
+            // Never clobber a sidecar with real coverage from an earlier relay
+            // session; without a relay client we could only write an empty one.
+            var sidecarPath = Path.Combine(session.SessionDir, "foreignplacements.v4.json");
+            if (!File.Exists(sidecarPath))
+            {
+                DurableFile.WriteAtomic(sidecarPath,
+                    V4Transport.BuildForeignPlacementsSidecar(seed, new Dictionary<ushort, Seed>()));
+            }
+        }
+
+        _coordinator?.Dispose();
+        _coordinator = new SessionCoordinator(session);
+        _coordinator.Ended += EndSessionToConfig;
+        _coordinator.StateChanged += ApplyAccent;
+
+        _runtime = RuntimeViewModel.CreateLive(_settings, _coordinator, SetTheme, SetUiScale, UiScale);
+        if (_coordinator.Start() is { } startError)
+        {
+            _coordinator.Dispose();
+            _coordinator = null;
+            _runtime = null;
+            Config.ShowStatus(startError);
+            return;
+        }
+
+        if (seed.IsMultiworld)
+        {
+            _runtime.Log.Add(DateTime.Now.ToString("HH:mm"),
+                "Relay not connected — multiworld sync arrives with the RelayClient module.", isRemote: true);
+        }
+
+        Config.IsActive = false;
+        CurrentViewModel = _runtime;
+    }
+
+    private void EndSessionToConfig(string reason)
+    {
+        _coordinator?.Dispose();
+        _coordinator = null;
+        _runtime = null;
+        Config.IsActive = true;
+        Config.ShowStatus(reason);
+        CurrentViewModel = Config;
+    }
+
     private void ShowRuntimePreview()
     {
         _runtime = RuntimeViewModel.CreatePreview(_settings, BackToConfig, SetTheme, SetUiScale, UiScale);
@@ -86,8 +144,6 @@ public sealed class MainWindowViewModel : ViewModelBase
 
     private void SetUiScale(double scale) => UiScale = scale;
 
-    /// <summary>Ported CurrentAccent: explicit theme wins; otherwise gold on the
-    /// config screen and the active game's color at runtime.</summary>
     private void ApplyAccent()
     {
         var violet = _settings.Theme == 2

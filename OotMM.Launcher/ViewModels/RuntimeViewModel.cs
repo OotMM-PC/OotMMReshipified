@@ -1,18 +1,18 @@
 using OotMM.Core;
 using OotMM.Launcher.Models;
+using OotMM.Launcher.Session;
 
 namespace OotMM.Launcher.ViewModels;
 
-/// <summary>
-/// The in-session screen: the embedded game window on the left, the sidebar
-/// (tracker / log / session / options / progress) on the right. Until the
-/// process coordinator is ported this screen runs in preview mode with sample
-/// data; every property here is the seam the coordinator will drive later.
-/// </summary>
+/// <summary>The in-session screen: game area plus the sidebar tabs. Runs in
+/// preview mode (sample data) or live mode (driven by a SessionCoordinator).</summary>
 public sealed class RuntimeViewModel : ViewModelBase
 {
     private readonly UiSettings _settings;
     private readonly ViewModelBase[] _tabs;
+    private readonly Dictionary<string, CheckRowViewModel> _checkRows = [];
+    private SessionCoordinator? _coordinator;
+    private Game _activeGame;
     private bool _showSidebar;
     private int _selectedTabIndex;
     private bool _isRunning;
@@ -24,7 +24,8 @@ public sealed class RuntimeViewModel : ViewModelBase
         Action backToConfig,
         Action<int> setTheme,
         Action<double> setUiScale,
-        double currentUiScale)
+        double currentUiScale,
+        SessionTabViewModel sessionTab)
     {
         _settings = settings;
         IsPreview = isPreview;
@@ -32,21 +33,16 @@ public sealed class RuntimeViewModel : ViewModelBase
 
         Tracker = new TrackerTabViewModel();
         Log = new LogTabViewModel();
-        Session = new SessionTabViewModel();
+        SessionTab = sessionTab;
         Options = new OptionsTabViewModel(settings.Theme, currentUiScale, setTheme, setUiScale);
         Progress = new ProgressTabViewModel();
-
-        // Rail order mirrors the original icon rail:
-        // dungeon map, bombers notebook, kokiri sword, lens of truth, compass.
-        _tabs = [Tracker, Log, Session, Options, Progress];
+        _tabs = [Tracker, Log, SessionTab, Options, Progress];
 
         BackToConfigCommand = new RelayCommand(backToConfig);
         ExpandSidebarCommand = new RelayCommand(() => ShowSidebar = true);
         CollapseSidebarCommand = new RelayCommand(() => ShowSidebar = false);
     }
 
-    /// <summary>Builds the screen with representative sample data — reachable
-    /// from the config screen so the layout can be exercised without a session.</summary>
     public static RuntimeViewModel CreatePreview(
         UiSettings settings,
         Action backToConfig,
@@ -54,13 +50,48 @@ public sealed class RuntimeViewModel : ViewModelBase
         Action<double> setUiScale,
         double currentUiScale)
     {
-        var vm = new RuntimeViewModel(settings, true, backToConfig, setTheme, setUiScale, currentUiScale)
-        {
-            ActiveGame = Game.Oot,
-        };
+        var vm = new RuntimeViewModel(settings, true, backToConfig, setTheme, setUiScale,
+                                      currentUiScale, new SessionTabViewModel());
         vm.Tracker.LoadSampleData();
         vm.Log.LoadSampleData();
         vm.Progress.LoadSampleData();
+        return vm;
+    }
+
+    public static RuntimeViewModel CreateLive(
+        UiSettings settings,
+        SessionCoordinator coordinator,
+        Action<int> setTheme,
+        Action<double> setUiScale,
+        double currentUiScale)
+    {
+        var sessionTab = new SessionTabViewModel(
+            coordinator.RestartGame,
+            coordinator.SwitchGame,
+            () => coordinator.EndSession("Session ended by the player."),
+            () => coordinator.ResetSeedProgress());
+        var vm = new RuntimeViewModel(settings, false,
+                                      () => coordinator.EndSession("Session ended by the player."),
+                                      setTheme, setUiScale, currentUiScale, sessionTab)
+        {
+            _coordinator = coordinator,
+            ActiveGame = coordinator.ActiveGame,
+        };
+
+        foreach (var placement in coordinator.Session.Seed.Placements)
+        {
+            var check = placement.Check;
+            var row = new CheckRowViewModel(
+                GameInfo.ToSeedTag(check.Game).ToUpperInvariant(),
+                check.Name.Length > 0 ? check.Name : check.Id,
+                placement.Item.Name) { InLogic = true };
+            vm._checkRows.TryAdd(Identity.CheckKey(check.Game, check.Id), row);
+        }
+
+        vm.Tracker.SetChecks(vm._checkRows.Values);
+        coordinator.StateChanged += vm.RefreshFromCoordinator;
+        coordinator.EventLogged += message => vm.Log.Add(DateTime.Now.ToString("HH:mm"), message);
+        vm.RefreshFromCoordinator();
         return vm;
     }
 
@@ -68,7 +99,7 @@ public sealed class RuntimeViewModel : ViewModelBase
 
     public TrackerTabViewModel Tracker { get; }
     public LogTabViewModel Log { get; }
-    public SessionTabViewModel Session { get; }
+    public SessionTabViewModel SessionTab { get; }
     public OptionsTabViewModel Options { get; }
     public ProgressTabViewModel Progress { get; }
 
@@ -76,18 +107,27 @@ public sealed class RuntimeViewModel : ViewModelBase
     public RelayCommand ExpandSidebarCommand { get; }
     public RelayCommand CollapseSidebarCommand { get; }
 
-    public Game ActiveGame { get; private set; }
+    public Game ActiveGame
+    {
+        get => _activeGame;
+        private set
+        {
+            if (Set(ref _activeGame, value))
+            {
+                Raise(nameof(ActiveGameTitle));
+                Raise(nameof(ActiveIsOot));
+            }
+        }
+    }
 
     public string ActiveGameTitle => GameInfo.Title(ActiveGame);
 
-    /// <summary>Enum comparisons are awkward in bindings; the views pick the
-    /// game emblem and accent-sensitive bits off this flag.</summary>
     public bool ActiveIsOot => ActiveGame == Game.Oot;
 
     public bool IsRunning
     {
         get => _isRunning;
-        set
+        private set
         {
             if (Set(ref _isRunning, value))
             {
@@ -98,10 +138,8 @@ public sealed class RuntimeViewModel : ViewModelBase
 
     public string RunStatusText => IsRunning ? "running" : "not running";
 
-    /// <summary>End-of-session drain: while the last durable inbox writes are
-    /// pending, the sidebar must expose no relaunch/reset controls (starting a
-    /// new child during the drain would orphan the process) — so the view swaps
-    /// to a wait message when this is set.</summary>
+    /// <summary>End-of-session drain: while pending durable writes flush, the
+    /// sidebar exposes no relaunch/reset controls (a new child could be orphaned).</summary>
     public bool IsFinalizingSync
     {
         get => _isFinalizingSync;
@@ -128,17 +166,9 @@ public sealed class RuntimeViewModel : ViewModelBase
         }
     }
 
-    /// <summary>The three mutually exclusive sidebar states the view renders:
-    /// finalizing-drain wait screen, collapsed strip, or full panel.</summary>
     public bool ShowFullSidebar => ShowSidebar && !IsFinalizingSync;
 
     public bool ShowCollapsedStrip => !ShowSidebar && !IsFinalizingSync;
-
-    private void RaiseSidebarStates()
-    {
-        Raise(nameof(ShowFullSidebar));
-        Raise(nameof(ShowCollapsedStrip));
-    }
 
     public int SelectedTabIndex
     {
@@ -153,4 +183,37 @@ public sealed class RuntimeViewModel : ViewModelBase
     }
 
     public ViewModelBase CurrentTab => _tabs[_selectedTabIndex];
+
+    private void RefreshFromCoordinator()
+    {
+        if (_coordinator is null)
+        {
+            return;
+        }
+
+        ActiveGame = _coordinator.ActiveGame;
+        IsRunning = _coordinator.IsRunning;
+
+        var changed = false;
+        foreach (var (key, row) in _checkRows)
+        {
+            var collected = _coordinator.CompletedChecks.Contains(key);
+            if (row.Collected != collected)
+            {
+                row.Collected = collected;
+                changed = true;
+            }
+        }
+
+        if (changed)
+        {
+            Tracker.NotifyCheckStatesChanged();
+        }
+    }
+
+    private void RaiseSidebarStates()
+    {
+        Raise(nameof(ShowFullSidebar));
+        Raise(nameof(ShowCollapsedStrip));
+    }
 }

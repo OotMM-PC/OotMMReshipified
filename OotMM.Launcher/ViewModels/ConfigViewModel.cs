@@ -17,6 +17,7 @@ public sealed class ConfigViewModel : ViewModelBase
 {
     private readonly UiSettings _settings;
     private readonly Action _previewRuntime;
+    private readonly Action<Seed, string, string, string> _startSession;
     private readonly DispatcherTimer _rescanTimer;
 
     private string _seedPath = "";
@@ -30,10 +31,12 @@ public sealed class ConfigViewModel : ViewModelBase
     private string _statusMessage = "";
     private bool _isActive = true;
 
-    public ConfigViewModel(UiSettings settings, IFilePicker picker, Action previewRuntime)
+    public ConfigViewModel(UiSettings settings, IFilePicker picker, Action previewRuntime,
+                           Action<Seed, string, string, string> startSession)
     {
         _settings = settings;
         _previewRuntime = previewRuntime;
+        _startSession = startSession;
 
         OotCard = new GameCardViewModel(isOot: true, picker, FormChanged);
         MmCard = new GameCardViewModel(isOot: false, picker, FormChanged);
@@ -393,7 +396,7 @@ public sealed class ConfigViewModel : ViewModelBase
 
     private void OnLaunchClicked()
     {
-        if (Seed is null)
+        if (Seed is not { } seed)
         {
             StatusMessage = "Choose a seed first.";
             return;
@@ -411,12 +414,18 @@ public sealed class ConfigViewModel : ViewModelBase
             return;
         }
 
-        // Honest scaffold boundary: spawning the games (and the Setup flow) is
-        // the GameProcess + coordinator modules, which are not ported yet.
-        StatusMessage = SetupNeeded
-            ? "Setup will extract game assets and build the cross-game model archives once the coordinator module is ported."
-            : "Everything validates. Launching arrives with the GameProcess/coordinator modules.";
+        if (SetupNeeded)
+        {
+            // The Setup flow (ROM extraction + model archive build) is a later slice.
+            StatusMessage = "Setup will extract game assets and build the cross-game model archives once the setup flow is ported.";
+            return;
+        }
+
+        StatusMessage = "";
+        _startSession(seed, SeedPath, OotCard.ExePath, MmCard.ExePath);
     }
+
+    public void ShowStatus(string message) => StatusMessage = message;
 
     private void SaveToSettings()
     {

@@ -8,23 +8,31 @@ namespace OotMM.Launcher.ViewModels;
 /// </summary>
 public sealed class SessionTabViewModel : ViewModelBase
 {
+    /// <summary>Preview mode: laid out but disabled.</summary>
     public SessionTabViewModel()
     {
-        // All gated off until the coordinator exists; flipping CoordinatorReady
-        // to true (and wiring real delegates) is the integration point.
         RestartGameCommand = new RelayCommand(() => { }, () => CoordinatorReady);
         SwitchGameCommand = new RelayCommand(() => { }, () => CoordinatorReady);
         EndSessionCommand = new RelayCommand(() => { }, () => CoordinatorReady);
         ResetProgressCommand = new RelayCommand(() => { }, () => CoordinatorReady);
     }
 
-    /// <summary>False until the GameProcess/coordinator modules are ported and
-    /// injected; the tab explains this in its footer note.</summary>
-    public bool CoordinatorReady => false;
+    /// <summary>Live mode: wired to the session coordinator.</summary>
+    public SessionTabViewModel(Action restart, Action switchGame, Action end, Action reset)
+    {
+        CoordinatorReady = true;
+        RestartGameCommand = new RelayCommand(restart);
+        SwitchGameCommand = new RelayCommand(switchGame);
+        EndSessionCommand = new RelayCommand(end);
+        ResetProgressCommand = new RelayCommand(reset);
+    }
+
+    public bool CoordinatorReady { get; }
+
+    public bool ShowUnavailableNote => !CoordinatorReady;
 
     public string UnavailableNote =>
-        "Session controls come alive with the coordinator module — they are laid out "
-        + "here so the runtime screen is complete.";
+        "Session controls come alive once a real session is running (start one from the config screen).";
 
     public RelayCommand RestartGameCommand { get; }
     public RelayCommand SwitchGameCommand { get; }

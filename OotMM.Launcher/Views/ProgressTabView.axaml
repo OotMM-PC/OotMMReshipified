@@ -13,7 +13,11 @@
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="vm:ProgressItemViewModel">
                                 <Grid ColumnDefinitions="*,Auto" Margin="0,1">
-                                    <TextBlock Grid.Column="0" Text="{Binding Label}" />
+                                    <StackPanel Grid.Column="0">
+                                        <TextBlock Text="{Binding Label}" TextWrapping="Wrap" />
+                                        <TextBlock Classes="dim" FontSize="11" Text="{Binding Detail}"
+                                                   IsVisible="{Binding HasDetail}" />
+                                    </StackPanel>
                                     <TextBlock Grid.Column="1" Classes="dim"
                                                Classes.success="{Binding IsComplete}"
                                                Text="{Binding CountText}" />

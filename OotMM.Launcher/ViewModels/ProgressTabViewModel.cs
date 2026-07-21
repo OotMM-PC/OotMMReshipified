@@ -2,13 +2,16 @@ using System.Collections.ObjectModel;
 
 namespace OotMM.Launcher.ViewModels;
 
-public sealed class ProgressItemViewModel(string label, int have, int total) : ViewModelBase
+public sealed class ProgressItemViewModel(string label, int have, int total, string detail = "")
+    : ViewModelBase
 {
     public string Label { get; } = label;
     public int Have { get; } = have;
     public int Total { get; } = total;
-    public string CountText => $"{Have}/{Total}";
-    public bool IsComplete => Have >= Total;
+    public string Detail { get; } = detail;
+    public bool HasDetail => Detail.Length > 0;
+    public string CountText => Total > 0 ? $"{Have}/{Total}" : "";
+    public bool IsComplete => Total > 0 && Have >= Total;
 }
 
 public sealed class ProgressSectionViewModel(string title)

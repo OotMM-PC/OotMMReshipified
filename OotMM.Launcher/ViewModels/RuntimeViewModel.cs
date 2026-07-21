@@ -105,6 +105,7 @@ public sealed class RuntimeViewModel : ViewModelBase
         coordinator.EventLogged += message => vm.Log.Add(DateTime.Now.ToString("HH:mm"), message);
         vm.RefreshFromCoordinator();
         vm.RecomputeLogic();
+        vm.RebuildProgress();
         vm.Tracker.NotifyCheckStatesChanged();
         return vm;
     }
@@ -222,8 +223,141 @@ public sealed class RuntimeViewModel : ViewModelBase
         if (changed)
         {
             RecomputeLogic();
+            RebuildProgress();
             Tracker.NotifyCheckStatesChanged();
         }
+    }
+
+    private void RebuildProgress()
+    {
+        if (_coordinator is null)
+        {
+            return;
+        }
+
+        var seed = _coordinator.Session.Seed;
+        var checks = _placementRows
+            .Select(pr => (pr.Placement, pr.Row.Collected))
+            .ToList();
+        var counts = new Dictionary<string, int>();
+        foreach (var starting in seed.StartingItems)
+        {
+            counts[starting.Item.Id] = counts.GetValueOrDefault(starting.Item.Id) + starting.Count;
+        }
+
+        foreach (var (placement, collected) in checks)
+        {
+            if (collected && placement.OwnerPlayer == seed.PlayerId)
+            {
+                counts[placement.Item.Id] = counts.GetValueOrDefault(placement.Item.Id) + 1;
+            }
+        }
+
+        var report = ProgressReport.Build(seed, checks, counts);
+        var sections = new List<ProgressSectionViewModel>();
+
+        var checksSection = new ProgressSectionViewModel("Checks");
+        checksSection.Items.Add(new ProgressItemViewModel("All", report.Checks.Have, report.Checks.Total));
+        checksSection.Items.Add(new ProgressItemViewModel("Ocarina of Time", report.Checks.OotHave, report.Checks.OotTotal));
+        checksSection.Items.Add(new ProgressItemViewModel("Majora's Mask", report.Checks.MmHave, report.Checks.MmTotal));
+        sections.Add(checksSection);
+
+        if (report.Goals.Any(g => g.Active))
+        {
+            var goals = new ProgressSectionViewModel("Goals");
+            foreach (var goal in report.Goals.Where(g => g.Active))
+            {
+                goals.Items.Add(new ProgressItemViewModel(goal.Name, goal.Owned, goal.Threshold));
+            }
+
+            sections.Add(goals);
+        }
+
+        if (report.DungeonRows.Count > 0)
+        {
+            var dungeons = new ProgressSectionViewModel("Dungeons");
+            foreach (var d in report.DungeonRows)
+            {
+                var parts = new List<string>();
+                if (d.HasKeyRing)
+                {
+                    parts.Add(d.KeyRing ? "key ring ✓" : "key ring ✗");
+                }
+
+                if (d.SkeletonOwned)
+                {
+                    parts.Add("skeleton key");
+                }
+
+                if (d.HasMap)
+                {
+                    parts.Add(d.Map ? "map ✓" : "map ✗");
+                }
+
+                if (d.HasCompass)
+                {
+                    parts.Add(d.Compass ? "compass ✓" : "compass ✗");
+                }
+
+                if (d.HasBossKey)
+                {
+                    parts.Add(d.BossKey ? "boss key ✓" : "boss key ✗");
+                }
+
+                if (d.HasFairies)
+                {
+                    parts.Add($"fairies {d.FairiesHave}/{d.FairiesTotal}");
+                }
+
+                dungeons.Items.Add(new ProgressItemViewModel(
+                    d.Name, d.KeysHave, d.KeysTotal, string.Join(" · ", parts)));
+            }
+
+            sections.Add(dungeons);
+        }
+
+        foreach (var game in new[] { Game.Oot, Game.Mm })
+        {
+            var title = GameInfo.Title(game);
+            AddItemSection(sections, $"{title} Songs", report.Songs(game));
+            AddItemSection(sections, $"{title} Key Items", report.KeyItems(game));
+            AddItemSection(sections, $"{title} Rusty Keys", report.RustyKeys(game));
+
+            var souls = new ProgressSectionViewModel($"{title} Souls");
+            foreach (var sub in Enum.GetValues<SoulSub>())
+            {
+                var list = report.Souls(game, sub);
+                if (list.Count > 0)
+                {
+                    souls.Items.Add(new ProgressItemViewModel(
+                        $"{sub} Souls", list.Count(i => i.Owned), list.Count));
+                }
+            }
+
+            if (souls.Items.Count > 0)
+            {
+                sections.Add(souls);
+            }
+        }
+
+        Progress.SetSections(sections);
+    }
+
+    private static void AddItemSection(
+        List<ProgressSectionViewModel> sections, string title, IReadOnlyList<ItemProgress> items)
+    {
+        if (items.Count == 0)
+        {
+            return;
+        }
+
+        var section = new ProgressSectionViewModel(title);
+        foreach (var item in items)
+        {
+            section.Items.Add(new ProgressItemViewModel(item.Name, item.Have, item.Total));
+        }
+
+        sections.Add(section);
     }
 
     private void RecomputeLogic()

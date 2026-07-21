@@ -13,6 +13,8 @@ public sealed class SessionCoordinator : IDisposable
     private readonly DispatcherTimer _timer;
     private readonly MultiworldSync? _multiworld;
     private GameProcess? _process;
+    private nint _gameChild;
+    private (int Width, int Height) _laidOutSize;
     private long _outboxOffset;
     private CrossGameTransition? _pendingTransition;
     private DateTime _handoffDeadline;
@@ -52,6 +54,14 @@ public sealed class SessionCoordinator : IDisposable
     public Game ActiveGame { get; private set; }
 
     public bool IsRunning => _process?.Running == true;
+
+    /// <summary>Native host the game window embeds into; games launched while it
+    /// is 0 open their own top-level window instead.</summary>
+    public nint GameHostHandle { get; set; }
+
+    public (int Width, int Height) GameHostSize { get; set; }
+
+    public void OpenInGameMenu() => GameWindow.PostEscape(_gameChild);
 
     public HashSet<string> CompletedChecks { get; } = [];
 
@@ -192,7 +202,8 @@ public sealed class SessionCoordinator : IDisposable
 
         var exe = ActiveGame == Game.Oot ? _session.OotExe : _session.MmExe;
         _process?.Dispose();
-        _process = new GameProcess(exe, _session.BootConfigPath);
+        _gameChild = 0;
+        _process = new GameProcess(exe, _session.BootConfigPath, parentWindow: GameHostHandle);
         if (!_process.Valid)
         {
             _process = null;
@@ -236,6 +247,7 @@ public sealed class SessionCoordinator : IDisposable
         SyncCompletedFromState(force: false);
         _multiworld?.Tick(CompletedChecks,
                           ActiveGame == Game.Oot ? _session.OotInbox : _session.MmInbox);
+        LayoutEmbeddedGame();
 
         if (_pendingTransition is { } transition)
         {
@@ -332,6 +344,34 @@ public sealed class SessionCoordinator : IDisposable
         catch (Exception ex) when (ex is IOException or System.Text.Json.JsonException)
         {
             // Mid-write journal reads retry next tick.
+        }
+    }
+
+    private void LayoutEmbeddedGame()
+    {
+        if (GameHostHandle == 0)
+        {
+            return;
+        }
+
+        if (!GameWindow.IsAlive(_gameChild))
+        {
+            // (Re)discover after a launch; size and focus it once found.
+            _gameChild = GameWindow.FindGameChild(GameHostHandle, _process?.Pid ?? 0);
+            if (_gameChild != 0)
+            {
+                _laidOutSize = GameHostSize;
+                GameWindow.Layout(_gameChild, GameHostSize.Width, GameHostSize.Height);
+                GameWindow.Focus(_gameChild);
+            }
+
+            return;
+        }
+
+        if (_laidOutSize != GameHostSize)
+        {
+            _laidOutSize = GameHostSize;
+            GameWindow.Layout(_gameChild, GameHostSize.Width, GameHostSize.Height);
         }
     }
 

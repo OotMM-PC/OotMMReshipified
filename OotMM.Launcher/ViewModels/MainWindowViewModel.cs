@@ -93,14 +93,28 @@ public sealed class MainWindowViewModel : ViewModelBase
         _coordinator.StateChanged += ApplyAccent;
 
         _runtime = RuntimeViewModel.CreateLive(_settings, _coordinator, SetTheme, SetUiScale, UiScale);
-        if (_coordinator.Start() is { } startError)
+
+        // Boot only once the native game host exists, so the game embeds into it
+        // from its first frame instead of opening a top-level window.
+        var started = false;
+        var coordinator = _coordinator;
+        _runtime.GameHostAttached += () =>
         {
-            _coordinator.Dispose();
-            _coordinator = null;
-            _runtime = null;
-            Config.ShowStatus(startError);
-            return;
-        }
+            if (started || coordinator != _coordinator)
+            {
+                return;
+            }
+
+            started = true;
+            // The host handle arrives mid-layout; boot outside the layout pass.
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (coordinator == _coordinator && coordinator.Start() is { } startError)
+                {
+                    EndSessionToConfig(startError);
+                }
+            });
+        };
 
         if (multiworld is not null)
         {

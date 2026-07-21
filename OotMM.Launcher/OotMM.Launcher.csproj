@@ -10,6 +10,8 @@
         <!-- Compiled bindings: every binding is type-checked at build time, so a renamed
              view-model property is a compile error instead of a silently dead control. -->
         <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
+        <!-- NativeControlHost (the embedded game window) requires the supported-OS manifest. -->
+        <ApplicationManifest>app.manifest</ApplicationManifest>
     </PropertyGroup>
 
     <ItemGroup>

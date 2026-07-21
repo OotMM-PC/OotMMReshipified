@@ -1,20 +1,16 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:OotMM.Launcher.ViewModels"
+             xmlns:views="using:OotMM.Launcher.Views"
              x:Class="OotMM.Launcher.Views.RuntimeView"
              x:DataType="vm:RuntimeViewModel">
 
     <Grid ColumnDefinitions="*,Auto">
 
-        <!-- Game area. Once the process-management module lands, this panel is
-             replaced by a NativeControlHost that parents the game's window. -->
+        <!-- Game area: the embedded game window docks into GameHostControl. -->
         <Border Grid.Column="0" Margin="10" CornerRadius="10"
                 Background="{StaticResource BgPanelBrush}">
             <Panel>
-                <TextBlock Classes="warn" Margin="14,10"
-                           HorizontalAlignment="Left" VerticalAlignment="Top"
-                           IsVisible="{Binding IsPreview}"
-                           Text="LAYOUT PREVIEW — no live session" />
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center"
                             Spacing="12" MaxWidth="460">
                     <Image Classes="pulse" Source="avares://OotMM.Launcher/Assets/Icons/OcarinaOfTime.png"
@@ -24,12 +20,17 @@
                            Width="64" Height="64" HorizontalAlignment="Center"
                            IsVisible="{Binding !ActiveIsOot}" />
                     <TextBlock Classes="dim" TextAlignment="Center" TextWrapping="Wrap"
-                               Text="The game window docks here — embedded child-window hosting arrives with the process-management module." />
+                               Text="The game window docks here once it starts." />
                     <Button Classes="link" HorizontalAlignment="Center"
                             Content="← Back to configuration"
                             Command="{Binding BackToConfigCommand}"
                             IsVisible="{Binding IsPreview}" />
                 </StackPanel>
+                <views:GameHostControl x:Name="GameHost" IsVisible="{Binding !IsPreview}" />
+                <TextBlock Classes="warn" Margin="14,10"
+                           HorizontalAlignment="Left" VerticalAlignment="Top"
+                           IsVisible="{Binding IsPreview}"
+                           Text="LAYOUT PREVIEW — no live session" />
             </Panel>
         </Border>
 

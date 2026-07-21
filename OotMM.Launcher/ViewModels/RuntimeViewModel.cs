@@ -73,7 +73,8 @@ public sealed class RuntimeViewModel : ViewModelBase
             coordinator.RestartGame,
             coordinator.SwitchGame,
             () => coordinator.EndSession("Session ended by the player."),
-            () => coordinator.ResetSeedProgress());
+            () => coordinator.ResetSeedProgress(),
+            coordinator.OpenInGameMenu);
         var vm = new RuntimeViewModel(settings, false,
                                       () => coordinator.EndSession("Session ended by the player."),
                                       setTheme, setUiScale, currentUiScale, sessionTab)
@@ -156,6 +157,30 @@ public sealed class RuntimeViewModel : ViewModelBase
     }
 
     public string RunStatusText => IsRunning ? "running" : "not running";
+
+    /// <summary>Fires once the native game host exists; the owner boots the game
+    /// then so it embeds from its first frame.</summary>
+    public event Action? GameHostAttached;
+
+    public void NotifyGameHostCreated(nint handle, Avalonia.PixelSize size)
+    {
+        if (_coordinator is null)
+        {
+            return;
+        }
+
+        _coordinator.GameHostHandle = handle;
+        _coordinator.GameHostSize = (size.Width, size.Height);
+        GameHostAttached?.Invoke();
+    }
+
+    public void NotifyGameHostResized(Avalonia.PixelSize size)
+    {
+        if (_coordinator is not null)
+        {
+            _coordinator.GameHostSize = (size.Width, size.Height);
+        }
+    }
 
     /// <summary>End-of-session drain: while pending durable writes flush, the
     /// sidebar exposes no relaunch/reset controls (a new child could be orphaned).</summary>

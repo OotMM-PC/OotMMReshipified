@@ -15,16 +15,19 @@ public sealed class SessionTabViewModel : ViewModelBase
         SwitchGameCommand = new RelayCommand(() => { }, () => CoordinatorReady);
         EndSessionCommand = new RelayCommand(() => { }, () => CoordinatorReady);
         ResetProgressCommand = new RelayCommand(() => { }, () => CoordinatorReady);
+        OpenGameMenuCommand = new RelayCommand(() => { }, () => CoordinatorReady);
     }
 
     /// <summary>Live mode: wired to the session coordinator.</summary>
-    public SessionTabViewModel(Action restart, Action switchGame, Action end, Action reset)
+    public SessionTabViewModel(Action restart, Action switchGame, Action end, Action reset,
+                               Action openGameMenu)
     {
         CoordinatorReady = true;
         RestartGameCommand = new RelayCommand(restart);
         SwitchGameCommand = new RelayCommand(switchGame);
         EndSessionCommand = new RelayCommand(end);
         ResetProgressCommand = new RelayCommand(reset);
+        OpenGameMenuCommand = new RelayCommand(openGameMenu);
     }
 
     public bool CoordinatorReady { get; }
@@ -38,4 +41,5 @@ public sealed class SessionTabViewModel : ViewModelBase
     public RelayCommand SwitchGameCommand { get; }
     public RelayCommand EndSessionCommand { get; }
     public RelayCommand ResetProgressCommand { get; }
+    public RelayCommand OpenGameMenuCommand { get; }
 }

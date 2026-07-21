@@ -116,24 +116,24 @@ public sealed class GameCardViewModel : ViewModelBase
         Raise(nameof(ExeExists));
     }
 
-    /// <summary>Re-lists the mods dir, keeping the user's un-applied checkbox
-    /// states — dropping an archive into mods/ while the launcher is open must
-    /// be enough to see it (ported RescanMods behavior).</summary>
+    /// <summary>Re-lists the mods dir; the on-disk state (.disabled renames) is
+    /// the sole source of the enabled flags, so rescans can never lose them.</summary>
     public void RefreshMods()
     {
-        var previousToggles = Mods.ToDictionary(m => m.Name, m => m.Enabled);
+        var scanned = ModScanner.Scan(ExePath);
+        if (scanned.Count == 0 && Mods.Count > 0 && !ExeExists)
+        {
+            return; // transient exe/drive hiccup: keep the last known list
+        }
+
         Mods.Clear();
-        foreach (var info in ModScanner.Scan(ExePath))
+        foreach (var info in scanned)
         {
             ModEntryViewModel entry = null!;
-            entry = new ModEntryViewModel(info, OnModToggled,
+            entry = new ModEntryViewModel(info,
+                onToggled: () => OnModToggled(entry),
                 moveUp: () => MoveMod(entry, -1),
                 moveDown: () => MoveMod(entry, +1));
-            if (!info.Required && previousToggles.TryGetValue(info.Name, out var wasEnabled))
-            {
-                entry.Enabled = wasEnabled;
-            }
-
             Mods.Add(entry);
         }
 
@@ -169,8 +169,12 @@ public sealed class GameCardViewModel : ViewModelBase
         }
     }
 
-    private void OnModToggled()
+    private void OnModToggled(ModEntryViewModel entry)
     {
+        LoadOrderError = ModScanner.SetEnabledOnDisk(entry.Info, entry.Enabled)
+            ? ""
+            : $"Could not rename {entry.Name} in the mods folder.";
+        RefreshMods();
         Raise(nameof(ModsSummary));
         _onChanged();
     }

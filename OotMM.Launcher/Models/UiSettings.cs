@@ -59,13 +59,9 @@ public sealed class UiSettings
 
     public void Save()
     {
-        try
-        {
-            File.WriteAllText(FilePath, JsonSerializer.Serialize(this, SerializerOptions));
-        }
-        catch (IOException)
-        {
-            // Read-only install dir: preferences simply don't persist this run.
-        }
+        // Atomic: a launcher killed mid-write must never truncate the file (a torn
+        // file loads as defaults and the next save wipes every preference).
+        OotMM.Core.DurableFile.WriteAtomic(
+            FilePath, JsonSerializer.Serialize(this, SerializerOptions));
     }
 }

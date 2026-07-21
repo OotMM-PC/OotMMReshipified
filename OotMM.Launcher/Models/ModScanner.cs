@@ -16,8 +16,6 @@ public sealed record ModInfo(string Name, string FullPath, bool Required, bool E
 ///    from the user list;
 ///  - required archives sort first, then alphabetical, then loadorder.txt ranks
 ///    listed archives above unlisted ones (top line = highest priority).
-/// Enable/disable *persistence* (the rename dance + loadorder writing) belongs to
-/// the LauncherConfig module port and is intentionally not implemented here.
 /// </summary>
 public static class ModScanner
 {
@@ -108,6 +106,35 @@ public static class ModScanner
         }
 
         return mods;
+    }
+
+    /// <summary>Enables/disables an archive on disk via the ".disabled" filename
+    /// rename the games understand. Disk is the sole source of truth.</summary>
+    public static bool SetEnabledOnDisk(ModInfo mod, bool enabled)
+    {
+        if (mod.Required)
+        {
+            return true;
+        }
+
+        var basePath = mod.FullPath.EndsWith(DisabledSuffix, StringComparison.Ordinal)
+            ? mod.FullPath[..^DisabledSuffix.Length]
+            : mod.FullPath;
+        var target = enabled ? basePath : basePath + DisabledSuffix;
+        if (target == mod.FullPath)
+        {
+            return true;
+        }
+
+        try
+        {
+            File.Move(mod.FullPath, target);
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
     }
 
     /// <summary>Writes loadorder.txt (top line = highest priority) atomically;

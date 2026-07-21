@@ -47,9 +47,6 @@ public sealed class ModEntryViewModel : ViewModelBase
         get => _enabled;
         set
         {
-            // The on-disk rename that actually enables/disables an archive is
-            // LauncherConfig-module work; until then the toggle is UI state that
-            // survives rescans (matching the old RescanMods keep-toggles rule).
             if (!Required && Set(ref _enabled, value))
             {
                 _onToggled();

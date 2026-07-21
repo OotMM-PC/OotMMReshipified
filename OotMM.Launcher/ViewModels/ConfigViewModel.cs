@@ -30,6 +30,7 @@ public sealed class ConfigViewModel : ViewModelBase
     private string _playerName = "";
     private string _statusMessage = "";
     private bool _isActive = true;
+    private bool _restoring;
 
     public ConfigViewModel(UiSettings settings, IFilePicker picker, Action previewRuntime,
                            Action<Seed, string, string, string> startSession)
@@ -45,8 +46,10 @@ public sealed class ConfigViewModel : ViewModelBase
         LaunchCommand = new RelayCommand(OnLaunchClicked);
         PreviewRuntimeCommand = new RelayCommand(_previewRuntime);
 
-        // Restore the last session's form. Backing fields are set directly so
-        // restoring does not immediately re-save the file it was read from.
+        // Restore the last session's form. Saving is suppressed until every field
+        // is back: the first card's change callback would otherwise persist the
+        // not-yet-restored fields as empty, wiping them.
+        _restoring = true;
         _seedPath = settings.SeedPath;
         _hostRelay = settings.HostRelay;
         _relayPort = settings.RelayPort;
@@ -57,6 +60,7 @@ public sealed class ConfigViewModel : ViewModelBase
         MmCard.ExePath = settings.MmExePath;
 
         RefreshSeedPreview();
+        _restoring = false;
 
         // Periodic rescan so archives dropped into mods/ while the launcher is
         // open show up (and selections pointing at removed files fall out)
@@ -292,7 +296,10 @@ public sealed class ConfigViewModel : ViewModelBase
     private void FormChanged()
     {
         RefreshDerivedState();
-        SaveToSettings();
+        if (!_restoring)
+        {
+            SaveToSettings();
+        }
     }
 
     private void RescanAll()
@@ -331,6 +338,11 @@ public sealed class ConfigViewModel : ViewModelBase
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         var wanted = card.Mods.Where(m => !m.Required).Select(m => m.Name).ToList();
+        if (wanted.Count == 0 && picks.Count > 0)
+        {
+            return; // transient exe/drive hiccup must not wipe the pick list
+        }
+
         if (wanted.SequenceEqual(picks.Select(p => p.Name), StringComparer.OrdinalIgnoreCase))
         {
             return; // no churn: rebuilding on every tick would fight open dropdowns
@@ -437,8 +449,18 @@ public sealed class ConfigViewModel : ViewModelBase
         _settings.EnablePvp = HostPvp;
         _settings.MultiworldAddress = MultiworldAddress;
         _settings.PlayerName = PlayerName;
-        _settings.PlayerModelOot = OotModelPicks.Where(p => p.IsSelected).Select(p => p.Name).ToList();
-        _settings.PlayerModelMm = MmModelPicks.Where(p => p.IsSelected).Select(p => p.Name).ToList();
+        // An empty pick collection means "no scan results", never "deselect all";
+        // persisting it would wipe the saved cosmetics.
+        if (OotModelPicks.Count > 0)
+        {
+            _settings.PlayerModelOot = OotModelPicks.Where(p => p.IsSelected).Select(p => p.Name).ToList();
+        }
+
+        if (MmModelPicks.Count > 0)
+        {
+            _settings.PlayerModelMm = MmModelPicks.Where(p => p.IsSelected).Select(p => p.Name).ToList();
+        }
+
         _settings.Save();
     }
 }

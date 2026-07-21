@@ -42,6 +42,23 @@ public static class GameWindow
         return (rect.Right - rect.Left, rect.Bottom - rect.Top);
     }
 
+    public static bool CursorOverWindow(nint window)
+    {
+        if (!IsAlive(window) || !GetCursorPos(out var point)
+            || !ScreenToClient(window, ref point) || !GetClientRect(window, out var rect))
+        {
+            return false;
+        }
+
+        return point.X >= rect.Left && point.X < rect.Right
+               && point.Y >= rect.Top && point.Y < rect.Bottom;
+    }
+
+    public static bool OwnerIsForeground(nint window) =>
+        IsAlive(window) && GetForegroundWindow() == GetAncestor(window, 2 /* GA_ROOT */);
+
+    public static bool LeftButtonDown() => (GetAsyncKeyState(0x01) & 0x8000) != 0;
+
     public static void Layout(nint child, int width, int height) =>
         MoveWindow(child, 0, 0, Math.Max(width, 0), Math.Max(height, 0), true);
 
@@ -100,8 +117,29 @@ public static class GameWindow
         public int Bottom;
     }
 
+    private struct Point
+    {
+        public int X;
+        public int Y;
+    }
+
     [DllImport("user32.dll")]
     private static extern bool GetClientRect(nint hwnd, out Rect rect);
+
+    [DllImport("user32.dll")]
+    private static extern bool GetCursorPos(out Point point);
+
+    [DllImport("user32.dll")]
+    private static extern bool ScreenToClient(nint hwnd, ref Point point);
+
+    [DllImport("user32.dll")]
+    private static extern nint GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern nint GetAncestor(nint hwnd, uint flags);
+
+    [DllImport("user32.dll")]
+    private static extern short GetAsyncKeyState(int key);
 
     [DllImport("user32.dll")]
     private static extern bool MoveWindow(nint hwnd, int x, int y, int width, int height, bool repaint);

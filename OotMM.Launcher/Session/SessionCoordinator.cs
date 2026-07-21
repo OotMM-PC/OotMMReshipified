@@ -11,7 +11,9 @@ public sealed class SessionCoordinator : IDisposable
 {
     private readonly Core.Session _session;
     private readonly DispatcherTimer _timer;
+    private readonly DispatcherTimer _focusTimer;
     private readonly MultiworldSync? _multiworld;
+    private bool _leftButtonWasDown;
     private GameProcess? _process;
     private nint _gameChild;
     private (int Width, int Height) _laidOutSize;
@@ -34,6 +36,10 @@ public sealed class SessionCoordinator : IDisposable
         ActiveGame = session.RecoveredTransition?.ToGame ?? session.Seed.ResolveStartingGame();
         _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         _timer.Tick += (_, _) => Tick();
+        // Clicks over the embedded game never reach the UI framework, so a fast
+        // poll hands keyboard focus to the game when one lands there.
+        _focusTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(25) };
+        _focusTimer.Tick += (_, _) => PollGameFocus();
 
         if (_multiworld is not null)
         {
@@ -165,6 +171,7 @@ public sealed class SessionCoordinator : IDisposable
         if (error is null)
         {
             _timer.Start();
+            _focusTimer.Start();
         }
 
         return error;
@@ -194,6 +201,7 @@ public sealed class SessionCoordinator : IDisposable
 
         _ended = true;
         _timer.Stop();
+        _focusTimer.Stop();
         _process?.Terminate();
         _process?.Dispose();
         _process = null;
@@ -260,6 +268,7 @@ public sealed class SessionCoordinator : IDisposable
     public void Dispose()
     {
         _timer.Stop();
+        _focusTimer.Stop();
         _process?.Terminate();
         _process?.Dispose();
         _multiworld?.Dispose();
@@ -446,6 +455,29 @@ public sealed class SessionCoordinator : IDisposable
             {
                 _initialSyncDone = true;
             }
+        }
+    }
+
+    private void PollGameFocus()
+    {
+        var isDown = GameWindow.LeftButtonDown();
+        var wasDown = _leftButtonWasDown;
+        _leftButtonWasDown = isDown;
+        if (isDown && !wasDown && GameWindow.IsAlive(_gameChild)
+            && GameWindow.OwnerIsForeground(GameHostHandle)
+            && GameWindow.CursorOverWindow(GameHostHandle))
+        {
+            GameWindow.Focus(_gameChild);
+        }
+    }
+
+    /// <summary>Focus arriving at the launcher (alt-tab back) belongs to the game
+    /// when the cursor is over the game area.</summary>
+    public void OnHostActivated()
+    {
+        if (GameWindow.IsAlive(_gameChild) && GameWindow.CursorOverWindow(GameHostHandle))
+        {
+            GameWindow.Focus(_gameChild);
         }
     }
 

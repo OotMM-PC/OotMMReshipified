@@ -162,6 +162,8 @@ public sealed class MainWindowViewModel : ViewModelBase
         return (address.Length > 0 ? address : "127.0.0.1", RelayProtocol.DefaultPort);
     }
 
+    public void OnWindowActivated() => _coordinator?.OnHostActivated();
+
     private void EndSessionToConfig(string reason)
     {
         _coordinator?.Dispose();

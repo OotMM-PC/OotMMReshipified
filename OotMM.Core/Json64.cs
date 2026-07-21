@@ -10,13 +10,26 @@ public static class Json64
     {
         if (element.ValueKind == JsonValueKind.Number)
         {
-            return element.TryGetUInt64(out var fromNumber) ? fromNumber : null;
+            // Number form caps at 2^53-1 like the C++ double-backed parser.
+            const double largestExactInteger = 9007199254740991.0;
+            var number = element.GetDouble();
+            if (double.IsNaN(number) || number < 0.0 || number > largestExactInteger
+                || Math.Floor(number) != number)
+            {
+                return null;
+            }
+
+            return (ulong)number;
         }
 
         if (element.ValueKind == JsonValueKind.String)
         {
             var text = element.GetString();
-            return ulong.TryParse(text, out var fromString) ? fromString : null;
+            return text is { Length: > 0 and <= 20 }
+                   && ulong.TryParse(text, System.Globalization.NumberStyles.None,
+                                     System.Globalization.CultureInfo.InvariantCulture, out var parsed)
+                ? parsed
+                : null;
         }
 
         return null;

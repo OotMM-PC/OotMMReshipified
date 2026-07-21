@@ -12,4 +12,12 @@ public static class GameInfo
 
     /// <summary>The lowercase tag used in seed files and wire packets.</summary>
     public static string ToSeedTag(Game game) => game == Game.Mm ? "mm" : "oot";
+
+    /// <summary>Strict tag parse (same accepted spellings as the C++ GameFromString).</summary>
+    public static Game? TryFromSeedTag(string tag) => tag switch
+    {
+        "oot" or "OoT" or "OOT" => Game.Oot,
+        "mm" or "MM" => Game.Mm,
+        _ => null,
+    };
 }

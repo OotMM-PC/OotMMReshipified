@@ -508,12 +508,9 @@ public static class SeedLoader
         return ParseGame(value.GetString()!, key);
     }
 
-    private static Game ParseGame(string tag, string key) => tag switch
-    {
-        "oot" => Game.Oot,
-        "mm" => Game.Mm,
-        _ => throw new SeedLoadException($"Seed {key} must be \"oot\" or \"mm\""),
-    };
+    private static Game ParseGame(string tag, string key) =>
+        GameInfo.TryFromSeedTag(tag)
+        ?? throw new SeedLoadException($"Seed {key} must be \"oot\" or \"mm\"");
 
     private static List<string> ParseStringArray(JsonElement element, string key)
     {

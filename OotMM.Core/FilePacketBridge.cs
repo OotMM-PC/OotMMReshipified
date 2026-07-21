@@ -72,8 +72,7 @@ public static class FilePacketBridge
     }
 
     /// <summary>Reads whole packets from a byte offset; an unterminated tail
-    /// stays unread with NextOffset at its first byte. Missing file = success
-    /// and empty; Success is false only when an existing file was unreadable.</summary>
+    /// stays unread with NextOffset at its first byte.</summary>
     public static FilePacketReadResult ReadPacketLines(string path, long offset)
     {
         var failed = new FilePacketReadResult([], [], offset, false);

@@ -27,6 +27,9 @@ public sealed class UiSettings
     /// <summary>0 = follow the active game, 1 = always OoT gold, 2 = always MM violet.</summary>
     public int Theme { get; set; }
 
+    public bool DevMode { get; set; }
+    public bool SpeedMatchFramerate { get; set; }
+
     public double UiScale { get; set; } = 1.0;
     public bool ShowSidebar { get; set; } = true;
 

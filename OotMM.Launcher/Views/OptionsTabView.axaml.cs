@@ -15,4 +15,7 @@ public partial class OptionsTabView : UserControl
             (_, _) => (DataContext as OptionsTabViewModel)?.CommitUiScale();
         ScaleSlider.KeyUp += (_, _) => (DataContext as OptionsTabViewModel)?.CommitUiScale();
     }
+
+    private void OnRestartGame(object? sender, Avalonia.Interactivity.RoutedEventArgs e) =>
+        (DataContext as OptionsTabViewModel)?.OnRestartClicked();
 }

@@ -105,7 +105,8 @@ public sealed class Session
     public required string OotExe { get; init; }
     public required string MmExe { get; init; }
     public required Seed Seed { get; init; }
-    public bool AllowDebugMenus { get; init; }
+    // Settable live: the dev-mode toggle applies on the next game boot.
+    public bool AllowDebugMenus { get; set; }
 
     /// <summary>Set before PrepareSession; keys the v4 identity namespace.</summary>
     public bool V4Planned { get; init; }
@@ -246,6 +247,8 @@ public static class SessionPaths
             StatePath = session.StatePath,
             InboxPath = isOot ? session.OotInbox : session.MmInbox,
             OutboxPath = isOot ? session.OotOutbox : session.MmOutbox,
+            PresenceOutPath = session.PresenceOut,
+            PresenceInPath = session.PresenceIn,
             MmSaveDir = MmNativeSavesRoot(session),
             NativeSaveSubdir = session.V4Planned ? V4NativeSaveSubdir : "",
             AllowDebugMenus = session.AllowDebugMenus,

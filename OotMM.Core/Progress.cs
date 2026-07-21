@@ -110,22 +110,28 @@ public sealed class ProgressReport
     private readonly List<ItemProgress>[] _soulsOot;
     private readonly List<ItemProgress>[] _soulsMm;
 
+    /// <summary>foreignChecks are the local player's items sitting in OTHER
+    /// players' worlds: they join the item pools so totals are complete, but
+    /// never the check counts (those are this world's checks).</summary>
     public static ProgressReport Build(
         Seed seed,
         IReadOnlyList<(ItemPlacement Placement, bool Collected)> checks,
-        Dictionary<string, int> itemCounts) => new(seed, checks, itemCounts);
+        Dictionary<string, int> itemCounts,
+        IReadOnlyList<(ItemPlacement Placement, bool Collected)>? foreignChecks = null) =>
+        new(seed, checks, itemCounts, foreignChecks ?? []);
 
     private ProgressReport(
         Seed seed,
         IReadOnlyList<(ItemPlacement Placement, bool Collected)> checks,
-        Dictionary<string, int> itemCounts)
+        Dictionary<string, int> itemCounts,
+        IReadOnlyList<(ItemPlacement Placement, bool Collected)> foreignChecks)
     {
         _have = itemCounts;
         _soulsOot = [.. Enumerable.Range(0, 5).Select(_ => new List<ItemProgress>())];
         _soulsMm = [.. Enumerable.Range(0, 5).Select(_ => new List<ItemProgress>())];
 
         var majorIds = new HashSet<string>();
-        foreach (var (placement, _) in checks)
+        foreach (var (placement, _) in checks.Concat(foreignChecks))
         {
             if (placement.OwnerPlayer != seed.PlayerId || placement.Item.Id.Length == 0)
             {

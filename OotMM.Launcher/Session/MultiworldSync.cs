@@ -67,6 +67,35 @@ public sealed class MultiworldSync : IDisposable
     /// <summary>True once the relay's catch-up stream reached its live marker.</summary>
     public bool Live { get; private set; }
 
+    // Server session rules (OOTMM_SESSION_META); players cannot override them.
+    public bool Pvp { get; private set; }
+    public bool DeathLink { get; private set; }
+    public bool TimerEnabled { get; private set; } = true;
+    public int TimerMin { get; private set; }
+    public int TimerMax { get; private set; } = 250;
+
+    public event Action? RulesChanged;
+
+    /// <summary>The local player's items placed in other players' worlds, with
+    /// collection state from the ferry receipts.</summary>
+    public List<(ItemPlacement Placement, bool Collected)> ForeignOwnedChecks()
+    {
+        var result = new List<(ItemPlacement, bool)>();
+        foreach (var (player, world) in _otherWorlds)
+        {
+            foreach (var placement in world.Placements)
+            {
+                if (placement.OwnerPlayer == _session.Seed.PlayerId)
+                {
+                    var key = "v4:" + V4Transport.NaturalKey(player, placement.Check.Game, placement.Check.Id);
+                    result.Add((placement, _remoteReceipts.Contains(key)));
+                }
+            }
+        }
+
+        return result;
+    }
+
     public TransportState State { get; private set; } = TransportState.Connecting;
     public int PendingChecks { get; private set; }
     public IReadOnlyDictionary<string, int> RemoteItemCounts => _remoteCounts;
@@ -207,13 +236,18 @@ public sealed class MultiworldSync : IDisposable
                 if (line != _lastSessionMeta)
                 {
                     _lastSessionMeta = line;
+                    Pvp = line.Contains("\"pvp\":true");
+                    DeathLink = line.Contains("\"deathLink\":true");
+                    TimerEnabled = !line.Contains("\"timerEnabled\":false");
+                    TimerMin = RelayProtocol.ExtractIntField(line, "timerMin");
+                    TimerMax = RelayProtocol.ExtractIntField(line, "timerMax", 250);
                     var rules = new List<string>();
-                    if (line.Contains("\"pvp\":true"))
+                    if (Pvp)
                     {
                         rules.Add("PvP");
                     }
 
-                    if (line.Contains("\"deathLink\":true"))
+                    if (DeathLink)
                     {
                         rules.Add("death link");
                     }
@@ -222,6 +256,7 @@ public sealed class MultiworldSync : IDisposable
                         rules.Count > 0
                             ? $"Session rules: {string.Join(", ", rules)} enabled."
                             : "Session rules received.", true);
+                    RulesChanged?.Invoke();
                 }
 
                 continue;
@@ -419,8 +454,9 @@ public sealed class MultiworldSync : IDisposable
         ReceiptRevision++;
         if (!quiet)
         {
+            var tag = game == Game.Oot ? "[OoT]" : "[MM]";
             EventLogged?.Invoke(
-                $"Received {placement.Item.Name} from player {sourcePlayer}.", true);
+                $"{tag} Received {placement.Item.Name} from player {sourcePlayer}'s world.", true);
         }
 
         return true;

@@ -4,32 +4,150 @@
              x:Class="OotMM.Launcher.Views.ProgressTabView"
              x:DataType="vm:ProgressTabViewModel">
 
-    <ScrollViewer>
-    <ItemsControl ItemsSource="{Binding Sections}">
-        <ItemsControl.ItemTemplate>
-            <DataTemplate x:DataType="vm:ProgressSectionViewModel">
-                <StackPanel Spacing="4" Margin="0,0,0,12">
-                    <TextBlock Classes="sectionTitle" Text="{Binding Title}" />
+    <DockPanel>
+        <StackPanel DockPanel.Dock="Top" Spacing="8">
+            <Grid ColumnDefinitions="Auto,10,*">
+                <TextBlock Text="Category" VerticalAlignment="Center" />
+                <ComboBox Grid.Column="2" HorizontalAlignment="Stretch"
+                          SelectedIndex="{Binding CategoryIndex}">
+                    <ComboBoxItem Content="Overview" />
+                    <ComboBoxItem Content="Dungeons" />
+                    <ComboBoxItem Content="Souls" />
+                    <ComboBoxItem Content="Songs" />
+                    <ComboBoxItem Content="Key Items" />
+                    <ComboBoxItem Content="Rusty Keys" />
+                </ComboBox>
+            </Grid>
+            <StackPanel Orientation="Horizontal" Spacing="12" IsVisible="{Binding ShowGameRadio}">
+                <RadioButton Content="Ocarina of Time" GroupName="progGame"
+                             IsChecked="{Binding !GameIndex}" />
+                <RadioButton Content="Majora's Mask" GroupName="progGame"
+                             IsChecked="{Binding GameIndex}" />
+                <TextBlock Classes="dim" VerticalAlignment="Center"
+                           IsVisible="{Binding ShowSongsMode}" Text="{Binding SongsModeText}" />
+            </StackPanel>
+            <Border Height="2" />
+        </StackPanel>
+
+        <ScrollViewer>
+            <Panel>
+
+                <!-- Overview -->
+                <StackPanel Spacing="4" IsVisible="{Binding ShowOverview}">
+                    <TextBlock Classes="sectionTitle" Text="Checks" />
+                    <TextBlock Text="{Binding ChecksText}" />
+                    <TextBlock Text="{Binding ItemsOwnedText}" />
+                    <TextBlock Classes="tagOot" Text="{Binding OotChecksText}" />
+                    <TextBlock Classes="tagMm" Text="{Binding MmChecksText}" />
+                    <TextBlock Classes="dim" IsVisible="{Binding ShowMultiworldText}"
+                               Text="{Binding MultiworldText}" />
+                    <Border Height="8" />
+                    <TextBlock Classes="sectionTitle" Text="Goals" />
+                    <TextBlock Classes="dim" IsVisible="{Binding !HasGoals}"
+                               Text="(no goal data in this seed)" />
+                    <ItemsControl ItemsSource="{Binding Goals}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:GoalRowViewModel">
+                                <TextBlock Text="{Binding Text}"
+                                           Classes.dim="{Binding !Active}"
+                                           Classes.success="{Binding Satisfied}"
+                                           Classes.goalOpen="{Binding Open}" />
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <TextBlock Classes="dim" TextWrapping="Wrap" Margin="0,8,0,0"
+                               Text="{Binding GoalsNote}" />
+                </StackPanel>
+
+                <!-- Dungeons -->
+                <ItemsControl ItemsSource="{Binding Dungeons}" IsVisible="{Binding ShowDungeons}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:DungeonRowViewModel">
+                            <StackPanel Margin="0,3">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <Border CornerRadius="4" Padding="5,1"
+                                            Background="{DynamicResource AccentFaintBrush}">
+                                        <TextBlock Classes="dim" FontSize="11" Text="{Binding GameTag}" />
+                                    </Border>
+                                    <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <ItemsControl ItemsSource="{Binding Chips}" Margin="0,2,0,0">
+                                    <ItemsControl.ItemsPanel>
+                                        <ItemsPanelTemplate>
+                                            <WrapPanel />
+                                        </ItemsPanelTemplate>
+                                    </ItemsControl.ItemsPanel>
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:DungeonChip">
+                                            <TextBlock FontSize="12" Margin="0,0,10,0"
+                                                       Text="{Binding Text}"
+                                                       Classes.success="{Binding Ok}"
+                                                       Classes.dim="{Binding !Ok}" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Souls: one expander per sub-category -->
+                <ItemsControl ItemsSource="{Binding SoulGroups}" IsVisible="{Binding ShowSouls}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:SoulGroupViewModel">
+                            <Expander Header="{Binding Title}" HorizontalAlignment="Stretch">
+                                <ItemsControl ItemsSource="{Binding Items}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="vm:ProgressItemRow">
+                                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                                <TextBlock Text="{Binding Mark}"
+                                                           Classes.success="{Binding Owned}"
+                                                           Classes.dim="{Binding !Owned}" />
+                                                <TextBlock Text="{Binding Name}"
+                                                           Classes.success="{Binding Owned}"
+                                                           Classes.dim="{Binding !Owned}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </Expander>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- Songs / Key Items / Rusty Keys -->
+                <StackPanel Spacing="4" IsVisible="{Binding ShowItemList}">
+                    <TextBlock Classes="dim" Text="{Binding ItemsHeader}" />
                     <ItemsControl ItemsSource="{Binding Items}">
                         <ItemsControl.ItemTemplate>
-                            <DataTemplate x:DataType="vm:ProgressItemViewModel">
-                                <Grid ColumnDefinitions="*,Auto" Margin="0,1">
-                                    <StackPanel Grid.Column="0">
-                                        <TextBlock Text="{Binding Label}" TextWrapping="Wrap" />
-                                        <TextBlock Classes="dim" FontSize="11" Text="{Binding Detail}"
-                                                   IsVisible="{Binding HasDetail}" />
-                                    </StackPanel>
-                                    <TextBlock Grid.Column="1" Classes="dim"
-                                               Classes.success="{Binding IsComplete}"
-                                               Text="{Binding CountText}" />
-                                </Grid>
+                            <DataTemplate x:DataType="vm:ProgressItemRow">
+                                <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,1">
+                                    <TextBlock Text="{Binding Mark}"
+                                               Classes.success="{Binding Owned}"
+                                               Classes.dim="{Binding !Owned}" />
+                                    <TextBlock Text="{Binding Name}" TextWrapping="Wrap"
+                                               Classes.success="{Binding Owned}"
+                                               Classes.dim="{Binding !Owned}" />
+                                </StackPanel>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                 </StackPanel>
-            </DataTemplate>
-        </ItemsControl.ItemTemplate>
-    </ItemsControl>
-    </ScrollViewer>
+
+            </Panel>
+        </ScrollViewer>
+    </DockPanel>
+
+    <UserControl.Styles>
+        <Style Selector="TextBlock.tagOot">
+            <Setter Property="Foreground" Value="#C9A33D" />
+        </Style>
+        <Style Selector="TextBlock.tagMm">
+            <Setter Property="Foreground" Value="#9470DB" />
+        </Style>
+        <Style Selector="TextBlock.goalOpen">
+            <Setter Property="Foreground" Value="#EB6657" />
+        </Style>
+    </UserControl.Styles>
 
 </UserControl>

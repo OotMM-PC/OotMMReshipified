@@ -36,15 +36,16 @@ public sealed class RuntimeViewModel : ViewModelBase
         IsPreview = isPreview;
         _showSidebar = settings.ShowSidebar;
 
-        Tracker = new TrackerTabViewModel();
+        Tracker = new TrackerTabViewModel { DevMode = settings.DevMode };
         Log = new LogTabViewModel();
         SessionTab = sessionTab;
+        SessionTab.DevMode = settings.DevMode;
         _sidebarScale = currentUiScale;
         Options = new OptionsTabViewModel(settings.Theme, currentUiScale, setTheme, scale =>
         {
             setUiScale(scale);
             SidebarScale = scale;
-        });
+        }, settings.DevMode, ApplyDevMode);
         Progress = new ProgressTabViewModel();
         _tabs = [Tracker, Log, SessionTab, Options, Progress];
 
@@ -76,11 +77,9 @@ public sealed class RuntimeViewModel : ViewModelBase
         double currentUiScale)
     {
         var sessionTab = new SessionTabViewModel(
-            coordinator.RestartGame,
-            coordinator.SwitchGame,
+            coordinator,
             () => coordinator.EndSession("Session ended by the player."),
-            () => coordinator.ResetSeedProgress(),
-            coordinator.OpenInGameMenu);
+            () => coordinator.ResetSeedProgress());
         var vm = new RuntimeViewModel(settings, false,
                                       () => coordinator.EndSession("Session ended by the player."),
                                       setTheme, setUiScale, currentUiScale, sessionTab)
@@ -88,14 +87,21 @@ public sealed class RuntimeViewModel : ViewModelBase
             _coordinator = coordinator,
             ActiveGame = coordinator.ActiveGame,
         };
+        coordinator.AllowDebugMenus = settings.DevMode;
+        vm.Tracker.ForceUnlockSender = coordinator.ForceUnlock;
+        vm.Options.RestartGame = coordinator.RestartGame;
 
+        var localPlayer = coordinator.Session.Seed.PlayerId;
         foreach (var placement in coordinator.Session.Seed.Placements)
         {
             var check = placement.Check;
             var row = new CheckRowViewModel(
                 GameInfo.ToSeedTag(check.Game).ToUpperInvariant(),
                 check.Name.Length > 0 ? check.Name : check.Id,
-                placement.Item.Name) { InLogic = true };
+                placement.Item.Name,
+                check.Id,
+                placement.OwnerPlayer == localPlayer,
+                vm.Tracker.OnRowClicked) { InLogic = true };
             if (vm._checkRows.TryAdd(Identity.CheckKey(check.Game, check.Id), row))
             {
                 vm._placementRows.Add((placement, row));
@@ -276,6 +282,26 @@ public sealed class RuntimeViewModel : ViewModelBase
             RebuildProgress();
             Tracker.NotifyCheckStatesChanged();
         }
+
+        Tracker.UpdateStats(
+            _placementRows.Count(pr => pr.Row.InLogic && !pr.Row.Collected),
+            _solver is not null,
+            _coordinator.Session.Seed.IsMultiworld);
+        SessionTab.NotifyRulesChanged();
+    }
+
+    private void ApplyDevMode(bool devMode)
+    {
+        _settings.DevMode = devMode;
+        _settings.Save();
+        Tracker.DevMode = devMode;
+        SessionTab.DevMode = devMode;
+        if (_coordinator is not null)
+        {
+            _coordinator.AllowDebugMenus = devMode;
+            // The games read the cheat gate at boot; a live toggle needs a restart.
+            Options.CheatGatePending = _coordinator.IsRunning;
+        }
     }
 
     public string MultiworldStatus
@@ -343,111 +369,11 @@ public sealed class RuntimeViewModel : ViewModelBase
             }
         }
 
-        var report = ProgressReport.Build(seed, checks, counts);
-        var sections = new List<ProgressSectionViewModel>();
-
-        var checksSection = new ProgressSectionViewModel("Checks");
-        checksSection.Items.Add(new ProgressItemViewModel("All", report.Checks.Have, report.Checks.Total));
-        checksSection.Items.Add(new ProgressItemViewModel("Ocarina of Time", report.Checks.OotHave, report.Checks.OotTotal));
-        checksSection.Items.Add(new ProgressItemViewModel("Majora's Mask", report.Checks.MmHave, report.Checks.MmTotal));
-        sections.Add(checksSection);
-
-        if (report.Goals.Any(g => g.Active))
-        {
-            var goals = new ProgressSectionViewModel("Goals");
-            foreach (var goal in report.Goals.Where(g => g.Active))
-            {
-                goals.Items.Add(new ProgressItemViewModel(goal.Name, goal.Owned, goal.Threshold));
-            }
-
-            sections.Add(goals);
-        }
-
-        if (report.DungeonRows.Count > 0)
-        {
-            var dungeons = new ProgressSectionViewModel("Dungeons");
-            foreach (var d in report.DungeonRows)
-            {
-                var parts = new List<string>();
-                if (d.HasKeyRing)
-                {
-                    parts.Add(d.KeyRing ? "key ring ✓" : "key ring ✗");
-                }
-
-                if (d.SkeletonOwned)
-                {
-                    parts.Add("skeleton key");
-                }
-
-                if (d.HasMap)
-                {
-                    parts.Add(d.Map ? "map ✓" : "map ✗");
-                }
-
-                if (d.HasCompass)
-                {
-                    parts.Add(d.Compass ? "compass ✓" : "compass ✗");
-                }
-
-                if (d.HasBossKey)
-                {
-                    parts.Add(d.BossKey ? "boss key ✓" : "boss key ✗");
-                }
-
-                if (d.HasFairies)
-                {
-                    parts.Add($"fairies {d.FairiesHave}/{d.FairiesTotal}");
-                }
-
-                dungeons.Items.Add(new ProgressItemViewModel(
-                    d.Name, d.KeysHave, d.KeysTotal, string.Join(" · ", parts)));
-            }
-
-            sections.Add(dungeons);
-        }
-
-        foreach (var game in new[] { Game.Oot, Game.Mm })
-        {
-            var title = GameInfo.Title(game);
-            AddItemSection(sections, $"{title} Songs", report.Songs(game));
-            AddItemSection(sections, $"{title} Key Items", report.KeyItems(game));
-            AddItemSection(sections, $"{title} Rusty Keys", report.RustyKeys(game));
-
-            var souls = new ProgressSectionViewModel($"{title} Souls");
-            foreach (var sub in Enum.GetValues<SoulSub>())
-            {
-                var list = report.Souls(game, sub);
-                if (list.Count > 0)
-                {
-                    souls.Items.Add(new ProgressItemViewModel(
-                        $"{sub} Souls", list.Count(i => i.Owned), list.Count));
-                }
-            }
-
-            if (souls.Items.Count > 0)
-            {
-                sections.Add(souls);
-            }
-        }
-
-        Progress.SetSections(sections);
-    }
-
-    private static void AddItemSection(
-        List<ProgressSectionViewModel> sections, string title, IReadOnlyList<ItemProgress> items)
-    {
-        if (items.Count == 0)
-        {
-            return;
-        }
-
-        var section = new ProgressSectionViewModel(title);
-        foreach (var item in items)
-        {
-            section.Items.Add(new ProgressItemViewModel(item.Name, item.Have, item.Total));
-        }
-
-        sections.Add(section);
+        // Items of ours placed in other players' worlds complete the pools.
+        var report = ProgressReport.Build(seed, checks, counts,
+                                          _coordinator.Multiworld?.ForeignOwnedChecks());
+        Progress.SetReport(report, seed.PlayerId, seed.PlayerCount,
+                           seed.GetStringSetting("songs", "anywhere"));
     }
 
     private void RecomputeLogic()

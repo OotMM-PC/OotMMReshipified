@@ -3,14 +3,22 @@ namespace OotMM.Launcher.ViewModels;
 /// <summary>One check in the tracker list.</summary>
 public sealed class CheckRowViewModel : ViewModelBase
 {
+    private readonly Action<CheckRowViewModel>? _clicked;
     private bool _collected;
     private bool _inLogic;
+    private bool _isArmed;
+    private bool _isPending;
 
-    public CheckRowViewModel(string gameTag, string name, string itemText)
+    public CheckRowViewModel(string gameTag, string name, string itemText,
+                             string checkId = "", bool ownerIsLocal = true,
+                             Action<CheckRowViewModel>? clicked = null)
     {
         GameTag = gameTag;
         Name = name;
-        ItemText = itemText;
+        ItemText = itemText + (ownerIsLocal || itemText.Length == 0 ? "" : " (another player's item)");
+        CheckId = checkId;
+        _clicked = clicked;
+        ClickCommand = new RelayCommand(() => _clicked?.Invoke(this));
     }
 
     /// <summary>"OOT" or "MM" — shown as the row's leading badge.</summary>
@@ -18,13 +26,23 @@ public sealed class CheckRowViewModel : ViewModelBase
 
     public string Name { get; }
 
+    public string CheckId { get; }
+
     /// <summary>What was found here, revealed once collected (empty until then).</summary>
     public string ItemText { get; }
+
+    public RelayCommand ClickCommand { get; }
 
     public bool Collected
     {
         get => _collected;
-        set => Set(ref _collected, value);
+        set
+        {
+            if (Set(ref _collected, value) && value)
+            {
+                IsPending = false;
+            }
+        }
     }
 
     /// <summary>Reachable with current items per the reverse-logic solver.</summary>
@@ -33,13 +51,39 @@ public sealed class CheckRowViewModel : ViewModelBase
         get => _inLogic;
         set => Set(ref _inLogic, value);
     }
+
+    public bool IsArmed
+    {
+        get => _isArmed;
+        set
+        {
+            if (Set(ref _isArmed, value))
+            {
+                Raise(nameof(DisplayName));
+            }
+        }
+    }
+
+    /// <summary>Unlock order sent; waiting for the game's collection echo.</summary>
+    public bool IsPending
+    {
+        get => _isPending;
+        set
+        {
+            if (Set(ref _isPending, value))
+            {
+                Raise(nameof(DisplayName));
+            }
+        }
+    }
+
+    public string DisplayName => IsArmed ? $"{Name}  « CLICK TO CONFIRM »"
+        : IsPending ? $"{Name}  (unlocking…)"
+        : Name;
 }
 
-/// <summary>
-/// The open-checks tracker tab: filterable list of every check in the seed.
-/// The real rows come from the Tracker module port feeding SetChecks; the
-/// filters are pure view logic and already final.
-/// </summary>
+/// <summary>The open-checks tracker tab: stats, filters, and the (dev-mode)
+/// force-unlock cheat over the full check list.</summary>
 public sealed class TrackerTabViewModel : ViewModelBase
 {
     private List<CheckRowViewModel> _allChecks = [];
@@ -48,6 +92,17 @@ public sealed class TrackerTabViewModel : ViewModelBase
     // The play view by default: what is still to do, and reachable right now.
     private bool _hideCollected = true;
     private bool _onlyInLogic = true;
+    private bool _devMode;
+    private bool _forceUnlockMode;
+    private CheckRowViewModel? _armedRow;
+    private DateTime _armedAt;
+    private int _inLogicCount;
+    private bool _solverLoaded;
+    private bool _isMultiworld;
+
+    /// <summary>Sends a force-unlock order for a check id; false when the game
+    /// cannot take it right now.</summary>
+    public Func<string, bool>? ForceUnlockSender { get; set; }
 
     public string FilterText
     {
@@ -97,6 +152,30 @@ public sealed class TrackerTabViewModel : ViewModelBase
         }
     }
 
+    public bool DevMode
+    {
+        get => _devMode;
+        set
+        {
+            if (Set(ref _devMode, value) && !value)
+            {
+                ForceUnlockMode = false;
+            }
+        }
+    }
+
+    public bool ForceUnlockMode
+    {
+        get => _forceUnlockMode;
+        set
+        {
+            if (Set(ref _forceUnlockMode, value))
+            {
+                Disarm();
+            }
+        }
+    }
+
     public IReadOnlyList<CheckRowViewModel> VisibleChecks
     {
         get
@@ -131,12 +210,65 @@ public sealed class TrackerTabViewModel : ViewModelBase
         }
     }
 
-    public string SummaryText
+    public double CollectedFraction =>
+        _allChecks.Count > 0 ? (double)_allChecks.Count(r => r.Collected) / _allChecks.Count : 0;
+
+    public string SummaryText =>
+        $"{_allChecks.Count(r => r.Collected)} / {_allChecks.Count} checks collected";
+
+    public string InLogicText => _solverLoaded
+        ? $"{_inLogicCount} check{(_inLogicCount == 1 ? "" : "s")} in logic right now"
+        : "No logic data in this seed — regenerate it to see check availability.";
+
+    // Zero-in-logic with open checks is a real multiworld state: everything
+    // reachable is swept and the next progression item is in another world.
+    public bool ShowStuckNote => _solverLoaded && _isMultiworld && _inLogicCount == 0
+                                 && _allChecks.Any(r => !r.Collected);
+
+    public string StuckNote =>
+        "Nothing reachable with your current items — your next progression item is likely in another player's world.";
+
+    public void UpdateStats(int inLogicCount, bool solverLoaded, bool isMultiworld)
     {
-        get
+        _inLogicCount = inLogicCount;
+        _solverLoaded = solverLoaded;
+        _isMultiworld = isMultiworld;
+        Raise(nameof(InLogicText));
+        Raise(nameof(ShowStuckNote));
+    }
+
+    /// <summary>Cheat interaction: click once to arm, click the same row again
+    /// within 5s to send the unlock order.</summary>
+    public void OnRowClicked(CheckRowViewModel row)
+    {
+        if (!ForceUnlockMode || row.Collected || row.IsPending || row.CheckId.Length == 0)
         {
-            var collected = _allChecks.Count(r => r.Collected);
-            return $"{collected} / {_allChecks.Count} checks collected";
+            return;
+        }
+
+        if (_armedRow == row && DateTime.UtcNow - _armedAt <= TimeSpan.FromSeconds(5))
+        {
+            Disarm();
+            if (ForceUnlockSender?.Invoke(row.CheckId) == true)
+            {
+                row.IsPending = true;
+            }
+
+            return;
+        }
+
+        Disarm();
+        _armedRow = row;
+        _armedAt = DateTime.UtcNow;
+        row.IsArmed = true;
+    }
+
+    private void Disarm()
+    {
+        if (_armedRow is not null)
+        {
+            _armedRow.IsArmed = false;
+            _armedRow = null;
         }
     }
 
@@ -152,6 +284,7 @@ public sealed class TrackerTabViewModel : ViewModelBase
     {
         Raise(nameof(VisibleChecks));
         Raise(nameof(SummaryText));
+        Raise(nameof(CollectedFraction));
     }
 
     /// <summary>Call after mutating row Collected/InLogic flags in place.</summary>
@@ -177,5 +310,6 @@ public sealed class TrackerTabViewModel : ViewModelBase
             Row("MM", "Astral Observatory — Moon's Tear", "OOT Slingshot", true, true),
             Row("MM", "Southern Swamp — Kotake's Mushroom Trade", "", false, true),
         ]);
+        UpdateStats(4, solverLoaded: true, isMultiworld: false);
     }
 }

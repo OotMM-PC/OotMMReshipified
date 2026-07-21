@@ -22,6 +22,10 @@ public sealed class SessionCoordinator : IDisposable
     private bool _stateDirty;
     private bool _initialSyncDone;
     private bool _ended;
+    private int _speedPercent = 100;
+    private bool _speedSmooth;
+    private bool _rosterDirty = true;
+    private long _forceUnlockSeq;
 
     public SessionCoordinator(Core.Session session, MultiworldSync? multiworld = null)
     {
@@ -45,7 +49,17 @@ public sealed class SessionCoordinator : IDisposable
                 }
             };
             _multiworld.OwnFactConfirmed += OnOwnFactConfirmed;
-            _multiworld.SyncChanged += () => _stateDirty = true;
+            _multiworld.SyncChanged += () =>
+            {
+                _stateDirty = true;
+                _rosterDirty = true; // transport state and pending count feed the roster meta
+            };
+            _multiworld.RulesChanged += () =>
+            {
+                SpeedPercent = _speedPercent; // re-clamp into the server's allowed range
+                _rosterDirty = true;
+                StateChanged?.Invoke();
+            };
         }
     }
 
@@ -62,6 +76,71 @@ public sealed class SessionCoordinator : IDisposable
     public nint GameHostHandle { get; set; }
 
     public void OpenInGameMenu() => GameWindow.PostEscape(_gameChild);
+
+    public bool TimerEnabled => _multiworld?.TimerEnabled ?? true;
+
+    public int TimerMin => Math.Max(0, Math.Min(_multiworld?.TimerMin ?? 0, TimerMax));
+
+    public int TimerMax => Math.Max(0, _multiworld?.TimerMax ?? 250);
+
+    /// <summary>Game speed in percent (100 = vanilla); the games read it live
+    /// from the roster meta, clamped to the server's allowed range.</summary>
+    public int SpeedPercent
+    {
+        get => _speedPercent;
+        set
+        {
+            var clamped = Math.Clamp(value, TimerMin, Math.Max(TimerMin, TimerMax));
+            if (_speedPercent != clamped)
+            {
+                _speedPercent = clamped;
+                _rosterDirty = true;
+            }
+        }
+    }
+
+    public bool SpeedSmooth
+    {
+        get => _speedSmooth;
+        set
+        {
+            if (_speedSmooth != value)
+            {
+                _speedSmooth = value;
+                _rosterDirty = true;
+            }
+        }
+    }
+
+    public bool AllowDebugMenus
+    {
+        get => _session.AllowDebugMenus;
+        set => _session.AllowDebugMenus = value; // applies on the next game boot
+    }
+
+    /// <summary>Force-completes an open check through the running game's admin
+    /// inbox; the game grants the item exactly like a real collection.</summary>
+    public bool ForceUnlock(string checkId)
+    {
+        if (_process is not { Running: true } || _pendingTransition is not null)
+        {
+            return false;
+        }
+
+        var commandId = "launcher-force-"
+                        + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000
+                        + "-" + ++_forceUnlockSeq;
+        var packet = $"{{\"type\":\"OOTMM_ADMIN_UNLOCK_CHECK\",\"checkId\":\"{checkId}\""
+                     + $",\"commandId\":\"{commandId}\",\"grant\":true}}";
+        var adminInbox = ActiveInbox + $".slot{_session.LogicalSlot ?? 0}.admin.jsonl";
+        if (FilePacketBridge.AppendPacketLines(adminInbox, [packet]) != 1)
+        {
+            LogEvent($"Force-unlock failed to queue for {checkId}.");
+            return false;
+        }
+
+        return true;
+    }
 
     public HashSet<string> CompletedChecks { get; } = [];
 
@@ -231,6 +310,8 @@ public sealed class SessionCoordinator : IDisposable
         return null;
     }
 
+    private string ActiveInbox => ActiveGame == Game.Oot ? _session.OotInbox : _session.MmInbox;
+
     private string ActiveOutbox => ActiveGame == Game.Oot ? _session.OotOutbox : _session.MmOutbox;
 
     private string ActiveOutboxCursor =>
@@ -245,9 +326,9 @@ public sealed class SessionCoordinator : IDisposable
 
         DrainActiveOutbox();
         SyncCompletedFromState(force: false);
-        _multiworld?.Tick(CompletedChecks,
-                          ActiveGame == Game.Oot ? _session.OotInbox : _session.MmInbox);
+        _multiworld?.Tick(CompletedChecks, ActiveInbox);
         LayoutEmbeddedGame();
+        WriteRosterIfDirty();
 
         // Check bursts (drain, catch-up replay) coalesce into one refresh per tick;
         // per-packet notifications made the sidebar recompute logic N times over.
@@ -368,6 +449,36 @@ public sealed class SessionCoordinator : IDisposable
         }
     }
 
+    private void WriteRosterIfDirty()
+    {
+        if (!_rosterDirty)
+        {
+            return;
+        }
+
+        var transport = _multiworld?.State switch
+        {
+            null or TransportState.Healthy => "healthy",
+            TransportState.Connecting => "connecting",
+            TransportState.Offline => "offline",
+            TransportState.Syncing => "syncing",
+            TransportState.LocalError => "local-error",
+            _ => "protocol-error",
+        };
+        var meta = new RosterMeta(
+            ShowNames: true,
+            Pvp: _multiworld?.Pvp ?? false,
+            DeathLink: _multiworld?.DeathLink ?? false,
+            SpeedPercent: TimerEnabled ? _speedPercent : 100,
+            SpeedSmooth: _speedSmooth,
+            TransportState: transport,
+            PendingChecks: (uint)(_multiworld?.PendingChecks ?? 0));
+        if (PresenceRoster.Write(_session.PresenceIn, meta))
+        {
+            _rosterDirty = false;
+        }
+    }
+
     private void LogCheckCollected(string checkKey)
     {
         var colon = checkKey.IndexOf(':');
@@ -380,8 +491,20 @@ public sealed class SessionCoordinator : IDisposable
         var placement = _session.Seed.FindPlacement(game, checkId);
         var name = placement?.Check.Name;
         var itemName = placement?.Item.Name ?? "";
-        LogEvent($"{(string.IsNullOrEmpty(name) ? checkId : name)}"
-                 + (itemName.Length > 0 ? $": found {itemName}" : ""));
+        var tag = game == Game.Oot ? "[OoT]" : "[MM]";
+        var display = string.IsNullOrEmpty(name) ? checkId : name;
+        if (itemName.Length == 0)
+        {
+            LogEvent($"{tag} {display}");
+        }
+        else if (placement!.OwnerPlayer != _session.Seed.PlayerId)
+        {
+            LogEvent($"{tag} {display}: {itemName} (sent to player {placement.OwnerPlayer})");
+        }
+        else
+        {
+            LogEvent($"{tag} {display}: found {itemName}");
+        }
     }
 
     private void LayoutEmbeddedGame()

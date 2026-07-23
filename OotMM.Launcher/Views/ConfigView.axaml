@@ -127,7 +127,8 @@
             <!-- Framed hero button, like the original's double-bordered launch box. -->
             <Border HorizontalAlignment="Center" CornerRadius="12" Padding="4"
                     BorderThickness="1" BorderBrush="{DynamicResource AccentDimBrush}">
-                <Button Classes="hero" MinWidth="380" Command="{Binding LaunchCommand}">
+                <Button Classes="hero" MinWidth="380" Command="{Binding LaunchCommand}"
+                        IsEnabled="{Binding !IsSetupInProgress}">
                     <StackPanel Orientation="Horizontal" Spacing="12" HorizontalAlignment="Center">
                         <Image Source="avares://OotMM.Launcher/Assets/Icons/MasterSword.png"
                                Width="26" Height="26" VerticalAlignment="Center" />

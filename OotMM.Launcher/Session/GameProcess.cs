@@ -19,7 +19,10 @@ public sealed class GameProcess : IDisposable
             WorkingDirectory = Path.GetDirectoryName(exePath) ?? "",
             UseShellExecute = false,
         };
-        start.Environment["OOTMM_BOOT_CONFIG"] = bootConfigPath;
+        if (!string.IsNullOrWhiteSpace(bootConfigPath))
+        {
+            start.Environment["OOTMM_BOOT_CONFIG"] = bootConfigPath;
+        }
         if (setupOnly)
         {
             start.Environment["OOTMM_SETUP_ONLY"] = "1";

@@ -4,14 +4,14 @@ using Avalonia.Threading;
 using OotMM.Core;
 using OotMM.Launcher.Models;
 using OotMM.Launcher.Services;
+using OotMM.Launcher.Session;
 
 namespace OotMM.Launcher.ViewModels;
 
 /// <summary>
 /// The pre-launch configuration form: seed, game builds, mods, multiworld.
-/// State mirrors the original launcher's ConfigForm; the session coordinator
-/// that consumes it (Setup flow, process spawn) is a later module, so the big
-/// button currently reports what it *will* do instead of doing it.
+/// State mirrors the original launcher's ConfigForm and drives first-run game
+/// extraction before handing a ready configuration to the session coordinator.
 /// </summary>
 public sealed class ConfigViewModel : ViewModelBase
 {
@@ -19,6 +19,8 @@ public sealed class ConfigViewModel : ViewModelBase
     private readonly Action _previewRuntime;
     private readonly Action<Seed, string, string, string> _startSession;
     private readonly DispatcherTimer _rescanTimer;
+    private readonly DispatcherTimer _setupTimer;
+    private readonly Queue<(string ExePath, bool IsOot, bool NeedMq)> _setupQueue = [];
 
     private string _seedPath = "";
     private Seed? _seed;
@@ -31,6 +33,7 @@ public sealed class ConfigViewModel : ViewModelBase
     private string _statusMessage = "";
     private bool _isActive = true;
     private bool _restoring;
+    private GameProcess? _setupProcess;
 
     public ConfigViewModel(UiSettings settings, IFilePicker picker, Action previewRuntime,
                            Action<Seed, string, string, string> startSession)
@@ -74,6 +77,9 @@ public sealed class ConfigViewModel : ViewModelBase
             }
         };
         _rescanTimer.Start();
+
+        _setupTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
+        _setupTimer.Tick += (_, _) => TickSetup();
     }
 
     public GameCardViewModel OotCard { get; }
@@ -231,13 +237,18 @@ public sealed class ConfigViewModel : ViewModelBase
         || MmCard.MissingArchives.Count > 0
         || CrossGameModelModsMissing;
 
+    public bool IsSetupInProgress => _setupProcess is not null || _setupQueue.Count > 0;
+
     /// <summary>The launcher-built cross-game item-model archives; without them
     /// foreign items render as glitched placeholders, so Setup builds them.</summary>
     private bool CrossGameModelModsMissing =>
-        (OotCard.ExeExists && OotCard.Mods.All(m => m.Name != "ootmm_mm_models.o2r"))
-        || (MmCard.ExeExists && MmCard.Mods.All(m => m.Name != "ootmm_oot_models.o2r"));
+        OotCard.ExeExists && MmCard.ExeExists
+        && (OotCard.Mods.All(m => m.Name != "ootmm_mm_models.o2r")
+            || MmCard.Mods.All(m => m.Name != "ootmm_oot_models.o2r"));
 
-    public string LaunchButtonText => SetupNeeded ? "SETUP" : "START ADVENTURE";
+    public string LaunchButtonText => IsSetupInProgress
+        ? "SETUP IN PROGRESS..."
+        : SetupNeeded ? "SETUP" : "START ADVENTURE";
 
     public bool ShowSetupHint => SetupNeeded;
 
@@ -320,6 +331,7 @@ public sealed class ConfigViewModel : ViewModelBase
 
         Revalidate();
         Raise(nameof(SetupNeeded));
+        Raise(nameof(IsSetupInProgress));
         Raise(nameof(LaunchButtonText));
         Raise(nameof(ShowSetupHint));
         Raise(nameof(ShowMqHint));
@@ -408,6 +420,17 @@ public sealed class ConfigViewModel : ViewModelBase
 
     private void OnLaunchClicked()
     {
+        if (IsSetupInProgress)
+        {
+            return;
+        }
+
+        if (SetupNeeded)
+        {
+            BeginSetup(Seed?.NeedsMasterQuest() ?? false);
+            return;
+        }
+
         if (Seed is not { } seed)
         {
             StatusMessage = "Choose a seed first.";
@@ -426,15 +449,109 @@ public sealed class ConfigViewModel : ViewModelBase
             return;
         }
 
-        if (SetupNeeded)
+        StatusMessage = "";
+        _startSession(seed, SeedPath, OotCard.ExePath, MmCard.ExePath);
+    }
+
+    private void BeginSetup(bool needMq)
+    {
+        RescanAll();
+        _setupQueue.Clear();
+
+        if (OotCard.MissingArchives.Any(name => name is "oot.o2r" or "oot-mq.o2r"))
         {
-            // The Setup flow (ROM extraction + model archive build) is a later slice.
-            StatusMessage = "Setup will extract game assets and build the cross-game model archives once the setup flow is ported.";
+            _setupQueue.Enqueue((OotCard.ExePath, true, needMq));
+        }
+
+        if (MmCard.MissingArchives.Contains("mm.o2r"))
+        {
+            _setupQueue.Enqueue((MmCard.ExePath, false, false));
+        }
+
+        if (_setupQueue.Count == 0)
+        {
+            CompleteSetup();
             return;
         }
 
-        StatusMessage = "";
-        _startSession(seed, SeedPath, OotCard.ExePath, MmCard.ExePath);
+        _setupTimer.Start();
+        StartNextSetupGame();
+    }
+
+    private void TickSetup()
+    {
+        if (_setupProcess is { Running: true })
+        {
+            return;
+        }
+
+        _setupProcess?.Dispose();
+        _setupProcess = null;
+        RescanAll();
+
+        if (_setupQueue.Count > 0)
+        {
+            StartNextSetupGame();
+            return;
+        }
+
+        CompleteSetup();
+    }
+
+    private void StartNextSetupGame()
+    {
+        var next = _setupQueue.Dequeue();
+        var gameTitle = next.IsOot ? "Ocarina of Time" : "Majora's Mask";
+        _setupProcess = new GameProcess(next.ExePath, "", setupOnly: true, setupNeedMq: next.NeedMq);
+        if (!_setupProcess.Valid)
+        {
+            _setupProcess.Dispose();
+            _setupProcess = null;
+            _setupQueue.Clear();
+            _setupTimer.Stop();
+            StatusMessage = $"Setup failed to start {gameTitle}.";
+        }
+        else
+        {
+            StatusMessage = $"Setup: {gameTitle} is open — follow its prompts to select your ROM.";
+        }
+
+        Raise(nameof(IsSetupInProgress));
+        Raise(nameof(LaunchButtonText));
+    }
+
+    private void CompleteSetup()
+    {
+        _setupTimer.Stop();
+        var missingRomArchives = OotCard.MissingArchives
+            .Where(name => name is "oot.o2r" or "oot-mq.o2r")
+            .Concat(MmCard.MissingArchives.Where(name => name == "mm.o2r"))
+            .ToList();
+        var missingPortArchives = OotCard.MissingArchives
+            .Where(name => name == "soh.o2r")
+            .Concat(MmCard.MissingArchives.Where(name => name == "2ship.o2r"))
+            .ToList();
+
+        if (missingRomArchives.Count > 0)
+        {
+            StatusMessage = $"Setup did not finish — still missing {string.Join(", ", missingRomArchives)}.";
+        }
+        else if (missingPortArchives.Count > 0)
+        {
+            StatusMessage =
+                $"Copy the separately built {string.Join(" and ", missingPortArchives)} next to the game executables.";
+        }
+        else if (CrossGameModelModsMissing)
+        {
+            StatusMessage = "Game extraction is complete. The cross-game model archives still need to be built.";
+        }
+        else
+        {
+            StatusMessage = "All game assets are ready.";
+        }
+
+        Raise(nameof(IsSetupInProgress));
+        Raise(nameof(LaunchButtonText));
     }
 
     public void ShowStatus(string message) => StatusMessage = message;

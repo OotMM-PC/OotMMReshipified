@@ -15,6 +15,7 @@ public sealed class SessionCoordinator : IDisposable
     private readonly MultiworldSync? _multiworld;
     private bool _leftButtonWasDown;
     private GameProcess? _process;
+    private GameIpcServer? _ipc;
     private nint _gameChild;
     private (int Width, int Height) _laidOutSize;
     private long _outboxOffset;
@@ -26,7 +27,8 @@ public sealed class SessionCoordinator : IDisposable
     private bool _ended;
     private int _speedPercent = 100;
     private bool _speedSmooth;
-    private bool _rosterDirty = true;
+    private bool _ipcSettingsDirty = true;
+    private long _settingsRevision;
     private long _forceUnlockSeq;
 
     public SessionCoordinator(Core.Session session, MultiworldSync? multiworld = null)
@@ -58,12 +60,12 @@ public sealed class SessionCoordinator : IDisposable
             _multiworld.SyncChanged += () =>
             {
                 _stateDirty = true;
-                _rosterDirty = true; // transport state and pending count feed the roster meta
+                _ipcSettingsDirty = true;
             };
             _multiworld.RulesChanged += () =>
             {
                 SpeedPercent = _speedPercent; // re-clamp into the server's allowed range
-                _rosterDirty = true;
+                _ipcSettingsDirty = true;
                 StateChanged?.Invoke();
             };
         }
@@ -89,8 +91,8 @@ public sealed class SessionCoordinator : IDisposable
 
     public int TimerMax => Math.Max(0, _multiworld?.TimerMax ?? 250);
 
-    /// <summary>Game speed in percent (100 = vanilla); the games read it live
-    /// from the roster meta, clamped to the server's allowed range.</summary>
+    /// <summary>Game speed in percent (100 = vanilla), sent live over IPC and
+    /// clamped to the server's allowed range.</summary>
     public int SpeedPercent
     {
         get => _speedPercent;
@@ -100,7 +102,7 @@ public sealed class SessionCoordinator : IDisposable
             if (_speedPercent != clamped)
             {
                 _speedPercent = clamped;
-                _rosterDirty = true;
+                _ipcSettingsDirty = true;
             }
         }
     }
@@ -113,7 +115,7 @@ public sealed class SessionCoordinator : IDisposable
             if (_speedSmooth != value)
             {
                 _speedSmooth = value;
-                _rosterDirty = true;
+                _ipcSettingsDirty = true;
             }
         }
     }
@@ -205,6 +207,8 @@ public sealed class SessionCoordinator : IDisposable
         _process?.Terminate();
         _process?.Dispose();
         _process = null;
+        _ipc?.Dispose();
+        _ipc = null;
         _multiworld?.Dispose();
         Ended?.Invoke(reason);
     }
@@ -271,6 +275,7 @@ public sealed class SessionCoordinator : IDisposable
         _focusTimer.Stop();
         _process?.Terminate();
         _process?.Dispose();
+        _ipc?.Dispose();
         _multiworld?.Dispose();
     }
 
@@ -290,11 +295,20 @@ public sealed class SessionCoordinator : IDisposable
 
         var exe = ActiveGame == Game.Oot ? _session.OotExe : _session.MmExe;
         _process?.Dispose();
+        _ipc?.Dispose();
+        _ipc = new GameIpcServer(ActiveGame);
         _gameChild = 0;
-        _process = new GameProcess(exe, _session.BootConfigPath, parentWindow: GameHostHandle);
+        _process = new GameProcess(
+            exe,
+            _session.BootConfigPath,
+            parentWindow: GameHostHandle,
+            ipcEndpoint: _ipc.Endpoint,
+            ipcToken: _ipc.Token);
         if (!_process.Valid)
         {
             _process = null;
+            _ipc.Dispose();
+            _ipc = null;
             StateChanged?.Invoke();
             return $"could not start {exe}";
         }
@@ -306,6 +320,8 @@ public sealed class SessionCoordinator : IDisposable
             {
                 _process.Terminate();
                 _process = null;
+                _ipc.Dispose();
+                _ipc = null;
                 return "could not retire the durable cross-game transition";
             }
 
@@ -314,6 +330,7 @@ public sealed class SessionCoordinator : IDisposable
 
         _outboxOffset = DurableFile.ReadOffset(ActiveOutboxCursor) ?? 0;
         _pendingTransition = null;
+        _ipcSettingsDirty = true;
         LogEvent($"{GameInfo.Title(ActiveGame)} started.");
         StateChanged?.Invoke();
         return null;
@@ -333,11 +350,12 @@ public sealed class SessionCoordinator : IDisposable
             return;
         }
 
+        PumpIpc();
         DrainActiveOutbox();
         SyncCompletedFromState(force: false);
         _multiworld?.Tick(CompletedChecks, ActiveInbox);
         LayoutEmbeddedGame();
-        WriteRosterIfDirty();
+        PublishIpcSettingsIfDirty();
 
         // Check bursts (drain, catch-up replay) coalesce into one refresh per tick;
         // per-packet notifications made the sidebar recompute logic N times over.
@@ -481,13 +499,53 @@ public sealed class SessionCoordinator : IDisposable
         }
     }
 
-    private void WriteRosterIfDirty()
+    private void PumpIpc()
     {
-        if (!_rosterDirty)
+        while (_ipc?.TryDequeue(out var ipcEvent) == true && ipcEvent is not null)
+        {
+            switch (ipcEvent.Type)
+            {
+                case GameIpcEventType.Connected:
+                    _ipc.Send(GameIpcProtocol.BuildWelcome(
+                        _session.Seed.SeedId,
+                        _session.SaveId,
+                        _session.Seed.PlayerId,
+                        ActiveGame));
+                    _ipcSettingsDirty = true;
+                    LogEvent($"{GameInfo.Title(ActiveGame)} connected to the launcher.");
+                    break;
+                case GameIpcEventType.Message:
+                    break;
+                case GameIpcEventType.Disconnected:
+                    if (_process?.Running == true)
+                    {
+                        LogEvent($"{GameInfo.Title(ActiveGame)} lost its launcher connection.");
+                    }
+                    break;
+                case GameIpcEventType.ProtocolError:
+                    LogEvent($"Game IPC error: {ipcEvent.Message}");
+                    break;
+            }
+        }
+    }
+
+    private void PublishIpcSettingsIfDirty()
+    {
+        if (!_ipcSettingsDirty || _ipc?.IsConnected != true)
         {
             return;
         }
 
+        var revision = _settingsRevision + 1;
+        if (_ipc.Send(GameIpcProtocol.BuildSettingsSnapshot(revision, BuildRosterMeta())))
+        {
+            _settingsRevision = revision;
+            _ipcSettingsDirty = false;
+        }
+    }
+
+    private RosterMeta BuildRosterMeta()
+    {
         var transport = _multiworld?.State switch
         {
             null or TransportState.Healthy => "healthy",
@@ -497,7 +555,7 @@ public sealed class SessionCoordinator : IDisposable
             TransportState.LocalError => "local-error",
             _ => "protocol-error",
         };
-        var meta = new RosterMeta(
+        return new RosterMeta(
             ShowNames: true,
             Pvp: _multiworld?.Pvp ?? false,
             DeathLink: _multiworld?.DeathLink ?? false,
@@ -505,10 +563,6 @@ public sealed class SessionCoordinator : IDisposable
             SpeedSmooth: _speedSmooth,
             TransportState: transport,
             PendingChecks: (uint)(_multiworld?.PendingChecks ?? 0));
-        if (PresenceRoster.Write(_session.PresenceIn, meta))
-        {
-            _rosterDirty = false;
-        }
     }
 
     private void LogCheckCollected(string checkKey)

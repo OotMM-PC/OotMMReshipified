@@ -12,7 +12,8 @@ public sealed class GameProcess : IDisposable
     private bool _suspended;
 
     public GameProcess(string exePath, string bootConfigPath,
-                       bool setupOnly = false, bool setupNeedMq = false, nint parentWindow = 0)
+                       bool setupOnly = false, bool setupNeedMq = false, nint parentWindow = 0,
+                       string ipcEndpoint = "", string ipcToken = "")
     {
         var start = new ProcessStartInfo(exePath)
         {
@@ -36,6 +37,12 @@ public sealed class GameProcess : IDisposable
         if (parentWindow != 0)
         {
             start.Environment["OOTMM_PARENT_HWND"] = parentWindow.ToString();
+        }
+
+        if (!string.IsNullOrWhiteSpace(ipcEndpoint) && !string.IsNullOrWhiteSpace(ipcToken))
+        {
+            start.Environment["OOTMM_IPC_ENDPOINT"] = ipcEndpoint;
+            start.Environment["OOTMM_IPC_TOKEN"] = ipcToken;
         }
 
         try

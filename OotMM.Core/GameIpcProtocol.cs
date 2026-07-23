@@ -75,6 +75,15 @@ public static class GameIpcProtocol
             message,
         });
 
+    public static string BuildTransitionAccepted(CrossGameTransition transition) =>
+        JsonSerializer.Serialize(new
+        {
+            type = MessageType.TransitionAccepted,
+            toGame = GameInfo.ToSeedTag(transition.ToGame),
+            toEntrance = transition.ToEntrance,
+            toNativeId = transition.ToNativeId,
+        });
+
     public static bool TryParseHello(string json, out GameIpcHello? hello, out string error)
     {
         hello = null;
@@ -128,6 +137,46 @@ public static class GameIpcProtocol
         }
     }
 
+    public static bool TryParseCrossGameTransition(
+        string json, out CrossGameTransition? transition, out string error)
+    {
+        transition = null;
+        error = "";
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || ReadString(root, "type") != MessageType.CrossGameTransition)
+            {
+                error = "message is not a cross-game transition";
+                return false;
+            }
+
+            var fromGame = GameInfo.TryFromSeedTag(ReadString(root, "fromGame"));
+            var toGame = GameInfo.TryFromSeedTag(ReadString(root, "toGame"));
+            var toEntrance = ReadString(root, "toEntrance");
+            if (fromGame is null || toGame is null || fromGame == toGame || toEntrance.Length == 0)
+            {
+                error = "cross-game transition has invalid games or destination";
+                return false;
+            }
+
+            transition = new CrossGameTransition(
+                fromGame.Value,
+                toGame.Value,
+                toEntrance,
+                ReadU32(root, "toNativeId"),
+                ReadU32(root, "ootAge"));
+            return true;
+        }
+        catch (JsonException)
+        {
+            error = "cross-game transition is not valid JSON";
+            return false;
+        }
+    }
+
     private static string ReadString(JsonElement root, string name) =>
         root.TryGetProperty(name, out var value) && value.ValueKind == JsonValueKind.String
             ? value.GetString() ?? ""
@@ -137,4 +186,9 @@ public static class GameIpcProtocol
         root.TryGetProperty(name, out var value) && value.TryGetInt32(out var parsed)
             ? parsed
             : 0;
+
+    private static uint? ReadU32(JsonElement root, string name) =>
+        root.TryGetProperty(name, out var value) && value.TryGetUInt32(out var parsed)
+            ? parsed
+            : null;
 }

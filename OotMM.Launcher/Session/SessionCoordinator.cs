@@ -402,16 +402,9 @@ public sealed class SessionCoordinator : IDisposable
                     _stateDirty = true;
                 }
             }
-            else if (_pendingTransition is null
-                     && AnchorPackets.ParseCrossGameTransition(packet) is { } transition
-                     && transition.FromGame == ActiveGame && transition.ToGame != ActiveGame)
+            else if (AnchorPackets.ParseCrossGameTransition(packet) is { } transition)
             {
-                if (DurableFile.WriteAtomic(_session.PendingTransitionPath, packet))
-                {
-                    _pendingTransition = transition;
-                    // Give the port a moment to flush its save before the stop.
-                    _handoffDeadline = DateTime.UtcNow.AddMilliseconds(1500);
-                }
+                AcceptTransition(transition, packet);
             }
         }
 
@@ -515,6 +508,15 @@ public sealed class SessionCoordinator : IDisposable
                     LogEvent($"{GameInfo.Title(ActiveGame)} connected to the launcher.");
                     break;
                 case GameIpcEventType.Message:
+                    if (GameIpcProtocol.TryParseCrossGameTransition(
+                            ipcEvent.Message, out var transition, out _)
+                        && transition is not null
+                        && AcceptTransition(
+                            transition,
+                            AnchorPackets.BuildCrossGameTransition(transition, _session.Seed)))
+                    {
+                        _ipc.Send(GameIpcProtocol.BuildTransitionAccepted(transition));
+                    }
                     break;
                 case GameIpcEventType.Disconnected:
                     if (_process?.Running == true)
@@ -527,6 +529,32 @@ public sealed class SessionCoordinator : IDisposable
                     break;
             }
         }
+    }
+
+    private bool AcceptTransition(CrossGameTransition transition, string durablePacket)
+    {
+        if (_pendingTransition is not null
+            || transition.FromGame != ActiveGame
+            || transition.ToGame == ActiveGame
+            || transition.ToNativeId is null
+            || !_session.Seed.Entrances.Any(mapping =>
+                mapping.IsCrossGame
+                && mapping.FromGame == transition.FromGame
+                && mapping.ToGame == transition.ToGame
+                && mapping.To == transition.ToEntrance
+                && mapping.ToNativeId == transition.ToNativeId))
+        {
+            return false;
+        }
+        if (!DurableFile.WriteAtomic(_session.PendingTransitionPath, durablePacket))
+        {
+            LogEvent("Could not persist the cross-game transition.");
+            return false;
+        }
+
+        _pendingTransition = transition;
+        _handoffDeadline = DateTime.UtcNow.AddMilliseconds(100);
+        return true;
     }
 
     private void PublishIpcSettingsIfDirty()

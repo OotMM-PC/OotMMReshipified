@@ -46,4 +46,55 @@ public class GameIpcProtocolTests
     [Fact]
     public void ReadType_RejectsNonObjectJson() =>
         Assert.Equal("", GameIpcProtocol.ReadType("[]"));
+
+    [Fact]
+    public void TryParseCrossGameTransition_ReadsNativeDestination()
+    {
+        const string json =
+            """{"type":"crossGameTransition","fromGame":"oot","toGame":"mm","toEntrance":"MM_CLOCK_TOWN","toNativeId":55296,"ootAge":1}""";
+
+        Assert.True(
+            GameIpcProtocol.TryParseCrossGameTransition(json, out var transition, out var error),
+            error);
+        Assert.NotNull(transition);
+        Assert.Equal(Game.Oot, transition!.FromGame);
+        Assert.Equal(Game.Mm, transition.ToGame);
+        Assert.Equal("MM_CLOCK_TOWN", transition.ToEntrance);
+        Assert.Equal((uint)55296, transition.ToNativeId);
+        Assert.Equal((uint)1, transition.OotAge);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("""{"type":"crossGameTransition","fromGame":"oot","toGame":"oot","toEntrance":""}""")]
+    [InlineData("""{"type":"crossGameTransition","fromGame":"oot","toGame":"oot","toEntrance":"OOT_MARKET"}""")]
+    [InlineData("invalid")]
+    public void TryParseCrossGameTransition_RejectsMalformedMessages(string json)
+    {
+        Assert.False(
+            GameIpcProtocol.TryParseCrossGameTransition(json, out var transition, out var error));
+        Assert.Null(transition);
+        Assert.NotEmpty(error);
+    }
+
+    [Fact]
+    public void BuildCrossGameTransition_CreatesRecoverableAnchorPacket()
+    {
+        var seed = new Seed
+        {
+            Format = Seed.CurrentFormat,
+            GeneratorVersion = Seed.RequiredGeneratorVersion,
+            SeedId = "seed",
+            SettingsHash = "settings",
+            TeamId = "team",
+            PlayerId = 2,
+        };
+        var transition = new CrossGameTransition(
+            Game.Mm, Game.Oot, "OOT_TEMPLE_SHADOW", 55, 1);
+
+        var packet = AnchorPackets.BuildCrossGameTransition(transition, seed);
+
+        Assert.Equal(transition, AnchorPackets.ParseCrossGameTransition(packet));
+        Assert.True(AnchorPackets.MatchesSeedIdentity(packet, seed));
+    }
 }

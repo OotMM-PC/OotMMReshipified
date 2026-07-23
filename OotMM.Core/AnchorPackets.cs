@@ -98,6 +98,21 @@ public static class AnchorPackets
         }
     }
 
+    public static string BuildCrossGameTransition(CrossGameTransition transition, Seed seed) =>
+        JsonSerializer.Serialize(new
+        {
+            type = CrossGameTransitionType,
+            seedId = seed.SeedId,
+            settingsHash = seed.SettingsHash,
+            teamId = seed.TeamId,
+            playerId = seed.PlayerId,
+            fromGame = GameInfo.ToSeedTag(transition.FromGame),
+            toGame = GameInfo.ToSeedTag(transition.ToGame),
+            toEntrance = transition.ToEntrance,
+            toNativeId = transition.ToNativeId,
+            ootAge = transition.OotAge,
+        });
+
     /// <summary>True when the packet's seed identity fields match the seed.</summary>
     public static bool MatchesSeedIdentity(string jsonText, Seed seed)
     {

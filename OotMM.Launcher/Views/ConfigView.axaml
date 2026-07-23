@@ -138,7 +138,7 @@
             </Border>
             <TextBlock Classes="dim" HorizontalAlignment="Center" TextWrapping="Wrap"
                        TextAlignment="Center" IsVisible="{Binding ShowSetupHint}"
-                       Text="First-time setup: each game opens once and asks for your ROM to extract its assets; the launcher then builds the cross-game model archives." />
+                       Text="First-time setup: each game extracts its ROM assets, then the launcher builds the shared OoTMM gameplay assets." />
             <TextBlock Classes="dim" HorizontalAlignment="Center" TextWrapping="Wrap"
                        TextAlignment="Center" IsVisible="{Binding ShowMqHint}"
                        Text="This seed uses Master Quest dungeons — an OoT Master Quest ROM is also required." />

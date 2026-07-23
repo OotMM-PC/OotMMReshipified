@@ -34,6 +34,7 @@ public sealed class ConfigViewModel : ViewModelBase
     private bool _isActive = true;
     private bool _restoring;
     private GameProcess? _setupProcess;
+    private Task<OotmmAssetBuildResult>? _assetBuildTask;
 
     public ConfigViewModel(UiSettings settings, IFilePicker picker, Action previewRuntime,
                            Action<Seed, string, string, string> startSession)
@@ -235,16 +236,14 @@ public sealed class ConfigViewModel : ViewModelBase
     public bool SetupNeeded =>
         OotCard.MissingArchives.Count > 0
         || MmCard.MissingArchives.Count > 0
-        || CrossGameModelModsMissing;
+        || GeneratedAssetsNeedBuild;
 
-    public bool IsSetupInProgress => _setupProcess is not null || _setupQueue.Count > 0;
+    public bool IsSetupInProgress =>
+        _setupProcess is not null || _setupQueue.Count > 0 || _assetBuildTask is not null;
 
-    /// <summary>The launcher-built cross-game item-model archives; without them
-    /// foreign items render as glitched placeholders, so Setup builds them.</summary>
-    private bool CrossGameModelModsMissing =>
-        OotCard.ExeExists && MmCard.ExeExists
-        && (OotCard.Mods.All(m => m.Name != "ootmm_mm_models.o2r")
-            || MmCard.Mods.All(m => m.Name != "ootmm_oot_models.o2r"));
+    private bool GeneratedAssetsNeedBuild =>
+        OotmmAssetBuilder.NeedsBuild(OotCard.ExePath, isOot: true)
+        || OotmmAssetBuilder.NeedsBuild(MmCard.ExePath, isOot: false);
 
     public string LaunchButtonText => IsSetupInProgress
         ? "SETUP IN PROGRESS..."
@@ -381,16 +380,18 @@ public sealed class ConfigViewModel : ViewModelBase
             ValidationErrors.Add("The Majora's Mask executable was not found at its configured path.");
         }
 
-        if (OotCard.ExeExists && OotCard.Mods.All(m => m.Name != "ootmm_mm_models.o2r"))
+        if (OotCard.ExeExists && OotCard.MissingArchives.Count == 0
+                              && OotCard.Mods.All(m => m.Name != OotmmAssetBuilder.ArchiveName))
         {
             ValidationErrors.Add(
-                "OoT mods folder is missing ootmm_mm_models.o2r (cross-game item models) — run Setup to build it.");
+                $"OoT mods folder is missing {OotmmAssetBuilder.ArchiveName} — run Setup to build it.");
         }
 
-        if (MmCard.ExeExists && MmCard.Mods.All(m => m.Name != "ootmm_oot_models.o2r"))
+        if (MmCard.ExeExists && MmCard.MissingArchives.Count == 0
+                             && MmCard.Mods.All(m => m.Name != OotmmAssetBuilder.ArchiveName))
         {
             ValidationErrors.Add(
-                "MM mods folder is missing ootmm_oot_models.o2r (cross-game item models) — run Setup to build it.");
+                $"MM mods folder is missing {OotmmAssetBuilder.ArchiveName} — run Setup to build it.");
         }
 
         if (ShowMultiworld)
@@ -470,7 +471,7 @@ public sealed class ConfigViewModel : ViewModelBase
 
         if (_setupQueue.Count == 0)
         {
-            CompleteSetup();
+            StartAssetBuildOrComplete();
             return;
         }
 
@@ -480,6 +481,17 @@ public sealed class ConfigViewModel : ViewModelBase
 
     private void TickSetup()
     {
+        if (_assetBuildTask is not null)
+        {
+            if (!_assetBuildTask.IsCompleted)
+            {
+                return;
+            }
+
+            FinishAssetBuild();
+            return;
+        }
+
         if (_setupProcess is { Running: true })
         {
             return;
@@ -495,7 +507,7 @@ public sealed class ConfigViewModel : ViewModelBase
             return;
         }
 
-        CompleteSetup();
+        StartAssetBuildOrComplete();
     }
 
     private void StartNextSetupGame()
@@ -516,6 +528,44 @@ public sealed class ConfigViewModel : ViewModelBase
             StatusMessage = $"Setup: {gameTitle} is open — follow its prompts to select your ROM.";
         }
 
+        Raise(nameof(IsSetupInProgress));
+        Raise(nameof(LaunchButtonText));
+    }
+
+    private void StartAssetBuildOrComplete()
+    {
+        var archivesMissing = OotCard.MissingArchives.Count > 0 || MmCard.MissingArchives.Count > 0;
+        if (archivesMissing || !GeneratedAssetsNeedBuild)
+        {
+            CompleteSetup();
+            return;
+        }
+
+        StatusMessage = "Setup: building OoTMM gameplay assets...";
+        _assetBuildTask = Task.Run(() => OotmmAssetBuilder.Build(OotCard.ExePath, MmCard.ExePath));
+        _setupTimer.Start();
+        Raise(nameof(IsSetupInProgress));
+        Raise(nameof(LaunchButtonText));
+    }
+
+    private void FinishAssetBuild()
+    {
+        OotmmAssetBuildResult result;
+        try
+        {
+            result = _assetBuildTask!.GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            result = new OotmmAssetBuildResult(false, 0, [], ex.Message);
+        }
+
+        _assetBuildTask = null;
+        RescanAll();
+        StatusMessage = result.Ok
+            ? $"Setup complete — generated {result.Entries} OoTMM asset entries."
+            : $"Setup failed while building OoTMM assets — {result.Error}";
+        _setupTimer.Stop();
         Raise(nameof(IsSetupInProgress));
         Raise(nameof(LaunchButtonText));
     }
@@ -541,9 +591,9 @@ public sealed class ConfigViewModel : ViewModelBase
             StatusMessage =
                 $"Copy the separately built {string.Join(" and ", missingPortArchives)} next to the game executables.";
         }
-        else if (CrossGameModelModsMissing)
+        else if (GeneratedAssetsNeedBuild)
         {
-            StatusMessage = "Game extraction is complete. The cross-game model archives still need to be built.";
+            StatusMessage = "Game extraction is complete. OoTMM gameplay assets still need to be built.";
         }
         else
         {

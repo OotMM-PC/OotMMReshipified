@@ -10,8 +10,7 @@ public sealed record ModInfo(string Name, string FullPath, bool Required, bool E
 /// Semantics ported from the original launcher:
 ///  - only *.o2r / *.otr files inside "mods" next to the game exe count;
 ///  - a ".disabled" filename suffix means present-but-disabled;
-///  - the cross-game model/music archives are required and always forced on
-///    (disabling them breaks foreign item rendering);
+///  - launcher-built OoTMM assets and seed music are required and forced on;
 ///  - "zz_coop_*" / "zz_localmodel_*" are launcher-regenerated internals, hidden
 ///    from the user list;
 ///  - required archives sort first, then alphabetical, then loadorder.txt ranks
@@ -23,7 +22,7 @@ public static class ModScanner
     private const string LoadOrderFile = "loadorder.txt";
 
     public static bool IsRequired(string lowerName) =>
-        lowerName is "ootmm_mm_models.o2r" or "ootmm_oot_models.o2r" or "ootmm_seed_music.o2r";
+        lowerName is "ootmm_assets.o2r" or "ootmm_seed_music.o2r";
 
     private static bool IsLauncherGenerated(string name) =>
         name.StartsWith("zz_coop_", StringComparison.Ordinal)

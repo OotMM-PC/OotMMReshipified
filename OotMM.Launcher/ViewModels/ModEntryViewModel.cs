@@ -23,7 +23,7 @@ public sealed class ModEntryViewModel : ViewModelBase
 
     public string Name => Info.Name;
 
-    /// <summary>Required archives (cross-game models/music) render locked-on:
+    /// <summary>Required archives (OoTMM assets/music) render locked-on:
     /// the checkbox is disabled because disabling them breaks the seed.</summary>
     public bool Required => Info.Required;
 

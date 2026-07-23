@@ -15,7 +15,8 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <AvaloniaResource Include="Assets\**" />
+        <AvaloniaResource Include="Assets\**" Exclude="Assets\Csmc\**" />
+        <EmbeddedResource Include="Assets\Csmc\**\*.png" />
     </ItemGroup>
 
     <ItemGroup>

@@ -36,8 +36,8 @@
                         ToolTip.Tip="Speeds up or slows down the game itself (0% freezes it). 100% is normal speed. On a server, the host sets the allowed range." />
                 <TextBlock Classes="dim" Text="{Binding SpeedText}" VerticalAlignment="Center" />
             </StackPanel>
-            <CheckBox Content="Sync updates to render framerate" IsChecked="{Binding SpeedSmooth}"
-                      ToolTip.Tip="Paces the scaled game updates against the render framerate instead of whole-frame steps, so speed changes stay smooth." />
+            <CheckBox Content="Keep render FPS fixed while changing game speed" IsChecked="{Binding SpeedSmooth}"
+                      ToolTip.Tip="Always renders at the graphics FPS, interpolating slow game updates and skipping renders between fast game updates." />
         </StackPanel>
 
         <Separator Margin="0,6" />

@@ -126,6 +126,30 @@ public class SeedLoaderTests
     }
 
     [Fact]
+    public void CrossGameSpawn_DoesNotBypassOotFileSetup()
+    {
+        var seed = SeedLoader.LoadFromJson(MutateValid(root =>
+        {
+            root["startingGame"] = "oot";
+            root["settings"]!["startingAge"] = "child";
+            root["entrances"] = new JsonArray
+            {
+                new JsonObject
+                {
+                    ["fromGame"] = "oot",
+                    ["from"] = "OOT_SPAWN_CHILD",
+                    ["fromNativeId"] = 0x00BB,
+                    ["toGame"] = "mm",
+                    ["to"] = "MM_TERMINA_FIELD_FROM_CLOCK_TOWN_SOUTH",
+                    ["toNativeId"] = 0x5460,
+                },
+            };
+        }));
+
+        Assert.Equal(Game.Oot, seed.ResolveStartingGame());
+    }
+
+    [Fact]
     public void V1Seed_RejectedWithRegenerateMessage()
     {
         var json = File.ReadAllText(FixturePath("legacy.v1.ootmm.json"));

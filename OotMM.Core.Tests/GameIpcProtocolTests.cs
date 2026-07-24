@@ -7,6 +7,38 @@ namespace OotMM.Core.Tests;
 public class GameIpcProtocolTests
 {
     [Fact]
+    public void InventoryDebugSet_ParsesValidatedItemAndValue()
+    {
+        Assert.True(GameIpcProtocol.TryParseInventoryDebugSet(
+            """{"type":"inventoryDebugSet","itemId":"OOT_COIN_RED","value":4}""",
+            out var update, out var error));
+        Assert.Equal("", error);
+        Assert.Equal(new InventoryDebugSet("OOT_COIN_RED", 4), update);
+
+        Assert.False(GameIpcProtocol.TryParseInventoryDebugSet(
+            """{"type":"inventoryDebugSet","itemId":"../bad","value":4}""",
+            out _, out _));
+    }
+
+    [Fact]
+    public void InventoryMessages_UseRevisionedItemMaps()
+    {
+        using var snapshot = JsonDocument.Parse(GameIpcProtocol.BuildInventorySnapshot(
+            4, new Dictionary<string, uint> { ["OOT_COIN_RED"] = 2 }));
+        Assert.Equal(
+            GameIpcProtocol.MessageType.InventorySnapshot,
+            snapshot.RootElement.GetProperty("type").GetString());
+        Assert.Equal(4ul, snapshot.RootElement.GetProperty("revision").GetUInt64());
+        Assert.Equal(2u, snapshot.RootElement.GetProperty("items").GetProperty("OOT_COIN_RED").GetUInt32());
+
+        using var delta = JsonDocument.Parse(
+            GameIpcProtocol.BuildInventoryDelta(5, "OOT_COIN_RED", 3));
+        Assert.Equal(GameIpcProtocol.MessageType.InventoryDelta, delta.RootElement.GetProperty("type").GetString());
+        Assert.Equal(5ul, delta.RootElement.GetProperty("revision").GetUInt64());
+        Assert.Equal(3u, delta.RootElement.GetProperty("items").GetProperty("OOT_COIN_RED").GetUInt32());
+    }
+
+    [Fact]
     public void TryParseHello_ReadsValidMessage()
     {
         const string json =

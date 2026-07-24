@@ -13,6 +13,7 @@ public sealed class SessionCoordinator : IDisposable
     private readonly DispatcherTimer _timer;
     private readonly DispatcherTimer _focusTimer;
     private readonly MultiworldSync? _multiworld;
+    private readonly SessionInventory _inventory;
     private bool _leftButtonWasDown;
     private GameProcess? _process;
     private GameIpcServer? _ipc;
@@ -35,6 +36,7 @@ public sealed class SessionCoordinator : IDisposable
     {
         _session = session;
         _multiworld = multiworld;
+        _inventory = new SessionInventory(session.Seed, session.DebugItemsPath);
         ActiveGame = session.RecoveredTransition?.ToGame ?? session.Seed.ResolveStartingGame();
         _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         _timer.Tick += (_, _) => Tick();
@@ -159,6 +161,11 @@ public sealed class SessionCoordinator : IDisposable
 
     public string? Start()
     {
+        if (!_inventory.IsValid)
+        {
+            return _inventory.LastError;
+        }
+
         uint? entrance = null;
         uint? ootAge = null;
         if (_session.RecoveredTransition is { } recovered)
@@ -169,6 +176,7 @@ public sealed class SessionCoordinator : IDisposable
         }
 
         SyncCompletedFromState(force: true);
+        ReconcileInventory();
         var error = StartActiveGame(entrance, ootAge);
         if (error is null)
         {
@@ -227,6 +235,7 @@ public sealed class SessionCoordinator : IDisposable
         try
         {
             File.Delete(_session.StatePath);
+            File.Delete(_session.DebugItemsPath);
             for (var slot = 0; slot < 3; slot++)
             {
                 File.Delete($"{_session.StatePath}.slot{slot}");
@@ -262,6 +271,8 @@ public sealed class SessionCoordinator : IDisposable
         }
 
         CompletedChecks.Clear();
+        ok &= _inventory.TryClearDebugAdjustments();
+        ReconcileInventory();
         _stateStamp = DateTime.MinValue;
         LogEvent(ok ? "Seed progress reset." : "Seed progress reset finished with errors.");
         StateChanged?.Invoke();
@@ -354,6 +365,7 @@ public sealed class SessionCoordinator : IDisposable
         DrainActiveOutbox();
         SyncCompletedFromState(force: false);
         _multiworld?.Tick(CompletedChecks, ActiveInbox);
+        ReconcileInventory();
         LayoutEmbeddedGame();
         PublishIpcSettingsIfDirty();
 
@@ -504,10 +516,19 @@ public sealed class SessionCoordinator : IDisposable
                         _session.SaveId,
                         _session.Seed.PlayerId,
                         ActiveGame));
+                    _ipc.Send(GameIpcProtocol.BuildInventorySnapshot(
+                        _inventory.Revision, _inventory.Items));
                     _ipcSettingsDirty = true;
                     LogEvent($"{GameInfo.Title(ActiveGame)} connected to the launcher.");
                     break;
                 case GameIpcEventType.Message:
+                    if (GameIpcProtocol.TryParseInventoryDebugSet(
+                            ipcEvent.Message, out var itemUpdate, out _)
+                        && itemUpdate is not null)
+                    {
+                        ApplyInventoryDebugSet(itemUpdate);
+                        break;
+                    }
                     if (GameIpcProtocol.TryParseCrossGameTransition(
                             ipcEvent.Message, out var transition, out _)
                         && transition is not null
@@ -528,6 +549,39 @@ public sealed class SessionCoordinator : IDisposable
                     LogEvent($"Game IPC error: {ipcEvent.Message}");
                     break;
             }
+        }
+    }
+
+    private void ApplyInventoryDebugSet(InventoryDebugSet update)
+    {
+        if (!AllowDebugMenus)
+        {
+            LogEvent("Game rejected an inventory edit because debug menus are disabled.");
+            return;
+        }
+
+        if (!_inventory.TrySetDebugValue(update.ItemId, update.Value))
+        {
+            LogEvent(_inventory.LastError.Length > 0
+                ? _inventory.LastError
+                : $"Game rejected unknown item {update.ItemId}.");
+            return;
+        }
+
+        _ipc?.Send(GameIpcProtocol.BuildInventorySnapshot(
+            _inventory.Revision, _inventory.Items));
+        StateChanged?.Invoke();
+    }
+
+    private void ReconcileInventory()
+    {
+        if (_inventory.Reconcile(
+                CompletedChecks,
+                _multiworld?.RemoteItemCounts ?? new Dictionary<string, int>())
+            && _ipc is not null)
+        {
+            _ipc.Send(GameIpcProtocol.BuildInventorySnapshot(
+                _inventory.Revision, _inventory.Items));
         }
     }
 

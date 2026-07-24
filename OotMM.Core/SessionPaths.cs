@@ -113,6 +113,7 @@ public sealed class Session
 
     public string SessionDir { get; internal set; } = "";
     public string StatePath { get; internal set; } = "";
+    public string DebugItemsPath { get; internal set; } = "";
     public string BootConfigPath { get; internal set; } = "";
     public string OotInbox { get; internal set; } = "";
     public string OotOutbox { get; internal set; } = "";
@@ -308,6 +309,7 @@ public static class SessionPaths
 
         session.SessionDir = sessionDir;
         session.StatePath = Path.Combine(sessionDir, "state.json");
+        session.DebugItemsPath = Path.Combine(sessionDir, "debug-items.json");
         session.BootConfigPath = Path.Combine(sessionDir, "boot.json");
         session.OotInbox = Path.Combine(sessionDir, "oot.inbox.jsonl");
         session.OotOutbox = Path.Combine(sessionDir, "oot.outbox.jsonl");
@@ -381,6 +383,7 @@ public static class SessionPaths
             File.WriteAllText(session.OotInbox, "");
             File.WriteAllText(session.MmInbox, "");
             File.Delete(session.StatePath);
+            File.Delete(session.DebugItemsPath);
             foreach (var stale in new[]
                      {
                          "multiworld.pending.jsonl", "multiworld.seq",

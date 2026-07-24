@@ -10,6 +10,8 @@ public sealed record GameIpcHello(
     int Pid,
     string Build);
 
+public sealed record InventoryDebugSet(string ItemId, uint Value);
+
 public static class GameIpcProtocol
 {
     public const int ProtocolMajor = 1;
@@ -28,6 +30,9 @@ public static class GameIpcProtocol
         public const string CheckAccepted = "checkAccepted";
         public const string DeliverItem = "deliverItem";
         public const string ItemApplied = "itemApplied";
+        public const string InventorySnapshot = "inventorySnapshot";
+        public const string InventoryDelta = "inventoryDelta";
+        public const string InventoryDebugSet = "inventoryDebugSet";
         public const string LocalPlayerPose = "localPlayerPose";
         public const string RemotePlayerPoses = "remotePlayerPoses";
         public const string ModelReady = "modelReady";
@@ -82,6 +87,23 @@ public static class GameIpcProtocol
             toGame = GameInfo.ToSeedTag(transition.ToGame),
             toEntrance = transition.ToEntrance,
             toNativeId = transition.ToNativeId,
+        });
+
+    public static string BuildInventorySnapshot(
+        ulong revision, IReadOnlyDictionary<string, uint> items) =>
+        JsonSerializer.Serialize(new
+        {
+            type = MessageType.InventorySnapshot,
+            revision,
+            items,
+        });
+
+    public static string BuildInventoryDelta(ulong revision, string itemId, uint value) =>
+        JsonSerializer.Serialize(new
+        {
+            type = MessageType.InventoryDelta,
+            revision,
+            items = new Dictionary<string, uint> { [itemId] = value },
         });
 
     public static bool TryParseHello(string json, out GameIpcHello? hello, out string error)
@@ -173,6 +195,42 @@ public static class GameIpcProtocol
         catch (JsonException)
         {
             error = "cross-game transition is not valid JSON";
+            return false;
+        }
+    }
+
+    public static bool TryParseInventoryDebugSet(
+        string json, out InventoryDebugSet? update, out string error)
+    {
+        update = null;
+        error = "";
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || ReadString(root, "type") != MessageType.InventoryDebugSet)
+            {
+                error = "message is not an inventory debug update";
+                return false;
+            }
+
+            var itemId = ReadString(root, "itemId");
+            if (!SessionInventory.IsValidItemId(itemId)
+                || !root.TryGetProperty("value", out var value)
+                || !value.TryGetUInt32(out var parsedValue)
+                || parsedValue > SessionInventory.MaxValue)
+            {
+                error = "inventory debug update is invalid";
+                return false;
+            }
+
+            update = new InventoryDebugSet(itemId, parsedValue);
+            return true;
+        }
+        catch (JsonException)
+        {
+            error = "inventory debug update is not valid JSON";
             return false;
         }
     }

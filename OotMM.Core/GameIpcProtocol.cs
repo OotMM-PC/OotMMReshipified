@@ -11,6 +11,7 @@ public sealed record GameIpcHello(
     string Build);
 
 public sealed record InventoryDebugSet(string ItemId, uint Value);
+public sealed record DebugPresentItem(string ItemId, ushort RecipientPlayer);
 
 public static class GameIpcProtocol
 {
@@ -33,6 +34,8 @@ public static class GameIpcProtocol
         public const string InventorySnapshot = "inventorySnapshot";
         public const string InventoryDelta = "inventoryDelta";
         public const string InventoryDebugSet = "inventoryDebugSet";
+        public const string DebugPresentItem = "debugPresentItem";
+        public const string PresentItem = "presentItem";
         public const string LocalPlayerPose = "localPlayerPose";
         public const string RemotePlayerPoses = "remotePlayerPoses";
         public const string ModelReady = "modelReady";
@@ -104,6 +107,26 @@ public static class GameIpcProtocol
             type = MessageType.InventoryDelta,
             revision,
             items = new Dictionary<string, uint> { [itemId] = value },
+        });
+
+    public static string BuildPresentItem(
+        ItemRef item,
+        Game destinationGame,
+        ushort sourcePlayer,
+        ushort recipientPlayer,
+        bool debug,
+        ushort viewerPlayer = 0) =>
+        JsonSerializer.Serialize(new
+        {
+            type = MessageType.PresentItem,
+            itemId = item.Id,
+            itemName = item.Name.Length > 0 ? item.Name : item.Id,
+            itemGame = GameInfo.ToSeedTag(item.Game),
+            destinationGame = GameInfo.ToSeedTag(destinationGame),
+            sourcePlayer,
+            recipientPlayer,
+            viewerPlayer = viewerPlayer == 0 ? recipientPlayer : viewerPlayer,
+            debug,
         });
 
     public static bool TryParseHello(string json, out GameIpcHello? hello, out string error)
@@ -231,6 +254,41 @@ public static class GameIpcProtocol
         catch (JsonException)
         {
             error = "inventory debug update is not valid JSON";
+            return false;
+        }
+    }
+
+    public static bool TryParseDebugPresentItem(
+        string json, out DebugPresentItem? request, out string error)
+    {
+        request = null;
+        error = "";
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || ReadString(root, "type") != MessageType.DebugPresentItem)
+            {
+                error = "message is not a debug item presentation request";
+                return false;
+            }
+
+            var itemId = ReadString(root, "itemId");
+            var recipientPlayer = ReadInt(root, "recipientPlayer");
+            if (!SessionInventory.IsValidItemId(itemId)
+                || recipientPlayer is < 1 or > ushort.MaxValue)
+            {
+                error = "debug item presentation request is invalid";
+                return false;
+            }
+
+            request = new DebugPresentItem(itemId, (ushort)recipientPlayer);
+            return true;
+        }
+        catch (JsonException)
+        {
+            error = "debug item presentation request is not valid JSON";
             return false;
         }
     }

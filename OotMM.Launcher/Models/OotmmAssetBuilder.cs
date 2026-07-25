@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Reflection;
+using System.Text;
 
 namespace OotMM.Launcher.Models;
 
@@ -84,13 +85,15 @@ public static class OotmmAssetBuilder
         var entries = 0;
         try
         {
+            var ootInputs = ExistingInputArchives(ootExe, isOot: true);
+            var mmInputs = ExistingInputArchives(mmExe, isOot: false);
             if (File.Exists(ootExe))
             {
-                entries += BuildGame(ootExe, isOot: true, log);
+                entries += BuildGame(ootExe, isOot: true, mmInputs, "mm", log);
             }
             if (File.Exists(mmExe))
             {
-                entries += BuildGame(mmExe, isOot: false, log);
+                entries += BuildGame(mmExe, isOot: false, ootInputs, "ot", log);
             }
             RemoveLegacyArchive(ootExe, LegacyOotArchive);
             RemoveLegacyArchive(mmExe, LegacyMmArchive);
@@ -102,7 +105,9 @@ public static class OotmmAssetBuilder
         }
     }
 
-    private static int BuildGame(string exePath, bool isOot, List<string> log)
+    private static int BuildGame(
+        string exePath, bool isOot, IReadOnlyList<string> foreignInputs,
+        string foreignNamespace, List<string> log)
     {
         var dir = Path.GetDirectoryName(exePath)
                   ?? throw new InvalidDataException("A game executable directory is required.");
@@ -127,6 +132,7 @@ public static class OotmmAssetBuilder
             {
                 var writer = new AssetWriter(zip);
                 WriteCsmcAssets(writer, source, isOot, log);
+                WriteForeignObjects(writer, foreignInputs, foreignNamespace, log);
                 count = writer.Count;
             }
 
@@ -151,6 +157,14 @@ public static class OotmmAssetBuilder
     private static string[] InputArchives(string dir, bool isOot) => isOot
         ? [Path.Combine(dir, "oot.o2r"), Path.Combine(dir, "soh.o2r")]
         : [Path.Combine(dir, "mm.o2r"), Path.Combine(dir, "2ship.o2r")];
+
+    private static string[] ExistingInputArchives(string exePath, bool isOot)
+    {
+        var dir = Path.GetDirectoryName(exePath);
+        return string.IsNullOrEmpty(dir)
+            ? []
+            : InputArchives(dir, isOot).Where(File.Exists).ToArray();
+    }
 
     private static void RemoveLegacyArchive(string exePath, string name)
     {
@@ -184,6 +198,141 @@ public static class OotmmAssetBuilder
                 WriteFamilyCategory(output, source, byHash, family, category, displayList, log);
             }
         }
+    }
+
+    private static void WriteForeignObjects(
+        AssetWriter output, IReadOnlyList<string> inputs, string nameSpace, List<string> log)
+    {
+        if (inputs.Count == 0)
+        {
+            log.Add($"Skipped {nameSpace} item models because the source archives are unavailable.");
+            return;
+        }
+
+        using var source = new ArchiveSet(inputs);
+        var mapping = source.Names
+            .Where(IsObjectResource)
+            .ToDictionary(path => path, path => NamespaceObject(path, nameSpace), StringComparer.Ordinal);
+        var replacements = HashReplacements(mapping);
+
+        foreach (var (oldPath, newPath) in mapping)
+        {
+            var data = RewriteKnownPaths(source.Read(oldPath), mapping);
+            output.Emit(newPath, SwapKnownHashes(data, replacements));
+        }
+
+        log.Add($"Copied {mapping.Count} namespaced {nameSpace} item-model resources.");
+    }
+
+    private static bool IsObjectResource(string path) =>
+        path.StartsWith("objects/", StringComparison.Ordinal);
+
+    private static string NamespaceObject(string path, string nameSpace)
+    {
+        const string prefix = "objects/object_";
+        if (path.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            return $"objects/{nameSpace}_obj_{path[prefix.Length..]}";
+        }
+
+        const string objects = "objects/";
+        var separator = path.IndexOf('/', objects.Length);
+        return separator < 0
+            ? path
+            : $"objects/{nameSpace}_{path[objects.Length..]}";
+    }
+
+    private static Dictionary<ulong, byte[]> HashReplacements(IReadOnlyDictionary<string, string> mapping)
+    {
+        var replacements = new Dictionary<ulong, byte[]>();
+        foreach (var (oldPath, newPath) in mapping)
+        {
+            var oldEncodings = HashEncodings(PathCrc64(oldPath));
+            var newEncodings = HashEncodings(PathCrc64(newPath));
+            for (var i = 0; i < oldEncodings.Length; i++)
+            {
+                replacements[BinaryPrimitives.ReadUInt64LittleEndian(oldEncodings[i])] = newEncodings[i];
+            }
+        }
+        return replacements;
+    }
+
+    private static byte[] SwapKnownHashes(byte[] source, IReadOnlyDictionary<ulong, byte[]> replacements)
+    {
+        var result = (byte[])source.Clone();
+        for (var offset = 0; offset <= result.Length - sizeof(ulong); offset++)
+        {
+            var encoded = BinaryPrimitives.ReadUInt64LittleEndian(result.AsSpan(offset));
+            if (!replacements.TryGetValue(encoded, out var replacement))
+            {
+                continue;
+            }
+
+            replacement.CopyTo(result, offset);
+            offset += sizeof(ulong) - 1;
+        }
+        return result;
+    }
+
+    private static byte[] RewriteKnownPaths(
+        byte[] source, IReadOnlyDictionary<string, string> mapping)
+    {
+        if (source.Length > 0 && source[0] == (byte)'<')
+        {
+            var text = Encoding.UTF8.GetString(source);
+            foreach (var (oldPath, newPath) in mapping)
+            {
+                text = text.Replace($"\"{oldPath}\"", $"\"{newPath}\"", StringComparison.Ordinal);
+            }
+            return Encoding.UTF8.GetBytes(text);
+        }
+
+        MemoryStream? output = null;
+        var cursor = 0;
+        Span<byte> encodedLength = stackalloc byte[sizeof(uint)];
+        for (var offset = sizeof(uint); offset <= source.Length - "objects/"u8.Length; offset++)
+        {
+            if (!source.AsSpan(offset).StartsWith("objects/"u8))
+            {
+                continue;
+            }
+
+            var lengthValue =
+                BinaryPrimitives.ReadUInt32LittleEndian(source.AsSpan(offset - sizeof(uint)));
+            if (lengthValue > int.MaxValue)
+            {
+                continue;
+            }
+
+            var length = (int)lengthValue;
+            if (length == 0 || offset + length > source.Length)
+            {
+                continue;
+            }
+
+            var oldPath = Encoding.UTF8.GetString(source, offset, length);
+            if (!mapping.TryGetValue(oldPath, out var newPath))
+            {
+                continue;
+            }
+
+            output ??= new MemoryStream(source.Length);
+            output.Write(source, cursor, offset - sizeof(uint) - cursor);
+            var newPathBytes = Encoding.UTF8.GetBytes(newPath);
+            BinaryPrimitives.WriteUInt32LittleEndian(encodedLength, (uint)newPathBytes.Length);
+            output.Write(encodedLength);
+            output.Write(newPathBytes);
+            cursor = offset + length;
+            offset = cursor - 1;
+        }
+
+        if (output is null)
+        {
+            return source;
+        }
+
+        output.Write(source, cursor, source.Length - cursor);
+        return output.ToArray();
     }
 
     private static void WriteChestFamily(AssetWriter output, ArchiveSet source, Family family, List<string> log)

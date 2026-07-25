@@ -39,6 +39,52 @@ public class GameIpcProtocolTests
     }
 
     [Fact]
+    public void DebugPresentItemRoundTrips()
+    {
+        const string json =
+            """{"type":"debugPresentItem","itemId":"MM_HAMMER","recipientPlayer":2}""";
+
+        Assert.True(GameIpcProtocol.TryParseDebugPresentItem(
+            json, out var request, out var error), error);
+        Assert.Equal("MM_HAMMER", request!.ItemId);
+        Assert.Equal((ushort)2, request.RecipientPlayer);
+    }
+
+    [Theory]
+    [InlineData("""{"type":"debugPresentItem","itemId":"MM_HAMMER"}""")]
+    [InlineData("""{"type":"debugPresentItem","itemId":"MM_HAMMER","recipientPlayer":0}""")]
+    public void DebugPresentItemRejectsInvalidRecipient(string json)
+    {
+        Assert.False(GameIpcProtocol.TryParseDebugPresentItem(
+            json, out var request, out var error));
+        Assert.Null(request);
+        Assert.NotEmpty(error);
+    }
+
+    [Fact]
+    public void PresentItemIncludesRoutingMetadata()
+    {
+        var json = GameIpcProtocol.BuildPresentItem(
+            new ItemRef(Game.Mm, "MM_HAMMER", "Megaton Hammer (MM)"),
+            Game.Mm,
+            2,
+            3,
+            debug: true,
+            viewerPlayer: 2);
+        using var document = JsonDocument.Parse(json);
+        var root = document.RootElement;
+
+        Assert.Equal("presentItem", root.GetProperty("type").GetString());
+        Assert.Equal("MM_HAMMER", root.GetProperty("itemId").GetString());
+        Assert.Equal("mm", root.GetProperty("itemGame").GetString());
+        Assert.Equal("mm", root.GetProperty("destinationGame").GetString());
+        Assert.Equal(2, root.GetProperty("sourcePlayer").GetInt32());
+        Assert.Equal(3, root.GetProperty("recipientPlayer").GetInt32());
+        Assert.Equal(2, root.GetProperty("viewerPlayer").GetInt32());
+        Assert.True(root.GetProperty("debug").GetBoolean());
+    }
+
+    [Fact]
     public void TryParseHello_ReadsValidMessage()
     {
         const string json =

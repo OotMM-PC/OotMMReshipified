@@ -529,6 +529,13 @@ public sealed class SessionCoordinator : IDisposable
                         ApplyInventoryDebugSet(itemUpdate);
                         break;
                     }
+                    if (GameIpcProtocol.TryParseDebugPresentItem(
+                            ipcEvent.Message, out var presentation, out _)
+                        && presentation is not null)
+                    {
+                        SendDebugItemPresentation(presentation);
+                        break;
+                    }
                     if (GameIpcProtocol.TryParseCrossGameTransition(
                             ipcEvent.Message, out var transition, out _)
                         && transition is not null
@@ -551,6 +558,64 @@ public sealed class SessionCoordinator : IDisposable
             }
         }
     }
+
+    private void SendDebugItemPresentation(DebugPresentItem request)
+    {
+        if (!AllowDebugMenus)
+        {
+            LogEvent("Game rejected an item presentation because debug menus are disabled.");
+            return;
+        }
+        if (request.RecipientPlayer > _session.Seed.PlayerCount)
+        {
+            LogEvent($"Game rejected invalid recipient player {request.RecipientPlayer}.");
+            return;
+        }
+
+        var item = _session.Seed.Placements
+            .Select(placement => placement.Item)
+            .Concat(_session.Seed.StartingItems.Select(starting => starting.Item))
+            .FirstOrDefault(candidate =>
+                string.Equals(candidate.Id, request.ItemId, StringComparison.Ordinal));
+        if (item is null && DebugTrapNames.TryGetValue(request.ItemId, out var trapName))
+        {
+            item = new ItemRef(Game.Oot, request.ItemId, trapName);
+        }
+        if (item is null)
+        {
+            LogEvent($"Game rejected unknown presentation item {request.ItemId}.");
+            return;
+        }
+
+        IReadOnlyDictionary<string, uint> recipientInventory =
+            request.RecipientPlayer == _session.Seed.PlayerId
+                ? _inventory.Items
+                : EmptyItemCounts;
+        var itemName = ProgressiveItemNames.Resolve(
+            _session.Seed, item.Game, item, recipientInventory);
+        _ipc?.Send(GameIpcProtocol.BuildPresentItem(
+            item with { Name = itemName },
+            item.Game,
+            _session.Seed.PlayerId,
+            request.RecipientPlayer,
+            debug: true,
+            viewerPlayer: _session.Seed.PlayerId));
+    }
+
+    private static readonly IReadOnlyDictionary<string, uint> EmptyItemCounts =
+        new Dictionary<string, uint>(StringComparer.Ordinal);
+
+    private static readonly IReadOnlyDictionary<string, string> DebugTrapNames =
+        new Dictionary<string, string>(StringComparer.Ordinal)
+        {
+            ["OOT_TRAP_ICE"] = "Ice Trap",
+            ["OOT_TRAP_FIRE"] = "Fire Trap",
+            ["OOT_TRAP_SHOCK"] = "Shock Trap",
+            ["OOT_TRAP_DRAIN"] = "Drain Trap",
+            ["OOT_TRAP_ANTI_MAGIC"] = "Anti-Magic Trap",
+            ["OOT_TRAP_KNOCKBACK"] = "Knockback Trap",
+            ["OOT_TRAP_RUPOOR"] = "Rupoor Trap",
+        };
 
     private void ApplyInventoryDebugSet(InventoryDebugSet update)
     {

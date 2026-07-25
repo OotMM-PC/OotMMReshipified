@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using System.IO.Compression;
+using System.Text;
 using OotMM.Launcher.Models;
 
 namespace OotMM.Launcher.Tests;
@@ -35,11 +36,19 @@ public sealed class OotmmAssetBuilderTests : IDisposable
         var result = OotmmAssetBuilder.Build(oot.Executable, mm.Executable);
 
         Assert.True(result.Ok, result.Error);
-        Assert.Equal(56, result.Entries);
+        Assert.Equal(69, result.Entries);
         Assert.False(File.Exists(ootLegacy));
         Assert.False(File.Exists(mmLegacy));
-        AssertAssetArchive(Path.Combine(oot.Directory, "mods", OotmmAssetBuilder.ArchiveName));
-        AssertAssetArchive(Path.Combine(mm.Directory, "mods", OotmmAssetBuilder.ArchiveName));
+        AssertAssetArchive(Path.Combine(oot.Directory, "mods", OotmmAssetBuilder.ArchiveName), 34,
+            "objects/mm_gameplay_keep/gStrayFairySkel");
+        var mmAssets = Path.Combine(mm.Directory, "mods", OotmmAssetBuilder.ArchiveName);
+        AssertAssetArchive(mmAssets, 35, "objects/ot_obj_trap/gSlidingBladeTrapDL");
+        AssertTextPath(mmAssets, "objects/ot_obj_key/gSkeletonKeyDL",
+            "objects/ot_obj_key/gSkeletonKeyDL_tri_0");
+        AssertSerializedPath(
+            Path.Combine(oot.Directory, "mods", OotmmAssetBuilder.ArchiveName),
+            "objects/mm_gameplay_keep/gStrayFairySkel",
+            "objects/mm_gameplay_keep/gStrayFairyFlyingAnim");
         Assert.False(OotmmAssetBuilder.NeedsBuild(oot.Executable, isOot: true));
         Assert.False(OotmmAssetBuilder.NeedsBuild(mm.Executable, isOot: false));
     }
@@ -57,15 +66,20 @@ public sealed class OotmmAssetBuilderTests : IDisposable
         return (directory, executable);
     }
 
-    private static void AssertAssetArchive(string path)
+    private static void AssertAssetArchive(string path, int entryCount, string? requiredPath = null)
     {
         Assert.True(File.Exists(path));
         using var archive = ZipFile.OpenRead(path);
-        Assert.Equal(28, archive.Entries.Count);
-        Assert.All(archive.Entries,
-            entry => Assert.StartsWith("objects/ootmm_csmc/", entry.FullName, StringComparison.Ordinal));
+        Assert.Equal(entryCount, archive.Entries.Count);
         Assert.Contains(archive.Entries,
             entry => entry.FullName.EndsWith("gCsmcChestMajorBodyDL", StringComparison.Ordinal));
+        Assert.Contains(archive.Entries,
+            entry => entry.FullName.StartsWith("objects/mm_obj_", StringComparison.Ordinal) ||
+                     entry.FullName.StartsWith("objects/ot_obj_", StringComparison.Ordinal));
+        if (requiredPath is not null)
+        {
+            Assert.Contains(archive.Entries, entry => entry.FullName == requiredPath);
+        }
         Assert.DoesNotContain(archive.Entries,
             entry => entry.FullName.Contains("object_gi_", StringComparison.Ordinal));
     }
@@ -76,6 +90,10 @@ public sealed class OotmmAssetBuilderTests : IDisposable
         ["objects/object_box/gTreasureChestChestSideAndLidDL"] = DisplayList(),
         ["objects/object_box/gTreasureChestFrontTex"] = Rgba16Texture(32, 64),
         ["objects/object_box/gTreasureChestSideAndTopTex"] = Rgba16Texture(32, 32),
+        ["objects/object_key/gSkeletonKeyDL"] = Encoding.UTF8.GetBytes(
+            "<DisplayList><CallDisplayList Path=\"objects/object_key/gSkeletonKeyDL_tri_0\"/></DisplayList>"),
+        ["objects/object_key/gSkeletonKeyDL_tri_0"] = DisplayList(),
+        ["objects/object_trap/gSlidingBladeTrapDL"] = DisplayList(),
     };
 
     private static IReadOnlyDictionary<string, byte[]> MmChestEntries() => new Dictionary<string, byte[]>
@@ -84,7 +102,38 @@ public sealed class OotmmAssetBuilderTests : IDisposable
         ["objects/object_box/gBoxChestLidDL"] = DisplayList(),
         ["objects/object_box/gBoxChestLockTex"] = Rgba16Texture(32, 64),
         ["objects/object_box/gBoxChestCornerTex"] = Rgba16Texture(32, 32),
+        ["objects/gameplay_keep/gStrayFairySkel"] =
+            SerializedPath("objects/gameplay_keep/gStrayFairyFlyingAnim"),
+        ["objects/gameplay_keep/gStrayFairyFlyingAnim"] = DisplayList(),
     };
+
+    private static void AssertSerializedPath(string archivePath, string entryPath, string expected)
+    {
+        using var archive = ZipFile.OpenRead(archivePath);
+        using var stream = archive.GetEntry(entryPath)!.Open();
+        using var output = new MemoryStream();
+        stream.CopyTo(output);
+        var data = output.ToArray();
+        var length = BinaryPrimitives.ReadUInt32LittleEndian(data);
+        Assert.Equal(expected, Encoding.UTF8.GetString(data, sizeof(uint), (int)length));
+    }
+
+    private static void AssertTextPath(string archivePath, string entryPath, string expected)
+    {
+        using var archive = ZipFile.OpenRead(archivePath);
+        using var stream = archive.GetEntry(entryPath)!.Open();
+        using var reader = new StreamReader(stream, Encoding.UTF8);
+        Assert.Contains($"Path=\"{expected}\"", reader.ReadToEnd(), StringComparison.Ordinal);
+    }
+
+    private static byte[] SerializedPath(string path)
+    {
+        var pathBytes = Encoding.UTF8.GetBytes(path);
+        var data = new byte[sizeof(uint) + pathBytes.Length];
+        BinaryPrimitives.WriteUInt32LittleEndian(data, (uint)pathBytes.Length);
+        pathBytes.CopyTo(data, sizeof(uint));
+        return data;
+    }
 
     private static byte[] DisplayList()
     {

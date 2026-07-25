@@ -34,6 +34,7 @@ public sealed class ConfigViewModel : ViewModelBase
     private bool _isActive = true;
     private bool _restoring;
     private GameProcess? _setupProcess;
+    private GameArchiveRefresh? _setupArchiveRefresh;
     private Task<OotmmAssetBuildResult>? _assetBuildTask;
 
     public ConfigViewModel(UiSettings settings, IFilePicker picker, Action previewRuntime,
@@ -499,6 +500,7 @@ public sealed class ConfigViewModel : ViewModelBase
 
         _setupProcess?.Dispose();
         _setupProcess = null;
+        FinishArchiveRefresh();
         RescanAll();
 
         if (_setupQueue.Count > 0)
@@ -514,11 +516,26 @@ public sealed class ConfigViewModel : ViewModelBase
     {
         var next = _setupQueue.Dequeue();
         var gameTitle = next.IsOot ? "Ocarina of Time" : "Majora's Mask";
+        try
+        {
+            _setupArchiveRefresh = GameSetup.PrepareBaseArchiveRefresh(next.ExePath, next.IsOot);
+        }
+        catch (IOException ex)
+        {
+            _setupQueue.Clear();
+            _setupTimer.Stop();
+            StatusMessage = $"Setup could not prepare {gameTitle} assets — {ex.Message}";
+            Raise(nameof(IsSetupInProgress));
+            Raise(nameof(LaunchButtonText));
+            return;
+        }
+
         _setupProcess = new GameProcess(next.ExePath, "", setupOnly: true, setupNeedMq: next.NeedMq);
         if (!_setupProcess.Valid)
         {
             _setupProcess.Dispose();
             _setupProcess = null;
+            FinishArchiveRefresh();
             _setupQueue.Clear();
             _setupTimer.Stop();
             StatusMessage = $"Setup failed to start {gameTitle}.";
@@ -530,6 +547,24 @@ public sealed class ConfigViewModel : ViewModelBase
 
         Raise(nameof(IsSetupInProgress));
         Raise(nameof(LaunchButtonText));
+    }
+
+    private void FinishArchiveRefresh()
+    {
+        if (_setupArchiveRefresh is not { } refresh)
+        {
+            return;
+        }
+
+        _setupArchiveRefresh = null;
+        try
+        {
+            GameSetup.FinishBaseArchiveRefresh(refresh);
+        }
+        catch (IOException ex)
+        {
+            StatusMessage = $"Setup could not restore the previous game archive — {ex.Message}";
+        }
     }
 
     private void StartAssetBuildOrComplete()

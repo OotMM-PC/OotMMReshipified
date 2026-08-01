@@ -215,17 +215,255 @@ public static class OotmmAssetBuilder
             .ToDictionary(path => path, path => NamespaceObject(path, nameSpace), StringComparer.Ordinal);
         var replacements = HashReplacements(mapping);
 
+        var animationData = new HashSet<string>(StringComparer.Ordinal);
         foreach (var (oldPath, newPath) in mapping)
         {
             var data = RewriteKnownPaths(source.Read(oldPath), mapping);
-            output.Emit(newPath, SwapKnownHashes(data, replacements));
+            data = SwapKnownHashes(data, replacements);
+            CollectLinkAnimationData(data, animationData);
+            output.Emit(newPath, data);
         }
 
         log.Add($"Copied {mapping.Count} namespaced {nameSpace} item-model resources.");
+        WriteLinkAnimationData(output, source, animationData, nameSpace, log);
+        WriteForeignMusic(output, source, nameSpace, log);
     }
 
+    // Kamaro's one instrument is byte-identical to OoT's Water Temple flute, so only the sequence travels.
+    private const string KamaroDanceSource = "audio/sequences/KamaroDance_71";
+    private const string KamaroDanceOutput = "custom/music/KamaroDance_fanfare";
+    private const byte OotWaterTempleFont = 25;
+
+    // Both games' ocarina fanfares use soundfont 0 instrument 53, so the sequences travel untouched.
+    private static readonly (string Source, string Output)[] OcarinaFanfares =
+    [
+        ("audio/sequences/SongOfSoaring(Ocarina)_47", "custom/music/SongOfSoaring_fanfare"),
+        ("audio/sequences/SongOfHealing(Ocarina)_48", "custom/music/SongOfHealing_fanfare"),
+        ("audio/sequences/SongOfDoubleTime(Ocarina)_4A", "custom/music/SongOfDoubleTime_fanfare"),
+        ("audio/sequences/LullabyIntro(Ocarina)_51", "custom/music/GoronLullabyIntro_fanfare"),
+        ("audio/sequences/SonataOfAwakening(Ocarina)_5B", "custom/music/SonataOfAwakening_fanfare"),
+        ("audio/sequences/GoronLullaby(Ocarina)_5C", "custom/music/GoronLullaby_fanfare"),
+        ("audio/sequences/NewWaveBossaNova(Ocarina)_5D", "custom/music/NewWaveBossaNova_fanfare"),
+        ("audio/sequences/ElegyOfEmptiness(Ocarina)_5E", "custom/music/ElegyOfEmptiness_fanfare"),
+        ("audio/sequences/OathToOrder(Ocarina)_5F", "custom/music/OathToOrder_fanfare"),
+    ];
+
+    // The six warp-song jingles use OoT's warp-song font, which has no byte-identical MM
+    // counterpart, so that font and its samples ship too and the game retargets the font index.
+    private static readonly (string Source, string Output)[] OotOcarinaFanfares =
+    [
+        ("audio/sequences/052_Minuet_of_Forest", "custom/music/MinuetOfForest_fanfare"),
+        ("audio/sequences/051_Bolero_of_Fire", "custom/music/BoleroOfFire_fanfare"),
+        ("audio/sequences/053_Serenade_of_Water", "custom/music/SerenadeOfWater_fanfare"),
+        ("audio/sequences/054_Requiem_of_Spirit", "custom/music/RequiemOfSpirit_fanfare"),
+        ("audio/sequences/055_Nocturne_of_Shadow", "custom/music/NocturneOfShadow_fanfare"),
+        ("audio/sequences/037_Prelude_of_Light", "custom/music/PreludeOfLight_fanfare"),
+        ("audio/sequences/070_Zeldas_Lullaby", "custom/music/ZeldasLullaby_fanfare"),
+        ("audio/sequences/068_Sarias_Song", "custom/music/SariasSong_fanfare"),
+    ];
+
+    private const string OotWarpFontSource = "audio/fonts/18_Warp_Songs";
+    private const string OotWarpFontOutput = "custom/fonts/OotWarpSongs";
+    private const string OotSamplePrefix = "audio/samples/";
+    // Same length as the source prefix, so the font's length-prefixed strings rewrite in place.
+    private const string OotSampleOutputPrefix = "custom/otsmpl/";
+
+    private static void WriteOotOcarinaMusic(AssetWriter output, ArchiveSet source, List<string> log)
+    {
+        var fanfares = 0;
+        foreach (var (sourcePath, outputPath) in OotOcarinaFanfares)
+        {
+            if (source.TryRead(sourcePath, out var fanfare))
+            {
+                output.Emit(outputPath, fanfare);
+                fanfares++;
+            }
+            else
+            {
+                log.Add($"Skipped {sourcePath}: the oot archives do not carry that sequence.");
+            }
+        }
+
+        if (fanfares > 0)
+        {
+            log.Add($"Copied {fanfares} OoT ocarina song fanfares.");
+        }
+
+        if (!source.TryRead(OotWarpFontSource, out var font))
+        {
+            log.Add($"Skipped {OotWarpFontSource}: the oot archives do not carry that font.");
+            return;
+        }
+
+        var sampleNames = new SortedSet<string>(StringComparer.Ordinal);
+        if (!TryRetargetFontSamplePaths(font, sampleNames))
+        {
+            log.Add($"Skipped {OotWarpFontSource}: its sample references are not the expected shape.");
+            return;
+        }
+
+        foreach (var name in sampleNames)
+        {
+            if (!source.TryRead(OotSamplePrefix + name, out var sample))
+            {
+                log.Add($"Skipped {OotWarpFontSource}: sample {name} is missing.");
+                return;
+            }
+            output.Emit(OotSampleOutputPrefix + name, sample);
+        }
+
+        output.Emit(OotWarpFontOutput, font);
+        log.Add($"Copied the OoT warp-song font and {sampleNames.Count} samples.");
+    }
+
+    private static bool TryRetargetFontSamplePaths(byte[] font, ICollection<string> names)
+    {
+        var prefix = Encoding.ASCII.GetBytes(OotSamplePrefix);
+        var replacement = Encoding.ASCII.GetBytes(OotSampleOutputPrefix);
+        for (var i = 4; i + prefix.Length <= font.Length; i++)
+        {
+            if (!font.AsSpan(i, prefix.Length).SequenceEqual(prefix))
+            {
+                continue;
+            }
+            var length = BinaryPrimitives.ReadUInt32LittleEndian(font.AsSpan(i - 4));
+            if (length <= (uint)prefix.Length || length > 128 || i + length > (uint)font.Length)
+            {
+                return false;
+            }
+            names.Add(Encoding.ASCII.GetString(font, i + prefix.Length, (int)length - prefix.Length));
+            replacement.CopyTo(font, i);
+            i += (int)length - 1;
+        }
+        return names.Count > 0;
+    }
+
+    private static void WriteForeignMusic(
+        AssetWriter output, ArchiveSet source, string nameSpace, List<string> log)
+    {
+        if (nameSpace == "ot")
+        {
+            WriteOotOcarinaMusic(output, source, log);
+            return;
+        }
+        if (nameSpace != "mm")
+        {
+            return;
+        }
+
+        if (!source.TryRead(KamaroDanceSource, out var sequence))
+        {
+            log.Add($"Skipped {KamaroDanceSource}: the mm archives do not carry that sequence.");
+        }
+        else if (!TryRetargetSequenceFont(sequence, OotWaterTempleFont))
+        {
+            log.Add($"Skipped {KamaroDanceSource}: its font list is not the expected shape.");
+        }
+        else
+        {
+            output.Emit(KamaroDanceOutput, sequence);
+            log.Add("Copied Kamaro's dance sequence.");
+        }
+
+        var fanfares = 0;
+        foreach (var (sourcePath, outputPath) in OcarinaFanfares)
+        {
+            if (source.TryRead(sourcePath, out var fanfare))
+            {
+                output.Emit(outputPath, fanfare);
+                fanfares++;
+            }
+            else
+            {
+                log.Add($"Skipped {sourcePath}: the mm archives do not carry that sequence.");
+            }
+        }
+
+        if (fanfares > 0)
+        {
+            log.Add($"Copied {fanfares} MM ocarina song fanfares.");
+        }
+    }
+
+    private static bool TryRetargetSequenceFont(byte[] sequence, byte font)
+    {
+        const int header = 64;
+        if (sequence.Length < header + sizeof(uint))
+        {
+            return false;
+        }
+
+        var dataSize = BinaryPrimitives.ReadUInt32LittleEndian(sequence.AsSpan(header));
+        var fontCount = header + sizeof(uint) + (int)dataSize + 3;
+        if (fontCount + sizeof(uint) >= sequence.Length ||
+            BinaryPrimitives.ReadUInt32LittleEndian(sequence.AsSpan(fontCount)) != 1)
+        {
+            return false;
+        }
+
+        sequence[fontCount + sizeof(uint)] = font;
+        return true;
+    }
+
+    // A link animation names its frame data inline under misc/, which no object folder covers;
+    // RewriteKnownPaths only rewrites objects/ paths, so these names stay un-namespaced.
+    private static void CollectLinkAnimationData(byte[] data, HashSet<string> referenced)
+    {
+        ReadOnlySpan<byte> folder = "misc/link_animetion/"u8;
+        var source = (ReadOnlySpan<byte>)data;
+        for (var offset = 0; offset + folder.Length <= source.Length; offset++)
+        {
+            if (!source[offset..].StartsWith(folder))
+            {
+                continue;
+            }
+
+            var end = offset;
+            while (end < source.Length && source[end] is >= 0x20 and < 0x7F)
+            {
+                end++;
+            }
+
+            referenced.Add(Encoding.UTF8.GetString(source[offset..end]));
+            offset = end - 1;
+        }
+    }
+
+    private static void WriteLinkAnimationData(
+        AssetWriter output, ArchiveSet source, HashSet<string> referenced, string nameSpace, List<string> log)
+    {
+        var copied = 0;
+        foreach (var path in referenced)
+        {
+            if (source.TryRead(path, out var frames))
+            {
+                output.Emit(path, frames);
+                copied++;
+            }
+            else
+            {
+                log.Add($"Skipped {path}: the {nameSpace} archives do not carry that animation data.");
+            }
+        }
+
+        if (copied > 0)
+        {
+            log.Add($"Copied {copied} {nameSpace} link-animation data resources.");
+        }
+    }
+
+    // OoT stores icons under textures/icon_item_*, MM at icon_item_*_yar with no textures/
+    // prefix; some models live in an actor's overlay rather than an object.
     private static bool IsObjectResource(string path) =>
-        path.StartsWith("objects/", StringComparison.Ordinal);
+        path.StartsWith("objects/", StringComparison.Ordinal)
+        || path.StartsWith("overlays/", StringComparison.Ordinal)
+        || path.StartsWith("textures/icon_item", StringComparison.Ordinal)
+        || path.StartsWith("icon_item", StringComparison.Ordinal)
+        || path.StartsWith("textures/item_name", StringComparison.Ordinal)
+        || path.StartsWith("item_name", StringComparison.Ordinal)
+        || path.StartsWith("textures/map_name", StringComparison.Ordinal)
+        || path.StartsWith("map_name", StringComparison.Ordinal)
+        || path.StartsWith("do_action_static", StringComparison.Ordinal);
 
     private static string NamespaceObject(string path, string nameSpace)
     {
@@ -233,6 +471,26 @@ public static class OotmmAssetBuilder
         if (path.StartsWith(prefix, StringComparison.Ordinal))
         {
             return $"objects/{nameSpace}_obj_{path[prefix.Length..]}";
+        }
+
+        const string overlays = "overlays/";
+        if (path.StartsWith(overlays, StringComparison.Ordinal))
+        {
+            return $"overlays/{nameSpace}_{path[overlays.Length..]}";
+        }
+
+        const string textures = "textures/";
+        if (path.StartsWith(textures, StringComparison.Ordinal))
+        {
+            return $"textures/{nameSpace}_{path[textures.Length..]}";
+        }
+
+        if (path.StartsWith("icon_item", StringComparison.Ordinal)
+            || path.StartsWith("item_name", StringComparison.Ordinal)
+            || path.StartsWith("map_name", StringComparison.Ordinal)
+            || path.StartsWith("do_action_static", StringComparison.Ordinal))
+        {
+            return $"{nameSpace}_{path}";
         }
 
         const string objects = "objects/";

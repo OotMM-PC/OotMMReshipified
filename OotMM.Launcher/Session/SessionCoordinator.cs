@@ -9,6 +9,8 @@ namespace OotMM.Launcher.Session;
 /// </summary>
 public sealed class SessionCoordinator : IDisposable
 {
+    private const int HandoffGraceMs = 400;
+
     private readonly Core.Session _session;
     private readonly DispatcherTimer _timer;
     private readonly DispatcherTimer _focusTimer;
@@ -239,6 +241,18 @@ public sealed class SessionCoordinator : IDisposable
             for (var slot = 0; slot < 3; slot++)
             {
                 File.Delete($"{_session.StatePath}.slot{slot}");
+            }
+
+            // A surviving applied/triforce ledger would suppress every re-grant onto the recreated saves.
+            var stateName = Path.GetFileName(_session.StatePath);
+            foreach (var sidecar in Directory.EnumerateFiles(_session.SessionDir))
+            {
+                var name = Path.GetFileName(sidecar);
+                if (name.StartsWith(stateName + ".applied", StringComparison.Ordinal)
+                    || name.StartsWith(stateName + ".triforce", StringComparison.Ordinal))
+                {
+                    File.Delete(sidecar);
+                }
             }
 
             foreach (var path in new[]
@@ -541,9 +555,10 @@ public sealed class SessionCoordinator : IDisposable
                         && transition is not null
                         && AcceptTransition(
                             transition,
-                            AnchorPackets.BuildCrossGameTransition(transition, _session.Seed)))
+                            AnchorPackets.BuildCrossGameTransition(transition, _session.Seed))
+                        && !_ipc.Send(GameIpcProtocol.BuildTransitionAccepted(transition)))
                     {
-                        _ipc.Send(GameIpcProtocol.BuildTransitionAccepted(transition));
+                        CancelPendingTransition("Could not acknowledge the cross-game transition.");
                     }
                     break;
                 case GameIpcEventType.Disconnected:
@@ -650,18 +665,27 @@ public sealed class SessionCoordinator : IDisposable
         }
     }
 
+    private bool IsShuffledCrossGameEntrance(CrossGameTransition transition) =>
+        _session.Seed.Entrances.Any(mapping =>
+            mapping.IsCrossGame
+            && mapping.FromGame == transition.FromGame
+            && mapping.ToGame == transition.ToGame
+            && mapping.To == transition.ToEntrance
+            && mapping.ToNativeId == transition.ToNativeId);
+
+    private bool IsOwlWarp(CrossGameTransition transition) =>
+        transition.ToNativeId is { } nativeId && _session.Seed.EntrancesOwl.Contains(nativeId);
+
+    private bool IsWarpSongTarget(CrossGameTransition transition) =>
+        transition.ToNativeId is { } nativeId && _session.Seed.EntrancesSong.Contains(nativeId);
+
     private bool AcceptTransition(CrossGameTransition transition, string durablePacket)
     {
         if (_pendingTransition is not null
             || transition.FromGame != ActiveGame
             || transition.ToGame == ActiveGame
             || transition.ToNativeId is null
-            || !_session.Seed.Entrances.Any(mapping =>
-                mapping.IsCrossGame
-                && mapping.FromGame == transition.FromGame
-                && mapping.ToGame == transition.ToGame
-                && mapping.To == transition.ToEntrance
-                && mapping.ToNativeId == transition.ToNativeId))
+            || !(IsShuffledCrossGameEntrance(transition) || IsOwlWarp(transition) || IsWarpSongTarget(transition)))
         {
             return false;
         }
@@ -672,8 +696,16 @@ public sealed class SessionCoordinator : IDisposable
         }
 
         _pendingTransition = transition;
-        _handoffDeadline = DateTime.UtcNow.AddMilliseconds(100);
+        // The game saves only once it sees the acknowledgement, so it needs the grace before termination.
+        _handoffDeadline = DateTime.UtcNow.AddMilliseconds(HandoffGraceMs);
         return true;
+    }
+
+    private void CancelPendingTransition(string reason)
+    {
+        _pendingTransition = null;
+        DurableFile.Retire(_session.PendingTransitionPath);
+        LogEvent(reason);
     }
 
     private void PublishIpcSettingsIfDirty()

@@ -1,4 +1,6 @@
+using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace OotMM.Core;
 
@@ -38,6 +40,7 @@ public static class GameIpcProtocol
         public const string PresentItem = "presentItem";
         public const string LocalPlayerPose = "localPlayerPose";
         public const string RemotePlayerPoses = "remotePlayerPoses";
+        public const string PvpHit = "pvpHit";
         public const string ModelReady = "modelReady";
         public const string ModelMounted = "modelMounted";
         public const string CrossGameTransition = "crossGameTransition";
@@ -128,6 +131,94 @@ public static class GameIpcProtocol
             viewerPlayer = viewerPlayer == 0 ? recipientPlayer : viewerPlayer,
             debug,
         });
+
+    /// <summary>The live roster pushed to the running game. The type must stay the first key:
+    /// the game matches this frame by prefix so it can defer parsing off its render path.</summary>
+    public static string BuildRemotePlayerPoses(IReadOnlyList<string> poses)
+    {
+        var builder = new StringBuilder("{\"type\":\"");
+        builder.Append(MessageType.RemotePlayerPoses).Append("\",\"poses\":[");
+        for (var i = 0; i < poses.Count; i++)
+        {
+            if (i > 0)
+            {
+                builder.Append(',');
+            }
+
+            builder.Append(poses[i]);
+        }
+
+        return builder.Append("]}").ToString();
+    }
+
+    /// <summary>A single PvP hit. Kept out of the roster because that frame is last-value:
+    /// superseding it must never drop an event the victim has to apply.</summary>
+    public static string BuildPvpHit(string hitBody) =>
+        "{\"type\":\"" + MessageType.PvpHit + "\",\"hit\":" + hitBody + "}";
+
+    /// <summary>Extracts the bare pose object from a game's localPlayerPose envelope.</summary>
+    public static bool TryParseLocalPlayerPose(string json, out string pose) =>
+        TryParseEnvelopeBody(json, MessageType.LocalPlayerPose, "pose", out pose);
+
+    public static bool TryParsePvpHit(string json, out string hit) =>
+        TryParseEnvelopeBody(json, MessageType.PvpHit, "hit", out hit);
+
+    private static bool TryParseEnvelopeBody(
+        string json, string expectedType, string bodyName, out string body)
+    {
+        body = "";
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || ReadString(root, "type") != expectedType
+                || !root.TryGetProperty(bodyName, out var element)
+                || element.ValueKind != JsonValueKind.Object)
+            {
+                return false;
+            }
+
+            body = element.GetRawText();
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Stamps a bare presence body with what only the launcher knows: packet type,
+    /// display name, and the room identity the relay's allowlist demands on every line.</summary>
+    public static string BuildRelayPresenceLine(
+        string relayType, string body, Seed seed, string clientName)
+    {
+        try
+        {
+            var node = JsonNode.Parse(body);
+            if (node is not JsonObject json)
+            {
+                return "";
+            }
+
+            json["type"] = relayType;
+            json["seedId"] = seed.SeedId;
+            json["teamId"] = seed.TeamId;
+            // The relay authorises against the launcher's identity, so the launcher asserts the
+            // sender rather than trusting whatever the game reported.
+            json["sourcePlayer"] = seed.PlayerId;
+            if (clientName.Length > 0)
+            {
+                json["clientName"] = clientName;
+            }
+
+            return json.ToJsonString();
+        }
+        catch (JsonException)
+        {
+            return "";
+        }
+    }
 
     public static bool TryParseHello(string json, out GameIpcHello? hello, out string error)
     {

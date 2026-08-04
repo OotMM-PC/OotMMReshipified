@@ -140,7 +140,7 @@ public sealed class MainWindowViewModel : ViewModelBase
 
         _relayStarted = true;
         var storeDir = Path.Combine(AppContext.BaseDirectory, "world_state");
-        var rules = new OotMM.Core.Relay.RelayRules();
+        var rules = new OotMM.Core.Relay.RelayRules { Pvp = _settings.EnablePvp };
         var engine = new OotMM.Core.Relay.RelayEngine(storeDir, rules);
         new Thread(() => engine.Run(port, CancellationToken.None)) { IsBackground = true }.Start();
     }

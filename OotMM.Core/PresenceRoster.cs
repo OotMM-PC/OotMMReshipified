@@ -1,6 +1,6 @@
 namespace OotMM.Core;
 
-/// <summary>The roster-meta line the games poll every frame from presence.in;
+/// <summary>The roster-meta line for the file-based presence transport;
 /// carries session rules and the live game-speed setting.</summary>
 public sealed record RosterMeta(
     bool ShowNames,

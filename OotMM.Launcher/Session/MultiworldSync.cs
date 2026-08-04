@@ -1,4 +1,6 @@
+using System.Text;
 using OotMM.Core;
+using OotMM.Core.Relay;
 
 namespace OotMM.Launcher.Session;
 
@@ -41,6 +43,12 @@ public sealed class MultiworldSync : IDisposable
     private string _lastSessionMeta = "";
 
     private static TimeSpan Now => TimeSpan.FromMilliseconds(Environment.TickCount64);
+
+    // Live presence: each remote player's newest pose, and PvP hits aimed at us that the running
+    // game has not been handed yet.
+    private readonly Dictionary<int, (string Line, TimeSpan At)> _remotePoses = new();
+    private readonly List<string> _pendingHits = [];
+    private readonly List<string> _deferredInbound = [];
 
     public MultiworldSync(Core.Session session, string host, ushort port, string clientName)
     {
@@ -113,10 +121,45 @@ public sealed class MultiworldSync : IDisposable
     /// <summary>A loopback relay target is not answering; the owner may host it.</summary>
     public event Action? AutoHostWanted;
 
-    public void Tick(HashSet<string> completedChecks, string activeInbox)
+    /// <summary>Drains the socket at presence rate so poses arrive at animation rate. Durable
+    /// traffic defers to <see cref="Tick"/>, which is far too expensive to run this often.</summary>
+    public void PumpPresence()
     {
         var inbound = new List<string>();
         _relay.Pump(inbound);
+        var now = Now;
+        foreach (var line in inbound)
+        {
+            switch (RelayProtocol.ExtractStringField(line, "type"))
+            {
+                case PresencePackets.PlayerState:
+                    var source = RelayProtocol.ExtractIntField(line, "sourcePlayer", -1);
+                    if (source >= 0 && source != _session.Seed.PlayerId)
+                    {
+                        _remotePoses[source] = (line, now);
+                    }
+
+                    break;
+                case PresencePackets.PvpHit:
+                    // Delivered to the game exactly once, so only hits aimed at us are kept.
+                    if (RelayProtocol.ExtractIntField(line, "targetPlayer") == _session.Seed.PlayerId)
+                    {
+                        _pendingHits.Add(line);
+                    }
+
+                    break;
+                default:
+                    _deferredInbound.Add(line);
+                    break;
+            }
+        }
+    }
+
+    public void Tick(HashSet<string> completedChecks, string activeInbox)
+    {
+        PumpPresence();
+        var inbound = new List<string>(_deferredInbound);
+        _deferredInbound.Clear();
         var now = Now;
 
         if (!_relay.Connected && _relay.Host is "127.0.0.1" or "localhost" or "::1"
@@ -324,6 +367,49 @@ public sealed class MultiworldSync : IDisposable
         {
             SyncChanged?.Invoke();
         }
+    }
+
+    /// <summary>Publishes the running game's pose to the room. Lossy by design: the ephemeral
+    /// queue keeps one slot, so a backed-up connection sends the newest pose, never a backlog.
+    /// </summary>
+    public void SubmitLocalPose(string poseBody)
+    {
+        var line = GameIpcProtocol.BuildRelayPresenceLine(
+            PresencePackets.PlayerState, poseBody, _session.Seed, _clientName);
+        if (line.Length > 0)
+        {
+            _relay.QueueEphemeralLine("pose", line);
+        }
+    }
+
+    /// <summary>Relays an attack the game's puppet hurtboxes registered. Hits are events, so
+    /// they go through the reliable queue rather than the last-value slot.</summary>
+    public void SubmitPvpHit(string hitBody)
+    {
+        var line = GameIpcProtocol.BuildRelayPresenceLine(
+            PresencePackets.PvpHit, hitBody, _session.Seed, "");
+        if (line.Length > 0)
+        {
+            _relay.QueueLine(line);
+        }
+    }
+
+    /// <summary>The roster for the running game: every live remote pose, plus the hits aimed at
+    /// us since the last call. Hits are handed over once and then dropped.</summary>
+    public (List<string> Poses, List<string> Hits) TakeRemotePresence()
+    {
+        var cutoff = Now - TimeSpan.FromSeconds(3);
+        foreach (var stale in _remotePoses
+                     .Where(entry => entry.Value.At < cutoff)
+                     .Select(entry => entry.Key)
+                     .ToList())
+        {
+            _remotePoses.Remove(stale);
+        }
+
+        var hits = new List<string>(_pendingHits);
+        _pendingHits.Clear();
+        return (_remotePoses.Values.Select(entry => entry.Line).ToList(), hits);
     }
 
     public void Dispose() => _relay.Dispose();

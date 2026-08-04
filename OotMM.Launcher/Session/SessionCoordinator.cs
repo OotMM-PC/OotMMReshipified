@@ -14,6 +14,7 @@ public sealed class SessionCoordinator : IDisposable
     private readonly Core.Session _session;
     private readonly DispatcherTimer _timer;
     private readonly DispatcherTimer _focusTimer;
+    private readonly DispatcherTimer _presenceTimer;
     private readonly MultiworldSync? _multiworld;
     private readonly SessionInventory _inventory;
     private bool _leftButtonWasDown;
@@ -46,6 +47,10 @@ public sealed class SessionCoordinator : IDisposable
         // poll hands keyboard focus to the game when one lands there.
         _focusTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(25) };
         _focusTimer.Tick += (_, _) => PollGameFocus();
+        // Puppets replay joint tables verbatim, so poses must arrive at the game's logic rate;
+        // at the session tick's rate the animation visibly steps.
+        _presenceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+        _presenceTimer.Tick += (_, _) => PumpPresence();
 
         if (_multiworld is not null)
         {
@@ -184,6 +189,7 @@ public sealed class SessionCoordinator : IDisposable
         {
             _timer.Start();
             _focusTimer.Start();
+            _presenceTimer.Start();
         }
 
         return error;
@@ -214,6 +220,7 @@ public sealed class SessionCoordinator : IDisposable
         _ended = true;
         _timer.Stop();
         _focusTimer.Stop();
+        _presenceTimer.Stop();
         _process?.Terminate();
         _process?.Dispose();
         _process = null;
@@ -298,6 +305,7 @@ public sealed class SessionCoordinator : IDisposable
     {
         _timer.Stop();
         _focusTimer.Stop();
+        _presenceTimer.Stop();
         _process?.Terminate();
         _process?.Dispose();
         _ipc?.Dispose();
@@ -375,7 +383,6 @@ public sealed class SessionCoordinator : IDisposable
             return;
         }
 
-        PumpIpc();
         DrainActiveOutbox();
         SyncCompletedFromState(force: false);
         _multiworld?.Tick(CompletedChecks, ActiveInbox);
@@ -536,6 +543,17 @@ public sealed class SessionCoordinator : IDisposable
                     LogEvent($"{GameInfo.Title(ActiveGame)} connected to the launcher.");
                     break;
                 case GameIpcEventType.Message:
+                    // Presence is the hottest message on the pipe, so it is matched first.
+                    if (GameIpcProtocol.TryParseLocalPlayerPose(ipcEvent.Message, out var pose))
+                    {
+                        _multiworld?.SubmitLocalPose(pose);
+                        break;
+                    }
+                    if (GameIpcProtocol.TryParsePvpHit(ipcEvent.Message, out var pvpHit))
+                    {
+                        _multiworld?.SubmitPvpHit(pvpHit);
+                        break;
+                    }
                     if (GameIpcProtocol.TryParseInventoryDebugSet(
                             ipcEvent.Message, out var itemUpdate, out _)
                         && itemUpdate is not null)
@@ -720,6 +738,38 @@ public sealed class SessionCoordinator : IDisposable
         {
             _settingsRevision = revision;
             _ipcSettingsDirty = false;
+        }
+    }
+
+    /// <summary>Carries presence in both directions at the game's logic rate: the game's own
+    /// pose out to the room, and the room's newest poses back down.</summary>
+    private void PumpPresence()
+    {
+        if (_ended)
+        {
+            return;
+        }
+
+        PumpIpc();
+        _multiworld?.PumpPresence();
+        PublishRemotePresence();
+    }
+
+    /// <summary>Pushes the live roster to the running game. Sent every tick even when empty:
+    /// the game treats an arriving roster as the signal that this is a multiplayer session, and
+    /// its absence as the signal to stop publishing poses.</summary>
+    private void PublishRemotePresence()
+    {
+        if (_multiworld is null || _ipc?.IsConnected != true)
+        {
+            return;
+        }
+
+        var (poses, hits) = _multiworld.TakeRemotePresence();
+        _ipc.Send(GameIpcProtocol.BuildRemotePlayerPoses(poses));
+        foreach (var hit in hits)
+        {
+            _ipc.Send(GameIpcProtocol.BuildPvpHit(hit));
         }
     }
 

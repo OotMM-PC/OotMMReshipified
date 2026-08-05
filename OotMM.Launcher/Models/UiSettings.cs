@@ -2,6 +2,8 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using OotMM.Core.Models;
+
 namespace OotMM.Launcher.Models;
 
 /// <summary>
@@ -23,6 +25,9 @@ public sealed class UiSettings
     public bool EnablePvp { get; set; }
     public List<string> PlayerModelOot { get; set; } = [];
     public List<string> PlayerModelMm { get; set; } = [];
+    /// <summary>Model sets larger than this are neither sent nor accepted; that puppet keeps
+    /// the vanilla fill instead.</summary>
+    public int MaxModelSyncMb { get; set; } = ModelSyncPolicy.DefaultMaxMegabytes;
 
     /// <summary>0 = follow the active game, 1 = always OoT gold, 2 = always MM violet.</summary>
     public int Theme { get; set; }

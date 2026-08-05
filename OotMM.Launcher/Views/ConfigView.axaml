@@ -92,8 +92,9 @@
                             <ItemsControl ItemsSource="{Binding OotModelPicks}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:ModelPickViewModel">
-                                        <CheckBox Content="{Binding Name}"
-                                                  IsChecked="{Binding IsSelected}" />
+                                        <CheckBox IsChecked="{Binding IsSelected}">
+                                            <TextBlock Text="{Binding Name}" />
+                                        </CheckBox>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
@@ -102,8 +103,9 @@
                             <ItemsControl ItemsSource="{Binding MmModelPicks}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:ModelPickViewModel">
-                                        <CheckBox Content="{Binding Name}"
-                                                  IsChecked="{Binding IsSelected}" />
+                                        <CheckBox IsChecked="{Binding IsSelected}">
+                                            <TextBlock Text="{Binding Name}" />
+                                        </CheckBox>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>

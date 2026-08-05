@@ -36,13 +36,40 @@
             <Expander Header="{Binding ModsSummary}" IsVisible="{Binding HasMods}">
                 <StackPanel Spacing="4">
                     <TextBlock Classes="dim" FontSize="12"
-                               Text="Load order: the top mod overrides everything below it." />
+                               Text="Load order: the top mod overrides everything below it. Changes apply on the next game launch." />
                     <TextBlock Classes="dim" FontSize="12"
-                               Text="Order changes apply on the next game launch." />
-                    <ItemsControl ItemsSource="{Binding Mods}">
-                        <ItemsControl.ItemTemplate>
+                               Text="Ctrl/Shift-click selects several; drag the selection or use the block buttons." />
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <Button Classes="orderArrow" Content="⤒"
+                                Command="{Binding MoveSelectedTopCommand}"
+                                ToolTip.Tip="Move the selected mods to the top (highest priority)." />
+                        <Button Classes="orderArrow" Content="▲"
+                                Command="{Binding MoveSelectedUpCommand}"
+                                ToolTip.Tip="Move the selected mods up one slot." />
+                        <Button Classes="orderArrow" Content="▼"
+                                Command="{Binding MoveSelectedDownCommand}"
+                                ToolTip.Tip="Move the selected mods down one slot." />
+                        <Button Classes="orderArrow" Content="⤓"
+                                Command="{Binding MoveSelectedBottomCommand}"
+                                ToolTip.Tip="Move the selected mods to the bottom (lowest priority)." />
+                    </StackPanel>
+                    <ListBox x:Name="ModsList" ItemsSource="{Binding Mods}"
+                             SelectionMode="Multiple" Background="Transparent"
+                             DragDrop.AllowDrop="True">
+                        <ListBox.Styles>
+                            <Style Selector="ListBoxItem" x:DataType="vm:ModEntryViewModel">
+                                <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}" />
+                                <Setter Property="Padding" Value="6,2" />
+                                <Setter Property="MinHeight" Value="0" />
+                                <Setter Property="CornerRadius" Value="5" />
+                            </Style>
+                        </ListBox.Styles>
+                        <ListBox.ItemTemplate>
                             <DataTemplate x:DataType="vm:ModEntryViewModel">
-                                <Grid ColumnDefinitions="Auto,4,Auto,10,*" Margin="0,2">
+                                <!-- The name stays OUTSIDE the checkbox: clicking it selects and
+                                     drags; only the box itself toggles enable. -->
+                                <Grid ColumnDefinitions="Auto,4,Auto,10,Auto,8,*" Margin="0,1"
+                                      Background="Transparent">
                                     <Button Grid.Column="0" Classes="orderArrow" Content="▲"
                                             Command="{Binding MoveUpCommand}"
                                             IsEnabled="{Binding !IsFirst}"
@@ -51,10 +78,14 @@
                                             Command="{Binding MoveDownCommand}"
                                             IsEnabled="{Binding !IsLast}"
                                             ToolTip.Tip="Lower priority (let the mod above load over this one)." />
-                                    <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6">
-                                        <CheckBox Content="{Binding Name}"
-                                                  IsChecked="{Binding Enabled}"
-                                                  IsEnabled="{Binding !Required}" />
+                                    <CheckBox Grid.Column="4" IsChecked="{Binding Enabled}"
+                                              IsEnabled="{Binding !Required}"
+                                              Padding="0" MinWidth="0"
+                                              VerticalAlignment="Center"
+                                              ToolTip.Tip="Enable or disable this archive." />
+                                    <StackPanel Grid.Column="6" Orientation="Horizontal" Spacing="6"
+                                                Background="Transparent" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding Name}" VerticalAlignment="Center" />
                                         <TextBlock Classes="dim" Text="(required)"
                                                    VerticalAlignment="Center"
                                                    IsVisible="{Binding Required}"
@@ -62,8 +93,8 @@
                                     </StackPanel>
                                 </Grid>
                             </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
                     <TextBlock Classes="error" TextWrapping="Wrap"
                                IsVisible="{Binding HasLoadOrderError}"
                                Text="{Binding LoadOrderError}" />

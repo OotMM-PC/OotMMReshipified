@@ -10,11 +10,13 @@ public sealed record ModInfo(string Name, string FullPath, bool Required, bool E
 /// Semantics ported from the original launcher:
 ///  - only *.o2r / *.otr files inside "mods" next to the game exe count;
 ///  - a ".disabled" filename suffix means present-but-disabled;
-///  - launcher-built OoTMM assets and seed music are required and forced on;
+///  - launcher-built OoTMM assets and seed music are required and forced on, but
+///    rank like anything else so a pack can override what they provide;
 ///  - "zz_coop_*" / "zz_localmodel_*" are launcher-regenerated internals, hidden
 ///    from the user list;
-///  - required archives sort first, then alphabetical, then loadorder.txt ranks
-///    listed archives above unlisted ones (top line = highest priority).
+///  - loadorder.txt ranks listed archives above unlisted ones (top line = highest
+///    priority). The list reads top-priority-first, which is the reverse of the
+///    order the games mount in, because a later mount overrides an earlier one.
 /// </summary>
 public static class ModScanner
 {
@@ -70,41 +72,33 @@ public static class ModScanner
             mods.Add(new ModInfo(display, file, required, required || enabled));
         }
 
-        mods.Sort((a, b) => a.Required != b.Required
-            ? b.Required.CompareTo(a.Required) // required archives listed first
-            : string.CompareOrdinal(a.Name, b.Name));
-
         var order = LoadLoadOrder(modsDir);
-        if (order.Count > 0)
-        {
-            int RankOf(ModInfo mod)
-            {
-                var stem = Path.GetFileNameWithoutExtension(mod.Name);
-                for (var i = 0; i < order.Count; i++)
-                {
-                    if (string.Equals(order[i], mod.Name, StringComparison.OrdinalIgnoreCase)
-                        || string.Equals(order[i], stem, StringComparison.OrdinalIgnoreCase))
-                    {
-                        return i;
-                    }
-                }
 
-                return -1;
+        int RankOf(ModInfo mod)
+        {
+            var stem = Path.GetFileNameWithoutExtension(mod.Name);
+            for (var i = 0; i < order.Count; i++)
+            {
+                if (string.Equals(order[i], mod.Name, StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(order[i], stem, StringComparison.OrdinalIgnoreCase))
+                {
+                    return i;
+                }
             }
 
-            // Stable sort: listed archives above unlisted, manifest order among
-            // themselves; unlisted keep the required-first alphabetical order
-            // (lowest priority — matches the games, which mount unlisted first).
-            mods = mods
-                .Select((mod, index) => (mod, index, rank: RankOf(mod)))
-                .OrderBy(x => x.rank < 0 ? 1 : 0)
-                .ThenBy(x => x.rank)
-                .ThenBy(x => x.index)
-                .Select(x => x.mod)
-                .ToList();
+            return -1;
         }
 
-        return mods;
+        // Listed archives rank above unlisted ones. Unlisted fall back to the games' own
+        // tie-break, which is alphabetical mount order, so the last name alphabetically ends
+        // up highest and the list shows them reversed.
+        return mods
+            .Select(mod => (mod, rank: RankOf(mod)))
+            .OrderBy(x => x.rank < 0 ? 1 : 0)
+            .ThenBy(x => x.rank)
+            .ThenByDescending(x => x.mod.Name, StringComparer.Ordinal)
+            .Select(x => x.mod)
+            .ToList();
     }
 
     /// <summary>Enables/disables an archive on disk via the ".disabled" filename

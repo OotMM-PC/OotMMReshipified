@@ -17,6 +17,7 @@ public sealed class GameCardViewModel : ViewModelBase
     private string _exePath = "";
     private IReadOnlyList<string> _missingArchives = [];
     private string _loadOrderError = "";
+    private string _modsSignature = "";
 
     public GameCardViewModel(bool isOot, IFilePicker picker, Action onChanged)
     {
@@ -24,7 +25,16 @@ public sealed class GameCardViewModel : ViewModelBase
         _picker = picker;
         _onChanged = onChanged;
         BrowseExeCommand = new RelayCommand(() => _ = BrowseExeAsync());
+        MoveSelectedTopCommand = new RelayCommand(() => MoveSelectedToEdge(top: true));
+        MoveSelectedUpCommand = new RelayCommand(() => MoveSelectedByOne(-1));
+        MoveSelectedDownCommand = new RelayCommand(() => MoveSelectedByOne(+1));
+        MoveSelectedBottomCommand = new RelayCommand(() => MoveSelectedToEdge(top: false));
     }
+
+    public RelayCommand MoveSelectedTopCommand { get; }
+    public RelayCommand MoveSelectedUpCommand { get; }
+    public RelayCommand MoveSelectedDownCommand { get; }
+    public RelayCommand MoveSelectedBottomCommand { get; }
 
     public bool IsOot { get; }
 
@@ -116,8 +126,8 @@ public sealed class GameCardViewModel : ViewModelBase
         Raise(nameof(ExeExists));
     }
 
-    /// <summary>Re-lists the mods dir; the on-disk state (.disabled renames) is
-    /// the sole source of the enabled flags, so rescans can never lose them.</summary>
+    /// <summary>Disk (files + loadorder.txt) is the sole source of truth, re-read fresh every
+    /// call; the view only rebuilds on real change, so rescans cannot disturb selection.</summary>
     public void RefreshMods()
     {
         var scanned = ModScanner.Scan(ExePath);
@@ -126,6 +136,15 @@ public sealed class GameCardViewModel : ViewModelBase
             return; // transient exe/drive hiccup: keep the last known list
         }
 
+        var signature = string.Join("\n", scanned.Select(m => $"{m.Name}|{m.EnabledOnDisk}|{m.Required}"));
+        if (signature == _modsSignature)
+        {
+            return;
+        }
+
+        _modsSignature = signature;
+        var selected = Mods.Where(m => m.IsSelected).Select(m => m.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         Mods.Clear();
         foreach (var info in scanned)
         {
@@ -134,6 +153,7 @@ public sealed class GameCardViewModel : ViewModelBase
                 onToggled: () => OnModToggled(entry),
                 moveUp: () => MoveMod(entry, -1),
                 moveDown: () => MoveMod(entry, +1));
+            entry.IsSelected = selected.Contains(info.Name);
             Mods.Add(entry);
         }
 
@@ -142,8 +162,7 @@ public sealed class GameCardViewModel : ViewModelBase
         Raise(nameof(ModsSummary));
     }
 
-    /// <summary>Reorders a mod one slot and persists loadorder.txt immediately,
-    /// like the original launcher; the games pick it up on their next boot.</summary>
+    /// <summary>Reorders a mod one slot; the games pick the manifest up on their next boot.</summary>
     private void MoveMod(ModEntryViewModel entry, int delta)
     {
         var index = Mods.IndexOf(entry);
@@ -154,7 +173,103 @@ public sealed class GameCardViewModel : ViewModelBase
         }
 
         Mods.Move(index, target);
+        PersistOrder();
+    }
+
+    // A selected mod resting against the edge or another selected one stays put, so a
+    // scattered selection converges into a block instead of jamming.
+    private void MoveSelectedByOne(int delta)
+    {
+        var moved = false;
+        if (delta < 0)
+        {
+            for (var i = 1; i < Mods.Count; i++)
+            {
+                if (Mods[i].IsSelected && !Mods[i - 1].IsSelected)
+                {
+                    Mods.Move(i, i - 1);
+                    moved = true;
+                }
+            }
+        }
+        else
+        {
+            for (var i = Mods.Count - 2; i >= 0; i--)
+            {
+                if (Mods[i].IsSelected && !Mods[i + 1].IsSelected)
+                {
+                    Mods.Move(i, i + 1);
+                    moved = true;
+                }
+            }
+        }
+
+        if (moved)
+        {
+            PersistOrder();
+        }
+    }
+
+    private void MoveSelectedToEdge(bool top)
+    {
+        var selected = Mods.Where(m => m.IsSelected).ToList();
+        if (selected.Count == 0 || selected.Count == Mods.Count)
+        {
+            return;
+        }
+
+        var rest = Mods.Where(m => !m.IsSelected).ToList();
+        var reordered = top ? selected.Concat(rest) : rest.Concat(selected);
+        ReplaceOrder(reordered.ToList());
+    }
+
+    /// <summary>Drop target for drag reordering: inserts the selected block at
+    /// <paramref name="insertIndex"/> (an index into the current list, 0..Count).</summary>
+    public void MoveSelectedTo(int insertIndex)
+    {
+        var selected = Mods.Where(m => m.IsSelected).ToList();
+        if (selected.Count == 0)
+        {
+            return;
+        }
+
+        var rest = Mods.Where(m => !m.IsSelected).ToList();
+        // The insert position was measured against the full list; count only unselected rows
+        // above it, because the selected ones are being pulled out.
+        var restIndex = Math.Clamp(
+            Mods.Take(Math.Clamp(insertIndex, 0, Mods.Count)).Count(m => !m.IsSelected),
+            0, rest.Count);
+        rest.InsertRange(restIndex, selected);
+        ReplaceOrder(rest);
+    }
+
+    private void ReplaceOrder(IReadOnlyList<ModEntryViewModel> reordered)
+    {
+        if (reordered.SequenceEqual(Mods))
+        {
+            return;
+        }
+
+        for (var target = 0; target < reordered.Count; target++)
+        {
+            var current = Mods.IndexOf(reordered[target]);
+            if (current != target)
+            {
+                Mods.Move(current, target);
+            }
+        }
+
+        PersistOrder();
+    }
+
+    // Written from the full current list, so new archives get ranked where they appear and
+    // vanished ones drop out: the manifest converges to disk.
+    private void PersistOrder()
+    {
         UpdateMoveFlags();
+        // The next rescan will read back exactly this order; matching the signature now keeps it
+        // from rebuilding the list (and disturbing the selection) over our own write.
+        _modsSignature = string.Join("\n", Mods.Select(m => $"{m.Name}|{m.Enabled}|{m.Required}"));
         LoadOrderError = ModScanner.SaveLoadOrder(ExePath, Mods.Select(m => m.Name))
             ? ""
             : "Could not write loadorder.txt in the mods folder.";

@@ -9,6 +9,7 @@ public sealed class ModEntryViewModel : ViewModelBase
     private bool _enabled;
     private bool _isFirst;
     private bool _isLast;
+    private bool _isSelected;
 
     public ModEntryViewModel(ModInfo info, Action onToggled, Action moveUp, Action moveDown)
     {
@@ -34,6 +35,12 @@ public sealed class ModEntryViewModel : ViewModelBase
     {
         get => _isFirst;
         set => Set(ref _isFirst, value);
+    }
+
+    public bool IsSelected
+    {
+        get => _isSelected;
+        set => Set(ref _isSelected, value);
     }
 
     public bool IsLast

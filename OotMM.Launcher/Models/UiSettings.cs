@@ -25,6 +25,10 @@ public sealed class UiSettings
     public bool EnablePvp { get; set; }
     public List<string> PlayerModelOot { get; set; } = [];
     public List<string> PlayerModelMm { get; set; } = [];
+    /// <summary>Port the selected OoT model into MM's adult form at launch.</summary>
+    public bool PortOotAdultModel { get; set; } = true;
+    /// <summary>Port the selected OoT child model into MM's human form at launch.</summary>
+    public bool PortOotChildModel { get; set; }
     /// <summary>Model sets larger than this are neither sent nor accepted; that puppet keeps
     /// the vanilla fill instead.</summary>
     public int MaxModelSyncMb { get; set; } = ModelSyncPolicy.DefaultMaxMegabytes;

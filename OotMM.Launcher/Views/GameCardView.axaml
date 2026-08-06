@@ -100,6 +100,21 @@
                                Text="{Binding LoadOrderError}" />
                 </StackPanel>
             </Expander>
+
+            <!-- MM only: render human Link from the player's OoT model archives. -->
+            <StackPanel Spacing="6" IsVisible="{Binding !IsOot}">
+                <CheckBox IsChecked="{Binding PortAdultModel}"
+                          ToolTip.Tip="Adult Link in MM renders your selected OoT model; unchecked, the vanilla adult is used.">
+                    <TextBlock Text="Use my OoT model for adult Link" TextWrapping="Wrap" />
+                </CheckBox>
+                <CheckBox IsChecked="{Binding PortChildModel}"
+                          ToolTip.Tip="Overrides MM human-form model mods; Deku, Goron, Zora and Fierce Deity stay with MM mods.">
+                    <TextBlock Text="Use my OoT child model as MM's human Link" TextWrapping="Wrap" />
+                </CheckBox>
+                <TextBlock Classes="dim" FontSize="12" TextWrapping="Wrap"
+                           IsVisible="{Binding HasModelPortStatus}"
+                           Text="{Binding ModelPortStatus}" />
+            </StackPanel>
         </StackPanel>
     </ContentControl>
 

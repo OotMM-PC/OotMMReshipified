@@ -40,10 +40,21 @@ public static class ModelRepack
         return null;
     }
 
-    private sealed class RewritePlan(string prefix)
+    private sealed class RewritePlan
     {
-        public byte[] Prefix8 { get; } = Encoding.ASCII.GetBytes(prefix + "objs/");
+        // Same-length string substitutions applied wherever they appear in resource data.
+        public List<(byte[] From, byte[] To)> Tokens { get; } = [];
         public Dictionary<byte, List<(byte[] From, byte[] To)>> HashBuckets { get; } = [];
+
+        public void AddToken(string from, string to)
+        {
+            if (from.Length != to.Length)
+            {
+                throw new ArgumentException("rewrite tokens must be the same length");
+            }
+
+            Tokens.Add((Encoding.ASCII.GetBytes(from), Encoding.ASCII.GetBytes(to)));
+        }
 
         public void AddPath(string oldPath, string newPath)
         {
@@ -86,16 +97,25 @@ public static class ModelRepack
     private static void ApplyRewrites(byte[] data, RewritePlan plan, ref int stringRefs, ref int hashRefs)
     {
         var span = data.AsSpan();
-        var linkPrefix = Encoding.ASCII.GetBytes(LinkPrefix);
         for (var i = 0; i < data.Length;)
         {
             var remaining = data.Length - i;
-            if (data[i] == (byte)'o' && remaining >= linkPrefix.Length
-                && span.Slice(i, linkPrefix.Length).SequenceEqual(linkPrefix))
+            var rewrote = false;
+            foreach (var (from, to) in plan.Tokens)
             {
-                plan.Prefix8.CopyTo(span[i..]);
-                stringRefs++;
-                i += linkPrefix.Length;
+                if (data[i] == from[0] && remaining >= from.Length
+                    && span.Slice(i, from.Length).SequenceEqual(from))
+                {
+                    to.CopyTo(span[i..]);
+                    stringRefs++;
+                    i += from.Length;
+                    rewrote = true;
+                    break;
+                }
+            }
+
+            if (rewrote)
+            {
                 continue;
             }
 
@@ -136,11 +156,105 @@ public static class ModelRepack
     public static RepackResult RepackVanillaFill(IReadOnlyList<string> baseArchives, string output, int playerId) =>
         Build(baseArchives, output, playerId, linkObjectsOnly: true);
 
+    /// <summary>Ports one asset directory to a same-length name (e.g. OoT's object_link_boy to
+    /// MM's ot_obj_link_boy), rewriting entry paths, path strings, and CRC64 references alike.
+    /// Zero kept entries is success without output: the set simply has nothing to port.</summary>
+    public static RepackResult PortDirectory(
+        IReadOnlyList<string> inputs, string output, string fromDir, string toDir)
+    {
+        if (fromDir.Length != toDir.Length)
+        {
+            return new RepackResult(false, 0, 0, 0, "directory names must be the same length");
+        }
+
+        var plainPrefix = $"objects/{fromDir}/";
+        var altPrefix = $"alt/objects/{fromDir}/";
+        var plan = new RewritePlan();
+        plan.AddToken(fromDir, toDir);
+        var entries = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+        var fromAlt = new Dictionary<string, bool>(StringComparer.Ordinal);
+
+        try
+        {
+            foreach (var input in inputs)
+            {
+                using var zip = ZipFile.OpenRead(input);
+                foreach (var entry in zip.Entries)
+                {
+                    if (entry.FullName.EndsWith('/') || entry.Length == 0)
+                    {
+                        continue;
+                    }
+
+                    var path = entry.FullName.Replace('\\', '/');
+                    var isAlt = path.StartsWith(altPrefix, StringComparison.Ordinal);
+                    if (!isAlt && !path.StartsWith(plainPrefix, StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    // alt/ is a load-time overlay the target game may have disabled; entries
+                    // flatten to canonical so the port always resolves. Alt (HD) wins collisions.
+                    var canonicalSource = isAlt ? path["alt/".Length..] : path;
+                    var target = canonicalSource.Replace(fromDir, toDir);
+                    if (!isAlt && fromAlt.GetValueOrDefault(target))
+                    {
+                        continue;
+                    }
+
+                    using var stream = entry.Open();
+                    using var buffer = new MemoryStream();
+                    stream.CopyTo(buffer);
+                    entries[target] = buffer.ToArray();
+                    fromAlt[target] = isAlt;
+                    plan.AddPath(path, target);
+                    if (isAlt)
+                    {
+                        plan.AddPath(canonicalSource, target);
+                    }
+                }
+            }
+
+            if (entries.Count == 0)
+            {
+                File.Delete(output);
+                return new RepackResult(true, 0, 0, 0);
+            }
+
+            var stringRefs = 0;
+            var hashRefs = 0;
+            foreach (var data in entries.Values)
+            {
+                ApplyRewrites(data, plan, ref stringRefs, ref hashRefs);
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(output) ?? ".");
+            var temporary = output + ".tmp";
+            using (var file = File.Create(temporary))
+            using (var zip = new ZipArchive(file, ZipArchiveMode.Create))
+            {
+                foreach (var (path, data) in entries)
+                {
+                    using var stream = zip.CreateEntry(path, CompressionLevel.Fastest).Open();
+                    stream.Write(data);
+                }
+            }
+
+            File.Move(temporary, output, overwrite: true);
+            return new RepackResult(true, entries.Count, stringRefs, hashRefs);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            return new RepackResult(false, 0, 0, 0, ex.Message);
+        }
+    }
+
     private static RepackResult Build(
         IReadOnlyList<string> inputs, string output, int playerId, bool linkObjectsOnly)
     {
         var prefix = PlayerPrefix(playerId);
-        var plan = new RewritePlan(prefix);
+        var plan = new RewritePlan();
+        plan.AddToken(LinkPrefix, prefix + "objs/object_link");
         var entries = new Dictionary<string, byte[]>(StringComparer.Ordinal);
 
         try

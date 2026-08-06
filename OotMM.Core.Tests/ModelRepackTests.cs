@@ -220,3 +220,127 @@ public class ModelSyncTests
         Assert.False(ModelSyncPolicy.WithinCap(group.TotalBytes, ModelSyncPolicy.DefaultMaxMegabytes));
     }
 }
+
+public class ModelPortTests
+{
+    private static string MakeArchive(string dir, params (string Path, byte[] Data)[] entries)
+    {
+        var archive = Path.Combine(dir, Guid.NewGuid().ToString("N") + ".o2r");
+        using var file = File.Create(archive);
+        using var zip = new ZipArchive(file, ZipArchiveMode.Create);
+        foreach (var (path, data) in entries)
+        {
+            using var s = zip.CreateEntry(path).Open();
+            s.Write(data);
+        }
+
+        return archive;
+    }
+
+    [Fact]
+    public void PortDirectory_RenamesPathsStringsAndHashes()
+    {
+        var dir = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            const string skel = "objects/object_link_boy/gLinkAdultSkel";
+            const string tex = "objects/object_link_boy/gLinkAdultTunicTex";
+            var body = new List<byte>();
+            body.AddRange(Encoding.ASCII.GetBytes(tex));
+            body.Add(0);
+            var hash = Crc64.OfPath(tex);
+            body.AddRange(BitConverter.GetBytes((uint)(hash >> 32)));
+            body.AddRange(BitConverter.GetBytes((uint)hash));
+
+            var input = MakeArchive(dir,
+                (skel, body.ToArray()),
+                (tex, [1, 2, 3]),
+                // The child dir shares the object_link stem and must NOT be renamed by a boy port.
+                ("objects/object_link_child/gLinkChildSkel", [9]));
+
+            var output = Path.Combine(dir, "port.o2r");
+            var result = ModelRepack.PortDirectory([input], output, "object_link_boy", "ot_obj_link_boy");
+
+            Assert.True(result.Ok, result.Error);
+            Assert.Equal(2, result.Kept);
+
+            using var ported = ZipFile.OpenRead(output);
+            var names = ported.Entries.Select(e => e.FullName).OrderBy(n => n).ToList();
+            Assert.Equal(
+                ["objects/ot_obj_link_boy/gLinkAdultSkel", "objects/ot_obj_link_boy/gLinkAdultTunicTex"],
+                names);
+
+            using var stream = ported.GetEntry("objects/ot_obj_link_boy/gLinkAdultSkel")!.Open();
+            using var buffer = new MemoryStream();
+            stream.CopyTo(buffer);
+            var rewritten = buffer.ToArray();
+
+            const string expectedTex = "objects/ot_obj_link_boy/gLinkAdultTunicTex";
+            Assert.Equal(expectedTex, Encoding.ASCII.GetString(rewritten, 0, expectedTex.Length));
+            var newHash = Crc64.OfPath(expectedTex);
+            var tail = rewritten.AsSpan(expectedTex.Length + 1);
+            Assert.Equal((uint)(newHash >> 32), BitConverter.ToUInt32(tail[..4]));
+            Assert.Equal((uint)newHash, BitConverter.ToUInt32(tail.Slice(4, 4)));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void PortDirectory_FlattensAltEntriesToCanonicalAndPrefersAltOnCollision()
+    {
+        var dir = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            var input = MakeArchive(dir,
+                ("alt/objects/object_link_boy/gLinkAdultTunicTex", [7, 7]),
+                ("objects/object_link_boy/gLinkAdultTunicTex", [1]));
+            var output = Path.Combine(dir, "port.o2r");
+
+            var result = ModelRepack.PortDirectory([input], output, "object_link_boy", "ot_obj_link_boy");
+
+            Assert.True(result.Ok, result.Error);
+            using var ported = ZipFile.OpenRead(output);
+            var entry = ported.Entries.Single();
+            Assert.Equal("objects/ot_obj_link_boy/gLinkAdultTunicTex", entry.FullName);
+            Assert.Equal(2, entry.Length); // the alt variant won the collision
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    /// <summary>A child-only or voice-only selection has nothing for the adult port; that is
+    /// success without an output, and any stale output is removed.</summary>
+    [Fact]
+    public void PortDirectory_TreatsNoMatchingEntriesAsSuccessAndRemovesStaleOutput()
+    {
+        var dir = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            var input = MakeArchive(dir, ("objects/object_link_child/gLinkChildSkel", [1]));
+            var output = Path.Combine(dir, "port.o2r");
+            File.WriteAllBytes(output, [0]);
+
+            var result = ModelRepack.PortDirectory([input], output, "object_link_boy", "ot_obj_link_boy");
+
+            Assert.True(result.Ok, result.Error);
+            Assert.Equal(0, result.Kept);
+            Assert.False(File.Exists(output));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void PortDirectory_RefusesLengthChangingRenames()
+    {
+        var result = ModelRepack.PortDirectory([], "out.o2r", "object_link_boy", "objects_link_boy2");
+        Assert.False(result.Ok);
+    }
+}

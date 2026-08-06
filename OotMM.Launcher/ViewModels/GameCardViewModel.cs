@@ -18,6 +18,9 @@ public sealed class GameCardViewModel : ViewModelBase
     private IReadOnlyList<string> _missingArchives = [];
     private string _loadOrderError = "";
     private string _modsSignature = "";
+    private bool _portAdultModel = true;
+    private bool _portChildModel;
+    private string _modelPortStatus = "";
 
     public GameCardViewModel(bool isOot, IFilePicker picker, Action onChanged)
     {
@@ -66,6 +69,47 @@ public sealed class GameCardViewModel : ViewModelBase
     }
 
     public bool HasLoadOrderError => LoadOrderError.Length > 0;
+
+    /// <summary>MM-card-only toggle: adult Link in MM renders from the player's OoT model.</summary>
+    public bool PortAdultModel
+    {
+        get => _portAdultModel;
+        set
+        {
+            if (Set(ref _portAdultModel, value))
+            {
+                _onChanged();
+            }
+        }
+    }
+
+    /// <summary>MM-card-only toggle: MM's human form renders from the player's OoT child model.</summary>
+    public bool PortChildModel
+    {
+        get => _portChildModel;
+        set
+        {
+            if (Set(ref _portChildModel, value))
+            {
+                _onChanged();
+            }
+        }
+    }
+
+    /// <summary>Launch-time port outcome line; set by the owner, shown under the toggles.</summary>
+    public string ModelPortStatus
+    {
+        get => _modelPortStatus;
+        set
+        {
+            if (Set(ref _modelPortStatus, value))
+            {
+                Raise(nameof(HasModelPortStatus));
+            }
+        }
+    }
+
+    public bool HasModelPortStatus => ModelPortStatus.Length > 0;
 
     public string ExePath
     {

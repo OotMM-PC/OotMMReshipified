@@ -59,6 +59,8 @@ public sealed class ConfigViewModel : ViewModelBase
         _hostRelay = settings.HostRelay;
         _relayPort = settings.RelayPort;
         _hostPvp = settings.EnablePvp;
+        MmCard.PortAdultModel = settings.PortOotAdultModel;
+        MmCard.PortChildModel = settings.PortOotChildModel;
         _multiworldAddress = settings.MultiworldAddress;
         _playerName = settings.PlayerName;
         OotCard.ExePath = settings.OotExePath;
@@ -451,6 +453,31 @@ public sealed class ConfigViewModel : ViewModelBase
             return;
         }
 
+        // Carry the OoT model into MM; failure means vanilla, never a blocked launch.
+        var picked = OotModelPicks.Where(p => p.IsSelected).Select(p => p.Name).ToList();
+        var adult = LocalModelPort.EnsureAdult(OotCard.ExePath, MmCard.ExePath, picked, MmCard.PortAdultModel);
+        var child = LocalModelPort.EnsureChild(OotCard.ExePath, MmCard.ExePath, picked, MmCard.PortChildModel);
+        var notes = new List<string>();
+        if (adult.Error.Length > 0)
+        {
+            notes.Add($"adult port failed ({adult.Error})");
+        }
+        else if (adult.Active)
+        {
+            notes.Add("adult Link wears your OoT model");
+        }
+
+        if (child.Error.Length > 0)
+        {
+            notes.Add($"child port failed ({child.Error})");
+        }
+        else if (child.Active)
+        {
+            notes.Add("human Link wears your OoT child model");
+        }
+
+        MmCard.ModelPortStatus = notes.Count > 0 ? $"In MM: {string.Join("; ", notes)}." : "";
+
         StatusMessage = "";
         _startSession(seed, SeedPath, OotCard.ExePath, MmCard.ExePath);
     }
@@ -649,6 +676,8 @@ public sealed class ConfigViewModel : ViewModelBase
         _settings.HostRelay = HostRelay;
         _settings.RelayPort = RelayPort;
         _settings.EnablePvp = HostPvp;
+        _settings.PortOotAdultModel = MmCard.PortAdultModel;
+        _settings.PortOotChildModel = MmCard.PortChildModel;
         _settings.MultiworldAddress = MultiworldAddress;
         _settings.PlayerName = PlayerName;
         // An empty pick collection means "no scan results", never "deselect all";

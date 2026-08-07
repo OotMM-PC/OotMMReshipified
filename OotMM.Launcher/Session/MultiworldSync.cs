@@ -75,6 +75,16 @@ public sealed class MultiworldSync : IDisposable
     /// <summary>True once the relay's catch-up stream reached its live marker.</summary>
     public bool Live { get; private set; }
 
+    /// <summary>The relay socket can carry room traffic right now.</summary>
+    public bool Ready => _relay.Connected && _relay.ProtocolReady;
+
+    /// <summary>Bumped per reconnect; a new generation means queued lines were discarded.</summary>
+    public ulong ConnectionGeneration => _relay.ConnectionGeneration;
+
+    /// <summary>Queues a model-sync line for ordered delivery; false when the queue is full,
+    /// so chunk streaming pauses instead of dropping mid-archive.</summary>
+    public bool SendModelLine(string line) => _relay.QueueLine(line);
+
     // Server session rules (OOTMM_SESSION_META); players cannot override them.
     public bool Pvp { get; private set; }
     public bool DeathLink { get; private set; }
@@ -116,6 +126,8 @@ public sealed class MultiworldSync : IDisposable
     public event Action<string, bool>? EventLogged;
     /// <summary>An own fact confirmed by the relay: mark the check collected locally.</summary>
     public event Action<Game, string>? OwnFactConfirmed;
+    /// <summary>A model-sync side-channel line (announce, request, or chunk) arrived.</summary>
+    public event Action<string>? ModelLineReceived;
     /// <summary>Remote receipts or transport state changed; refresh logic/progress.</summary>
     public event Action? SyncChanged;
     /// <summary>A loopback relay target is not answering; the owner may host it.</summary>
@@ -302,6 +314,13 @@ public sealed class MultiworldSync : IDisposable
                     RulesChanged?.Invoke();
                 }
 
+                continue;
+            }
+
+            if (type is PresencePackets.ModAnnounce or PresencePackets.ModRequest
+                or PresencePackets.ModChunk)
+            {
+                ModelLineReceived?.Invoke(line);
                 continue;
             }
 

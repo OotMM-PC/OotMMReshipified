@@ -16,6 +16,7 @@ public sealed class SessionCoordinator : IDisposable
     private readonly DispatcherTimer _focusTimer;
     private readonly DispatcherTimer _presenceTimer;
     private readonly MultiworldSync? _multiworld;
+    private readonly ModelSyncCoordinator? _modelSync;
     private readonly SessionInventory _inventory;
     private bool _leftButtonWasDown;
     private GameProcess? _process;
@@ -35,10 +36,12 @@ public sealed class SessionCoordinator : IDisposable
     private long _settingsRevision;
     private long _forceUnlockSeq;
 
-    public SessionCoordinator(Core.Session session, MultiworldSync? multiworld = null)
+    public SessionCoordinator(Core.Session session, MultiworldSync? multiworld = null,
+                              ModelSyncCoordinator? modelSync = null)
     {
         _session = session;
         _multiworld = multiworld;
+        _modelSync = modelSync;
         _inventory = new SessionInventory(session.Seed, session.DebugItemsPath);
         ActiveGame = session.RecoveredTransition?.ToGame ?? session.Seed.ResolveStartingGame();
         _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
@@ -77,6 +80,11 @@ public sealed class SessionCoordinator : IDisposable
                 _ipcSettingsDirty = true;
                 StateChanged?.Invoke();
             };
+            if (_modelSync is not null)
+            {
+                _multiworld.ModelLineReceived += _modelSync.HandleLine;
+                _modelSync.Logged += LogEvent;
+            }
         }
     }
 
@@ -198,16 +206,21 @@ public sealed class SessionCoordinator : IDisposable
     public void RestartGame()
     {
         _process?.Terminate();
+        // The dead game's archives just unlocked: model sets learned mid-session mount now.
+        _modelSync?.InstallNow();
         LogEvent($"Restarting {GameInfo.Title(ActiveGame)}…");
         StartActiveGame(null, null);
     }
 
-    public void SwitchGame()
+    /// <summary>Dev-mode game switch. <paramref name="ootAge"/> (0 adult, 1 child) rides the
+    /// boot config so MM's crossAge mapper arrives in the chosen age; OoT ignores it.</summary>
+    public void SwitchGame(uint? ootAge = null)
     {
         _process?.Terminate();
+        _modelSync?.InstallNow();
         ActiveGame = ActiveGame == Game.Oot ? Game.Mm : Game.Oot;
         LogEvent($"Switching to {GameInfo.Title(ActiveGame)}…");
-        StartActiveGame(null, null);
+        StartActiveGame(null, ActiveGame == Game.Mm ? ootAge : null);
     }
 
     public void EndSession(string reason)
@@ -226,6 +239,8 @@ public sealed class SessionCoordinator : IDisposable
         _process = null;
         _ipc?.Dispose();
         _ipc = null;
+        // The dead game's mods just unlocked; any install the session blocked lands now.
+        _modelSync?.InstallNow();
         _multiworld?.Dispose();
         Ended?.Invoke(reason);
     }
@@ -309,6 +324,7 @@ public sealed class SessionCoordinator : IDisposable
         _process?.Terminate();
         _process?.Dispose();
         _ipc?.Dispose();
+        _modelSync?.InstallNow();
         _multiworld?.Dispose();
     }
 
@@ -386,6 +402,11 @@ public sealed class SessionCoordinator : IDisposable
         DrainActiveOutbox();
         SyncCompletedFromState(force: false);
         _multiworld?.Tick(CompletedChecks, ActiveInbox);
+        if (_multiworld is not null)
+        {
+            _modelSync?.Tick(_multiworld.Ready, _multiworld.ConnectionGeneration,
+                             IsRunning ? ActiveGame : null);
+        }
         ReconcileInventory();
         LayoutEmbeddedGame();
         PublishIpcSettingsIfDirty();
@@ -403,6 +424,7 @@ public sealed class SessionCoordinator : IDisposable
             if (DateTime.UtcNow >= _handoffDeadline)
             {
                 _process?.Terminate();
+                _modelSync?.InstallNow();
                 ActiveGame = transition.ToGame;
                 _session.RecoveredTransition = transition;
                 LogEvent($"Crossing over to {GameInfo.Title(transition.ToGame)}…");
@@ -752,6 +774,11 @@ public sealed class SessionCoordinator : IDisposable
 
         PumpIpc();
         _multiworld?.PumpPresence();
+        if (_multiworld is not null)
+        {
+            _modelSync?.PumpSend(_multiworld.Ready);
+        }
+
         PublishRemotePresence();
     }
 

@@ -13,10 +13,22 @@
         <Button Content="Restart active game" HorizontalAlignment="Stretch"
                 Command="{Binding RestartGameCommand}"
                 ToolTip.Tip="Closes and relaunches the active game from its last save." />
-        <Button Content="Switch to the other game" HorizontalAlignment="Stretch"
-                Foreground="#E08A7A" IsVisible="{Binding ShowSwitchGame}"
+        <Button Content="Switch to Majora's Mask…" HorizontalAlignment="Stretch"
+                Foreground="#E08A7A" IsVisible="{Binding ShowSwitchToMm}"
+                ToolTip.Tip="Dev mode: forcing a game switch outside a cross-game load zone may leave logic. Pick which age Link arrives as in MM.">
+            <Button.Flyout>
+                <MenuFlyout>
+                    <MenuItem Header="Arrive as child Link"
+                              Command="{Binding SwitchGameAsChildCommand}" />
+                    <MenuItem Header="Arrive as adult Link"
+                              Command="{Binding SwitchGameAsAdultCommand}" />
+                </MenuFlyout>
+            </Button.Flyout>
+        </Button>
+        <Button Content="Switch to Ocarina of Time" HorizontalAlignment="Stretch"
+                Foreground="#E08A7A" IsVisible="{Binding ShowSwitchToOot}"
                 Command="{Binding SwitchGameCommand}"
-                ToolTip.Tip="Dev mode: forcing a game switch outside a cross-game load zone may leave logic." />
+                ToolTip.Tip="Dev mode: forcing a game switch outside a cross-game load zone may leave logic. OoT resumes at its save's age." />
         <Button Content="End session" HorizontalAlignment="Stretch"
                 Command="{Binding EndSessionCommand}"
                 ToolTip.Tip="Saves are kept — relaunching this seed resumes where you left off." />

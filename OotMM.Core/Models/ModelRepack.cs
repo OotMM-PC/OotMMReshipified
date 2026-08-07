@@ -17,9 +17,64 @@ public static class ModelRepack
     /// prefix below is exactly as long as the one it replaces.</summary>
     public static string PlayerPrefix(int playerId) => $"p{playerId & 0xFF:x2}";
 
+    /// <summary>True when the file is a zip container.</summary>
+    public static bool IsZipArchive(string path)
+    {
+        try
+        {
+            Span<byte> magic = stackalloc byte[2];
+            using var file = File.OpenRead(path);
+            return file.Read(magic) == 2 && magic[0] == (byte)'P' && magic[1] == (byte)'K';
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>True when repacks can enumerate the file: a zip, or an old MPQ-format .otr.</summary>
+    public static bool IsReadableArchive(string path) =>
+        IsZipArchive(path) || MpqReader.LooksLikeMpq(path);
+
+    // Both container formats feed the repackers through this one shape; loads are deferred
+    // so filtered-out entries of a big zip are never decompressed.
+    private static IEnumerable<(string Path, Func<byte[]> Load)> ReadArchiveEntries(string input)
+    {
+        if (IsZipArchive(input))
+        {
+            using var zip = ZipFile.OpenRead(input);
+            foreach (var entry in zip.Entries)
+            {
+                if (entry.FullName.EndsWith('/') || entry.Length == 0)
+                {
+                    continue;
+                }
+
+                yield return (entry.FullName, () =>
+                {
+                    using var stream = entry.Open();
+                    using var buffer = new MemoryStream();
+                    stream.CopyTo(buffer);
+                    return buffer.ToArray();
+                });
+            }
+
+            yield break;
+        }
+
+        if (MpqReader.TryReadEntries(input) is { } mpq)
+        {
+            foreach (var (path, data) in mpq)
+            {
+                yield return (path, () => data);
+            }
+        }
+    }
+
     private const string CanonicalDir = "objects/";
-    private const string LinkPrefix = "objects/object_link";
-    private const string AltLinkPrefix = "alt/objects/object_link";
+    // object_link* holds each game's native player assets; ot_obj_link* holds the
+    // OoT models the launcher ports into MM. Both follow a puppet across players.
+    private static readonly string[] LinkDirs = ["objects/object_link", "objects/ot_obj_link"];
 
     /// <summary>Where an entry lands in the player namespace, or null when it belongs to no
     /// namespace and must be dropped: keeping it would override the asset globally. Alt-asset and
@@ -27,14 +82,15 @@ public static class ModelRepack
     public static string? NamespacedPath(string path, string prefix)
     {
         var normalized = path.Replace('\\', '/');
-        if (normalized.StartsWith(AltLinkPrefix, StringComparison.Ordinal))
+        var canonical = normalized.StartsWith("alt/", StringComparison.Ordinal)
+            ? normalized["alt/".Length..]
+            : normalized;
+        foreach (var dir in LinkDirs)
         {
-            return prefix + "objs/" + normalized["alt/objects/".Length..];
-        }
-
-        if (normalized.StartsWith(LinkPrefix, StringComparison.Ordinal))
-        {
-            return prefix + "objs/" + normalized[CanonicalDir.Length..];
+            if (canonical.StartsWith(dir, StringComparison.Ordinal))
+            {
+                return prefix + "objs/" + canonical[CanonicalDir.Length..];
+            }
         }
 
         return null;
@@ -178,15 +234,9 @@ public static class ModelRepack
         {
             foreach (var input in inputs)
             {
-                using var zip = ZipFile.OpenRead(input);
-                foreach (var entry in zip.Entries)
+                foreach (var (rawPath, load) in ReadArchiveEntries(input))
                 {
-                    if (entry.FullName.EndsWith('/') || entry.Length == 0)
-                    {
-                        continue;
-                    }
-
-                    var path = entry.FullName.Replace('\\', '/');
+                    var path = rawPath.Replace('\\', '/');
                     var isAlt = path.StartsWith(altPrefix, StringComparison.Ordinal);
                     if (!isAlt && !path.StartsWith(plainPrefix, StringComparison.Ordinal))
                     {
@@ -202,10 +252,7 @@ public static class ModelRepack
                         continue;
                     }
 
-                    using var stream = entry.Open();
-                    using var buffer = new MemoryStream();
-                    stream.CopyTo(buffer);
-                    entries[target] = buffer.ToArray();
+                    entries[target] = load();
                     fromAlt[target] = isAlt;
                     plan.AddPath(path, target);
                     if (isAlt)
@@ -254,24 +301,23 @@ public static class ModelRepack
     {
         var prefix = PlayerPrefix(playerId);
         var plan = new RewritePlan();
-        plan.AddToken(LinkPrefix, prefix + "objs/object_link");
+        foreach (var dir in LinkDirs)
+        {
+            plan.AddToken(dir, prefix + "objs/" + dir[CanonicalDir.Length..]);
+        }
+
         var entries = new Dictionary<string, byte[]>(StringComparer.Ordinal);
 
         try
         {
             foreach (var input in inputs)
             {
-                using var zip = ZipFile.OpenRead(input);
-                foreach (var entry in zip.Entries)
+                foreach (var (rawPath, load) in ReadArchiveEntries(input))
                 {
-                    if (entry.FullName.EndsWith('/') || entry.Length == 0)
-                    {
-                        continue;
-                    }
-
-                    var path = entry.FullName.Replace('\\', '/');
-                    // Base archives hold the whole game; only the Link namespace is wanted.
-                    if (linkObjectsOnly && !path.StartsWith(LinkPrefix, StringComparison.Ordinal))
+                    var path = rawPath.Replace('\\', '/');
+                    // Base archives hold the whole game; only the canonical Link namespace is
+                    // wanted for a fill (no alt overlays).
+                    if (linkObjectsOnly && !LinkDirs.Any(d => path.StartsWith(d, StringComparison.Ordinal)))
                     {
                         continue;
                     }
@@ -281,13 +327,10 @@ public static class ModelRepack
                         continue;
                     }
 
-                    using var stream = entry.Open();
-                    using var buffer = new MemoryStream();
-                    stream.CopyTo(buffer);
                     // A later archive in the set overrides an earlier one, matching mount order.
-                    entries[target] = buffer.ToArray();
+                    entries[target] = load();
                     plan.AddPath(path, target);
-                    if (path.StartsWith(AltLinkPrefix, StringComparison.Ordinal))
+                    if (path.StartsWith("alt/", StringComparison.Ordinal))
                     {
                         plan.AddPath(path["alt/".Length..], target);
                     }

@@ -71,6 +71,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         }
 
         MultiworldSync? multiworld = null;
+        ModelSyncCoordinator? modelSync = null;
         if (seed.IsMultiworld)
         {
             var (host, port) = ResolveRelayEndpoint();
@@ -81,10 +82,11 @@ public sealed class MainWindowViewModel : ViewModelBase
 
             multiworld = new MultiworldSync(session, host, port, _settings.PlayerName);
             multiworld.AutoHostWanted += () => StartHostedRelay(port);
+            modelSync = ModelSyncCoordinator.Create(session, _settings, multiworld.SendModelLine);
         }
 
         _coordinator?.Dispose();
-        _coordinator = new SessionCoordinator(session, multiworld);
+        _coordinator = new SessionCoordinator(session, multiworld, modelSync);
         _coordinator.Ended += EndSessionToConfig;
         _coordinator.StateChanged += ApplyAccent;
 

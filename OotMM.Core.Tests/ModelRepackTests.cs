@@ -172,6 +172,18 @@ public class ModelSyncTests
     }
 
     [Fact]
+    public void EmptySetAnnounce_RoundTripsAndPassesTheAllowlist()
+    {
+        var line = ModelSyncProtocol.BuildAnnounce(
+            TestSeed, new ModelAnnounce(2, Game.Mm, "", new string('0', 64), 1, 0, 0));
+
+        Assert.True(SideChannelPolicy.IsRoomPacketAllowed(line, TestClient));
+        var parsed = ModelSyncProtocol.ParseAnnounce(line);
+        Assert.NotNull(parsed);
+        Assert.Equal(0, parsed!.Count);
+    }
+
+    [Fact]
     public void RequestAndChunkLines_AreAcceptedByTheRelayAllowlist()
     {
         var request = ModelSyncProtocol.BuildRequest(TestSeed, new ModelRequest(2, 3, "abc123"));

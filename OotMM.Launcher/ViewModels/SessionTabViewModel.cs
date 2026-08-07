@@ -1,3 +1,4 @@
+using OotMM.Core;
 using OotMM.Launcher.Session;
 
 namespace OotMM.Launcher.ViewModels;
@@ -19,6 +20,8 @@ public sealed class SessionTabViewModel : ViewModelBase
     {
         RestartGameCommand = new RelayCommand(() => { }, () => CoordinatorReady);
         SwitchGameCommand = new RelayCommand(() => { }, () => CoordinatorReady);
+        SwitchGameAsChildCommand = new RelayCommand(() => { }, () => CoordinatorReady);
+        SwitchGameAsAdultCommand = new RelayCommand(() => { }, () => CoordinatorReady);
         EndSessionCommand = new RelayCommand(() => { }, () => CoordinatorReady);
         ResetProgressCommand = new RelayCommand(() => { }, () => CoordinatorReady);
         OpenGameMenuCommand = new RelayCommand(() => { }, () => CoordinatorReady);
@@ -32,8 +35,11 @@ public sealed class SessionTabViewModel : ViewModelBase
         _coordinator = coordinator;
         _resetProgress = resetProgress;
         RestartGameCommand = new RelayCommand(coordinator.RestartGame);
-        SwitchGameCommand = new RelayCommand(coordinator.SwitchGame);
+        SwitchGameCommand = new RelayCommand(() => SwitchTo(null));
+        SwitchGameAsChildCommand = new RelayCommand(() => SwitchTo(1));
+        SwitchGameAsAdultCommand = new RelayCommand(() => SwitchTo(0));
         EndSessionCommand = new RelayCommand(end);
+        coordinator.StateChanged += RaiseSwitchVisibility;
         ResetProgressCommand = new RelayCommand(OnResetClicked);
         OpenGameMenuCommand = new RelayCommand(coordinator.OpenInGameMenu);
         ResetSpeedCommand = new RelayCommand(() => SpeedPercent = 100);
@@ -48,7 +54,21 @@ public sealed class SessionTabViewModel : ViewModelBase
 
     public RelayCommand RestartGameCommand { get; }
     public RelayCommand SwitchGameCommand { get; }
+    public RelayCommand SwitchGameAsChildCommand { get; }
+    public RelayCommand SwitchGameAsAdultCommand { get; }
     public RelayCommand EndSessionCommand { get; }
+
+    private void SwitchTo(uint? ootAge)
+    {
+        _coordinator?.SwitchGame(ootAge);
+        RaiseSwitchVisibility();
+    }
+
+    private void RaiseSwitchVisibility()
+    {
+        Raise(nameof(ShowSwitchToMm));
+        Raise(nameof(ShowSwitchToOot));
+    }
     public RelayCommand ResetProgressCommand { get; }
     public RelayCommand OpenGameMenuCommand { get; }
     public RelayCommand ResetSpeedCommand { get; }
@@ -114,12 +134,15 @@ public sealed class SessionTabViewModel : ViewModelBase
         {
             if (Set(ref _devMode, value))
             {
-                Raise(nameof(ShowSwitchGame));
+                RaiseSwitchVisibility();
             }
         }
     }
 
-    public bool ShowSwitchGame => CoordinatorReady && DevMode;
+    // Only the OoT→MM direction takes an age choice; OoT always resumes its save's age.
+    public bool ShowSwitchToMm => CoordinatorReady && DevMode && _coordinator?.ActiveGame == Game.Oot;
+
+    public bool ShowSwitchToOot => CoordinatorReady && DevMode && _coordinator?.ActiveGame == Game.Mm;
 
     // Multiworld never offers a local reset: the other worlds (and the relay)
     // keep the progress, so a one-sided wipe just desyncs the session.

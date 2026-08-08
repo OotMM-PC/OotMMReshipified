@@ -31,6 +31,7 @@ public static class GameIpcProtocol
         public const string SettingsApplied = "settingsApplied";
         public const string CheckCollected = "checkCollected";
         public const string CheckAccepted = "checkAccepted";
+        public const string CompletedChecks = "completedChecks";
         public const string DeliverItem = "deliverItem";
         public const string ItemApplied = "itemApplied";
         public const string InventorySnapshot = "inventorySnapshot";
@@ -155,6 +156,69 @@ public static class GameIpcProtocol
     /// superseding it must never drop an event the victim has to apply.</summary>
     public static string BuildPvpHit(string hitBody) =>
         "{\"type\":\"" + MessageType.PvpHit + "\",\"hit\":" + hitBody + "}";
+
+    public static string BuildCheckAccepted(string checkKey) =>
+        JsonSerializer.Serialize(new
+        {
+            type = MessageType.CheckAccepted,
+            check = checkKey,
+        });
+
+    /// <summary>The full completed-check snapshot sent when a game connects, so a fresh
+    /// process starts from the launcher's durable record instead of an empty set.</summary>
+    public static string BuildCompletedChecks(IEnumerable<string> checkKeys) =>
+        JsonSerializer.Serialize(new
+        {
+            type = MessageType.CompletedChecks,
+            checks = checkKeys,
+        });
+
+    public static bool TryParseCheckCollected(string json, out string checkKey, out string error)
+    {
+        checkKey = "";
+        error = "";
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || ReadString(root, "type") != MessageType.CheckCollected)
+            {
+                error = "message is not a check collection report";
+                return false;
+            }
+
+            var check = ReadString(root, "check");
+            if (check.Length == 0 || GameInfo.TryFromSeedTag(SplitCheckKey(check, out var checkId)) is null
+                || checkId.Length == 0)
+            {
+                error = "check collection report has an invalid check key";
+                return false;
+            }
+
+            checkKey = check;
+            return true;
+        }
+        catch (JsonException)
+        {
+            error = "check collection report is not valid JSON";
+            return false;
+        }
+    }
+
+    /// <summary>Splits an "oot:CHECK_ID" key into its game tag (returned) and check id.</summary>
+    public static string SplitCheckKey(string checkKey, out string checkId)
+    {
+        var separator = checkKey.IndexOf(':');
+        if (separator <= 0 || separator == checkKey.Length - 1)
+        {
+            checkId = "";
+            return "";
+        }
+
+        checkId = checkKey[(separator + 1)..];
+        return checkKey[..separator];
+    }
 
     /// <summary>Extracts the bare pose object from a game's localPlayerPose envelope.</summary>
     public static bool TryParseLocalPlayerPose(string json, out string pose) =>

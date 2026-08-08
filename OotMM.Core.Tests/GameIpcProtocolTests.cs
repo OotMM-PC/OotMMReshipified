@@ -156,6 +156,61 @@ public class GameIpcProtocolTests
     }
 
     [Fact]
+    public void TryParseCheckCollected_ReadsValidKey()
+    {
+        Assert.True(GameIpcProtocol.TryParseCheckCollected(
+            """{"type":"checkCollected","check":"oot:OOT_KOKIRI_SWORD_CHEST"}""",
+            out var checkKey, out var error), error);
+        Assert.Equal("oot:OOT_KOKIRI_SWORD_CHEST", checkKey);
+
+        Assert.Equal("oot", GameIpcProtocol.SplitCheckKey(checkKey, out var checkId));
+        Assert.Equal("OOT_KOKIRI_SWORD_CHEST", checkId);
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("""{"type":"checkCollected","check":""}""")]
+    [InlineData("""{"type":"checkCollected","check":"OOT_NO_GAME_TAG"}""")]
+    [InlineData("""{"type":"checkCollected","check":"bad:OOT_CHECK"}""")]
+    [InlineData("""{"type":"checkCollected","check":"oot:"}""")]
+    [InlineData("""{"type":"checkAccepted","check":"oot:OOT_CHECK"}""")]
+    [InlineData("invalid")]
+    public void TryParseCheckCollected_RejectsInvalidKeys(string json)
+    {
+        Assert.False(GameIpcProtocol.TryParseCheckCollected(json, out var checkKey, out var error));
+        Assert.Equal("", checkKey);
+        Assert.NotEmpty(error);
+    }
+
+    [Fact]
+    public void CheckAcceptedAndSnapshot_EchoKeysVerbatim()
+    {
+        using var accepted = JsonDocument.Parse(
+            GameIpcProtocol.BuildCheckAccepted("mm:MM_WOODFALL_CHEST"));
+        Assert.Equal(
+            GameIpcProtocol.MessageType.CheckAccepted,
+            accepted.RootElement.GetProperty("type").GetString());
+        Assert.Equal("mm:MM_WOODFALL_CHEST", accepted.RootElement.GetProperty("check").GetString());
+
+        using var snapshot = JsonDocument.Parse(GameIpcProtocol.BuildCompletedChecks(
+            ["oot:OOT_CHECK_A", "mm:MM_CHECK_B"]));
+        Assert.Equal(
+            GameIpcProtocol.MessageType.CompletedChecks,
+            snapshot.RootElement.GetProperty("type").GetString());
+        var checks = snapshot.RootElement.GetProperty("checks");
+        Assert.Equal(2, checks.GetArrayLength());
+        Assert.Equal("oot:OOT_CHECK_A", checks[0].GetString());
+        Assert.Equal("mm:MM_CHECK_B", checks[1].GetString());
+    }
+
+    [Fact]
+    public void BuildCompletedChecks_AllowsEmptySnapshot()
+    {
+        using var snapshot = JsonDocument.Parse(GameIpcProtocol.BuildCompletedChecks([]));
+        Assert.Equal(0, snapshot.RootElement.GetProperty("checks").GetArrayLength());
+    }
+
+    [Fact]
     public void BuildCrossGameTransition_CreatesRecoverableAnchorPacket()
     {
         var seed = new Seed

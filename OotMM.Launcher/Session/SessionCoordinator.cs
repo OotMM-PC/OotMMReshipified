@@ -445,6 +445,7 @@ public sealed class SessionCoordinator : IDisposable
             return;
         }
 
+        var collected = false;
         for (var i = 0; i < read.Packets.Count; i++)
         {
             var packet = read.Packets[i];
@@ -454,6 +455,7 @@ public sealed class SessionCoordinator : IDisposable
                 if (CompletedChecks.Add(key))
                 {
                     LogCheckCollected(key);
+                    collected = true;
                     _stateDirty = true;
                 }
             }
@@ -461,6 +463,11 @@ public sealed class SessionCoordinator : IDisposable
             {
                 AcceptTransition(transition, packet);
             }
+        }
+
+        if (collected)
+        {
+            SaveCompletedState();
         }
 
         _outboxOffset = read.NextOffset;
@@ -524,6 +531,32 @@ public sealed class SessionCoordinator : IDisposable
         }
     }
 
+    // The launcher is the durable owner of completed checks: every collection lands
+    // here, and a game's report is only acknowledged once this write succeeds.
+    private bool SaveCompletedState()
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            completedChecks = CompletedChecks.Order(StringComparer.Ordinal),
+        });
+        if (!DurableFile.WriteAtomic(_session.StatePath, json))
+        {
+            LogEvent("Could not persist check progress; it will be retried.");
+            return false;
+        }
+
+        try
+        {
+            // Skip re-parsing our own write on the next tick.
+            _stateStamp = File.GetLastWriteTimeUtc(_session.StatePath);
+        }
+        catch (IOException)
+        {
+        }
+
+        return true;
+    }
+
     private void PollGameFocus()
     {
         var isDown = GameWindow.LeftButtonDown();
@@ -561,6 +594,9 @@ public sealed class SessionCoordinator : IDisposable
                         ActiveGame));
                     _ipc.Send(GameIpcProtocol.BuildInventorySnapshot(
                         _inventory.Revision, _inventory.Items));
+                    // A fresh process starts from the durable record, not an empty set.
+                    _ipc.Send(GameIpcProtocol.BuildCompletedChecks(
+                        CompletedChecks.Order(StringComparer.Ordinal)));
                     _ipcSettingsDirty = true;
                     LogEvent($"{GameInfo.Title(ActiveGame)} connected to the launcher.");
                     break;
@@ -588,6 +624,12 @@ public sealed class SessionCoordinator : IDisposable
                         && presentation is not null)
                     {
                         SendDebugItemPresentation(presentation);
+                        break;
+                    }
+                    if (GameIpcProtocol.TryParseCheckCollected(
+                            ipcEvent.Message, out var checkKey, out _))
+                    {
+                        HandleCheckCollected(checkKey);
                         break;
                     }
                     if (GameIpcProtocol.TryParseCrossGameTransition(
@@ -885,7 +927,35 @@ public sealed class SessionCoordinator : IDisposable
         {
             LogCheckCollected(key);
             _stateDirty = true;
+            SaveCompletedState();
         }
+    }
+
+    private void HandleCheckCollected(string checkKey)
+    {
+        var tag = GameIpcProtocol.SplitCheckKey(checkKey, out var checkId);
+        if (GameInfo.TryFromSeedTag(tag) is not { } game
+            || _session.Seed.FindPlacement(game, checkId) is null)
+        {
+            LogEvent($"Game reported unknown check {checkKey}; not recorded.");
+            return;
+        }
+
+        if (CompletedChecks.Add(checkKey))
+        {
+            // The ack is the durability promise: an unpersisted check stays pending
+            // in the game and is re-reported on the next connection.
+            if (!SaveCompletedState())
+            {
+                CompletedChecks.Remove(checkKey);
+                return;
+            }
+
+            LogCheckCollected(checkKey);
+            _stateDirty = true;
+        }
+
+        _ipc?.Send(GameIpcProtocol.BuildCheckAccepted(checkKey));
     }
 
     private void LogEvent(string message) => EventLogged?.Invoke(message);

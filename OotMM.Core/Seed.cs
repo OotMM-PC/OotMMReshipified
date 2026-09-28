@@ -39,6 +39,7 @@ public sealed class Seed
     public IReadOnlyList<int> Prices { get; init; } = [];
     public IReadOnlyList<uint> EntrancesSong { get; init; } = [];
     public IReadOnlyList<uint> EntrancesOwl { get; init; } = [];
+    public IReadOnlyList<uint> EntrancesSpawn { get; init; } = [];
     public IReadOnlyList<uint> DungeonWarps { get; init; } = [];
     public IReadOnlyList<int> BossIds { get; init; } = [];
     public IReadOnlyList<string> PreCompletedDungeons { get; init; } = [];
@@ -58,6 +59,19 @@ public sealed class Seed
     private bool? _needsMasterQuest;
 
     public bool IsMultiworld => PlayerCount > 1;
+
+    public bool IsSpawnDestination(Game game, uint nativeId) =>
+        IsWarpDestination(EntrancesSpawn, Game.Oot, game, nativeId);
+
+    public bool IsSongDestination(Game game, uint nativeId) =>
+        IsWarpDestination(EntrancesSong, Game.Oot, game, nativeId);
+
+    public bool IsOwlDestination(Game game, uint nativeId) =>
+        IsWarpDestination(EntrancesOwl, Game.Mm, game, nativeId);
+
+    private static bool IsWarpDestination(IReadOnlyList<uint> destinations, Game sourceGame, Game game, uint nativeId) =>
+        game is Game.Oot or Game.Mm && (nativeId & 0x80000000u) == 0
+        && destinations.Contains(game != sourceGame ? nativeId | 0x80000000u : nativeId);
 
     public bool GetBoolSetting(string name, bool fallback = false) =>
         BoolSettings.TryGetValue(name, out var value) ? value : fallback;

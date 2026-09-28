@@ -756,10 +756,21 @@ public sealed class SessionCoordinator : IDisposable
             && mapping.ToNativeId == transition.ToNativeId);
 
     private bool IsOwlWarp(CrossGameTransition transition) =>
-        transition.ToNativeId is { } nativeId && _session.Seed.EntrancesOwl.Contains(nativeId);
+        transition.ToNativeId is { } nativeId && _session.Seed.IsOwlDestination(transition.ToGame, nativeId);
 
     private bool IsWarpSongTarget(CrossGameTransition transition) =>
-        transition.ToNativeId is { } nativeId && _session.Seed.EntrancesSong.Contains(nativeId);
+        transition.ToNativeId is { } nativeId && _session.Seed.IsSongDestination(transition.ToGame, nativeId);
+
+    private bool IsSpawnTarget(CrossGameTransition transition) =>
+        transition.FromGame == Game.Oot
+        && transition.ToGame == Game.Mm
+        && transition.ToNativeId is { } nativeId
+        && _session.Seed.IsSpawnDestination(Game.Mm, nativeId);
+
+    private bool IsBossWarpTarget(CrossGameTransition transition) =>
+        transition.ToNativeId is { } nativeId
+        && transition.ToEntrance == (transition.ToGame == Game.Oot ? "OoT dungeon exit" : "MM dungeon exit")
+        && BossWarp.IsDestinationAllowed(_session.Seed.DungeonWarps, transition.ToGame, nativeId);
 
     private bool AcceptTransition(CrossGameTransition transition, string durablePacket)
     {
@@ -767,7 +778,8 @@ public sealed class SessionCoordinator : IDisposable
             || transition.FromGame != ActiveGame
             || transition.ToGame == ActiveGame
             || transition.ToNativeId is null
-            || !(IsShuffledCrossGameEntrance(transition) || IsOwlWarp(transition) || IsWarpSongTarget(transition)))
+            || !(IsShuffledCrossGameEntrance(transition) || IsOwlWarp(transition)
+                || IsWarpSongTarget(transition) || IsSpawnTarget(transition) || IsBossWarpTarget(transition)))
         {
             return false;
         }

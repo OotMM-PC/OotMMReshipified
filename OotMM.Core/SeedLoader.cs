@@ -81,10 +81,11 @@ public static class SeedLoader
                 SongEventsOot = ParseSongEvents(root, "songEventsOot", 18),
                 SongEventsMm = ParseSongEvents(root, "songEventsMm", 13),
                 Prices = ParseIntArray(root, "prices"),
-                EntrancesSong = ParseWarpTable(root, "entrancesSong"),
-                EntrancesOwl = ParseWarpTable(root, "entrancesOwl"),
-                DungeonWarps = ParseWarpTable(root, "dungeonWarps"),
-                BossIds = ParseIntArray(root, "bossIds"),
+                EntrancesSong = ParseWarpTable(root, "entrancesSong", 6),
+                EntrancesOwl = ParseWarpTable(root, "entrancesOwl", 10),
+                EntrancesSpawn = ParseWarpTable(root, "entrancesSpawn", 2),
+                DungeonWarps = ParseWarpTable(root, "dungeonWarps", 12),
+                BossIds = ParseBossIds(root),
                 BoolSettings = boolSettings,
                 StringSettings = stringSettings,
                 NumberSettings = numberSettings,
@@ -155,7 +156,7 @@ public static class SeedLoader
         return result;
     }
 
-    private static List<uint> ParseWarpTable(JsonElement root, string key)
+    private static List<uint> ParseWarpTable(JsonElement root, string key, int? count = null)
     {
         var result = new List<uint>();
         if (!root.TryGetProperty(key, out var table))
@@ -168,17 +169,32 @@ public static class SeedLoader
             throw new SeedLoadException($"Seed {key} must be an array");
         }
 
-        foreach (var entry in table.EnumerateArray())
+        if (count is { } requiredCount && table.GetArrayLength() != requiredCount)
         {
-            // Via int64 so the 0x80000000 foreign-entrance bit survives into uint.
-            if (entry.ValueKind != JsonValueKind.Number || !entry.TryGetInt64(out var value))
-            {
-                throw new SeedLoadException($"Seed {key} entries must be numbers");
-            }
-
-            result.Add(unchecked((uint)value));
+            throw new SeedLoadException($"Seed {key} must contain exactly {requiredCount} entries");
         }
 
+        foreach (var entry in table.EnumerateArray())
+        {
+            if (entry.ValueKind != JsonValueKind.Number || !entry.TryGetUInt32(out var value))
+            {
+                throw new SeedLoadException($"Seed {key} entries must be unsigned 32-bit integers");
+            }
+
+            result.Add(value);
+        }
+
+        return result;
+    }
+
+    private static List<int> ParseBossIds(JsonElement root)
+    {
+        var result = ParseIntArray(root, "bossIds");
+        if (root.TryGetProperty("bossIds", out _)
+            && (result.Count != 12 || result.Any(id => id is < 0 or > 11) || result.Distinct().Count() != 12))
+        {
+            throw new SeedLoadException("Seed bossIds must assign each dungeon from 0 to 11 exactly once");
+        }
         return result;
     }
 

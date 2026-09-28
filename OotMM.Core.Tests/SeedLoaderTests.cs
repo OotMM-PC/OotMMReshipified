@@ -72,8 +72,13 @@ public class SeedLoaderTests
     {
         var seed = SeedLoader.LoadFromJson(ValidJson());
 
-        Assert.Equal([64u, 0x80000040u], seed.EntrancesSong);
-        Assert.Equal([0x80000005u], seed.DungeonWarps);
+        Assert.Equal([64u, 0x80000040u, 1540u, 497u, 1384u, 1524u], seed.EntrancesSong);
+        Assert.Equal([0x1000u, 0x80000005u], seed.EntrancesSpawn);
+        Assert.True(seed.IsSpawnDestination(Game.Oot, 0x1000u));
+        Assert.True(seed.IsSpawnDestination(Game.Mm, 5u));
+        Assert.False(seed.IsSpawnDestination(Game.Mm, 0x1000u));
+        Assert.Equal(12, seed.DungeonWarps.Count);
+        Assert.Equal(0x80008610u, seed.DungeonWarps[8]);
     }
 
     [Fact]
@@ -201,5 +206,59 @@ public class SeedLoaderTests
     {
         Assert.Throws<SeedLoadException>(() => SeedLoader.LoadFromJson("not json"));
         Assert.Throws<SeedLoadException>(() => SeedLoader.LoadFromJson("[1,2,3]"));
+    }
+
+    [Theory]
+    [InlineData("entrancesSpawn", "[]")]
+    [InlineData("entrancesSpawn", "[1]")]
+    [InlineData("entrancesSpawn", "[1,2,3]")]
+    [InlineData("entrancesSpawn", "[1,-1]")]
+    [InlineData("entrancesSpawn", "[1,4294967296]")]
+    [InlineData("entrancesSpawn", "[1,1.5]")]
+    [InlineData("entrancesSpawn", "[1,\"2\"]")]
+    [InlineData("entrancesSpawn", "null")]
+    [InlineData("dungeonWarps", "[1]")]
+    [InlineData("bossIds", "[]")]
+    [InlineData("bossIds", "[0,1,2,3,4,5,6,7,8,9,10,10]")]
+    [InlineData("bossIds", "[0,1,2,3,4,5,6,7,8,9,10,12]")]
+    [InlineData("bossIds", "[0,1,2,3,4,5,6,7,8,9,10,-1]")]
+    [InlineData("bossIds", "[0,1,2,3,4,5,6,7,8,9,10,11.5]")]
+    [InlineData("bossIds", "[0,1,2,3,4,5,6,7,8,9,10,4294967296]")]
+    [InlineData("entrancesSong", "[]")]
+    [InlineData("entrancesSong", "[1,2,3,4,5]")]
+    [InlineData("entrancesOwl", "[1,2,3,4,5,6,7,8,9]")]
+    [InlineData("entrancesSong", "[-1]")]
+    [InlineData("entrancesOwl", "[4294967296]")]
+    public void RejectsMalformedResolvedTable(string key, string value)
+    {
+        Assert.Throws<SeedLoadException>(() => SeedLoader.LoadFromJson(
+            MutateValid(root => root[key] = JsonNode.Parse(value))));
+    }
+
+    [Fact]
+    public void AllowsAbsentOptionalResolvedTables()
+    {
+        var seed = SeedLoader.LoadFromJson(MutateValid(root =>
+        {
+            root.Remove("entrancesSpawn");
+            root.Remove("entrancesSong");
+            root.Remove("entrancesOwl");
+            root.Remove("dungeonWarps");
+            root.Remove("bossIds");
+        }));
+        Assert.Empty(seed.EntrancesSpawn);
+        Assert.Empty(seed.EntrancesSong);
+        Assert.Empty(seed.EntrancesOwl);
+        Assert.Empty(seed.DungeonWarps);
+        Assert.Empty(seed.BossIds);
+    }
+
+    [Theory]
+    [InlineData(Game.Oot, 0x80000005u)]
+    [InlineData(Game.Mm, 0x80000005u)]
+    [InlineData((Game)99, 0x1000u)]
+    public void RejectsInvalidSpawnGameOrEncodedId(Game game, uint nativeId)
+    {
+        Assert.False(SeedLoader.LoadFromJson(ValidJson()).IsSpawnDestination(game, nativeId));
     }
 }

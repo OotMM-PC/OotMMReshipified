@@ -87,7 +87,9 @@ public static class OotmmAssetBuilder
         }
 
         var outputStamp = File.GetLastWriteTimeUtc(output);
-        var builderStamp = File.GetLastWriteTimeUtc(typeof(OotmmAssetBuilder).Assembly.Location);
+        var assembly = Path.Combine(AppContext.BaseDirectory, typeof(OotmmAssetBuilder).Assembly.GetName().Name + ".dll");
+        var builderPath = File.Exists(assembly) ? assembly : Environment.ProcessPath ?? "";
+        var builderStamp = builderPath.Length > 0 ? File.GetLastWriteTimeUtc(builderPath) : DateTime.MinValue;
         return outputStamp < builderStamp || inputs.Any(path => outputStamp < File.GetLastWriteTimeUtc(path));
     }
 

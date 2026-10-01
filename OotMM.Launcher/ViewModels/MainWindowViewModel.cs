@@ -70,6 +70,12 @@ public sealed class MainWindowViewModel : ViewModelBase
             return;
         }
 
+        StartPreparedSession(session);
+    }
+
+    private void StartPreparedSession(Core.Session session, Game? startingGame = null)
+    {
+        var seed = session.Seed;
         MultiworldSync? multiworld = null;
         ModelSyncCoordinator? modelSync = null;
         if (seed.IsMultiworld)
@@ -86,7 +92,13 @@ public sealed class MainWindowViewModel : ViewModelBase
         }
 
         _coordinator?.Dispose();
-        _coordinator = new SessionCoordinator(session, multiworld, modelSync);
+        _coordinator = new SessionCoordinator(session, multiworld, modelSync, startingGame);
+        var selectionOwner = _coordinator;
+        _coordinator.SaveSelectionReady += (selected, game) =>
+        {
+            if (_coordinator == selectionOwner)
+                StartPreparedSession(selected, game);
+        };
         _coordinator.Ended += EndSessionToConfig;
         _coordinator.StateChanged += ApplyAccent;
 

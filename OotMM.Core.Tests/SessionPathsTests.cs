@@ -143,4 +143,133 @@ public sealed class SessionPathsTests : IDisposable
         Assert.NotNull(parsed);
         Assert.Equal(boot.Serialize(), parsed!.Serialize());
     }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void SelectedSessionUsesIndependentIdentityAndPreservesBothSlots(bool v4)
+    {
+        var current = MakeSession(MakeSeed(), v4);
+        Assert.Null(SessionPaths.PrepareSession(current));
+        const string sourceState = """{"sessionValues":{"ootmm.activeSlot":"0"},"checks":["original"]}""";
+        File.WriteAllText(current.StatePath, sourceState);
+        var request = new NativeSaveRequest(1, NativeSaveOperation.Select, current.SaveId, 0, 0, 1);
+        Assert.True(SessionPaths.TryPrepareSelectedSession(current, request, 0, out var target, out var error), error);
+        Assert.NotEqual(current.SaveId, target!.SaveId);
+        Assert.NotEqual(current.SessionDir, target.SessionDir);
+        Assert.Equal(1u, target.LogicalSlot);
+        Assert.Equal(0u, current.LogicalSlot);
+        Assert.Equal(sourceState, File.ReadAllText(current.StatePath));
+        Assert.False(File.Exists(target.StatePath));
+        const string targetState = """{"sessionValues":{"ootmm.activeSlot":"1"},"checks":["target"]}""";
+        File.WriteAllText(target.StatePath, targetState);
+        Assert.True(SessionPaths.TryPrepareSelectedSession(current, request with { RequestId = 2 }, 1,
+            out var resumed, out error), error);
+        Assert.Equal(target.SaveId, resumed!.SaveId);
+        Assert.Equal(targetState, File.ReadAllText(resumed.StatePath));
+        var back = new NativeSaveRequest(3, NativeSaveOperation.Select, resumed.SaveId, 1, 1, 0);
+        Assert.True(SessionPaths.TryPrepareSelectedSession(resumed, back, 2, out var original, out error), error);
+        Assert.Equal(current.SaveId, original!.SaveId);
+        Assert.Equal(sourceState, File.ReadAllText(original.StatePath));
+    }
+
+    [Fact]
+    public void InvalidSelectionDoesNotCreateTargetBinding()
+    {
+        var current = MakeSession(MakeSeed(), false);
+        Assert.Null(SessionPaths.PrepareSession(current));
+        var root = Path.GetDirectoryName(current.SessionDir)!;
+        var before = Directory.GetFiles(root, "*.save-id");
+        var request = new NativeSaveRequest(5, NativeSaveOperation.Select, "stale", 0, 0, 1);
+        Assert.False(SessionPaths.TryPrepareSelectedSession(current, request, 0, out var target, out _));
+        Assert.Null(target);
+        Assert.Equal(before, Directory.GetFiles(root, "*.save-id"));
+        Assert.False(SessionPaths.TryPrepareSelectedSession(current, request with { SaveId = current.SaveId }, 5,
+            out _, out _));
+        Assert.Equal(before, Directory.GetFiles(root, "*.save-id"));
+    }
+
+    [Fact]
+    public void SelectedSessionRejectsStateFromAnotherSlotWithoutRewritingIt()
+    {
+        var current = MakeSession(MakeSeed(), false);
+        Assert.Null(SessionPaths.PrepareSession(current));
+        var request = new NativeSaveRequest(1, NativeSaveOperation.Select, current.SaveId, 0, 0, 2);
+        Assert.True(SessionPaths.TryPrepareSelectedSession(current, request, 0, out var target, out _));
+        const string wrongState = """{"sessionValues":{"ootmm.activeSlot":"0"}}""";
+        File.WriteAllText(target!.StatePath, wrongState);
+        Assert.False(SessionPaths.TryPrepareSelectedSession(current, request with { RequestId = 2 }, 1,
+            out var rejected, out _));
+        Assert.Null(rejected);
+        Assert.Equal(wrongState, File.ReadAllText(target.StatePath));
+        Assert.Equal(0u, current.LogicalSlot);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RecordedSelectionSurvivesNewerStateInAnotherSlot(bool v4)
+    {
+        var current = MakeSession(MakeSeed(), v4);
+        Assert.Null(SessionPaths.PrepareSession(current));
+        var request = new NativeSaveRequest(1, NativeSaveOperation.Select, current.SaveId, 0, 0, 1);
+        Assert.True(SessionPaths.TryPrepareSelectedSession(current, request, 0, out var target, out _));
+        Assert.True(SessionPaths.RecordSelectedSession(target!, out var error), error);
+        File.WriteAllText(current.StatePath, """{"sessionValues":{"ootmm.activeSlot":"0"}}""");
+        File.SetLastWriteTimeUtc(current.StatePath, DateTime.UtcNow.AddHours(1));
+        var resumed = MakeSession(MakeSeed(), v4);
+        Assert.Null(SessionPaths.PrepareSession(resumed));
+        Assert.Equal(1u, resumed.LogicalSlot);
+        Assert.Equal(target!.SaveId, resumed.SaveId);
+        Assert.Equal(target.SessionDir, resumed.SessionDir);
+    }
+
+    [Theory]
+    [InlineData("{")]
+    [InlineData("{\"version\":1,\"slot\":1,\"saveId\":\"wrong\"}")]
+    [InlineData("{\"version\":1,\"slot\":4294967296,\"saveId\":\"wrong\"}")]
+    [InlineData("{\"version\":1,\"slot\":0,\"slot\":1,\"saveId\":\"wrong\"}")]
+    public void InvalidSelectedRecordCannotSilentlySelectAnotherSave(string invalid)
+    {
+        var current = MakeSession(MakeSeed(), false);
+        Assert.Null(SessionPaths.PrepareSession(current));
+        Assert.True(SessionPaths.RecordSelectedSession(current, out _));
+        var marker = Directory.GetFiles(Path.GetDirectoryName(current.SessionDir)!, "*.selected-save.json").Single();
+        File.WriteAllText(marker, invalid);
+        Assert.NotNull(SessionPaths.PrepareSession(MakeSession(MakeSeed(), false)));
+        Assert.Equal(invalid, File.ReadAllText(marker));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RecordedSelectionReopensLegacyCheckOnlyJournalWithoutChangingProgress(bool v4)
+    {
+        var current = MakeSession(MakeSeed(), v4);
+        Assert.Null(SessionPaths.PrepareSession(current));
+        const string legacy = """{"completedChecks":["OOT_MIDOS_HOUSE_BOTTOM_RIGHT"]}""";
+        File.WriteAllText(current.StatePath, legacy);
+        Assert.True(SessionPaths.RecordSelectedSession(current, out _));
+        var resumed = MakeSession(MakeSeed(), v4);
+        Assert.Null(SessionPaths.PrepareSession(resumed));
+        Assert.Equal(current.SaveId, resumed.SaveId);
+        Assert.Equal(current.LogicalSlot, resumed.LogicalSlot);
+        Assert.Equal(legacy, File.ReadAllText(resumed.StatePath));
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"completedChecks\":[3]}")]
+    [InlineData("{\"completedChecks\":[],\"completedChecks\":[]}")]
+    [InlineData("{\"completedChecks\":[],\"sessionValues\":null}")]
+    [InlineData("{\"completedChecks\":[],\"sessionValues\":{\"ootmm.activeSlot\":\"2\"}}")]
+    public void RecordedSelectionRejectsMalformedOrConflictingLegacyJournal(string journal)
+    {
+        var current = MakeSession(MakeSeed(), false);
+        Assert.Null(SessionPaths.PrepareSession(current));
+        File.WriteAllText(current.StatePath, journal);
+        Assert.True(SessionPaths.RecordSelectedSession(current, out _));
+        Assert.NotNull(SessionPaths.PrepareSession(MakeSession(MakeSeed(), false)));
+        Assert.Equal(journal, File.ReadAllText(current.StatePath));
+    }
 }

@@ -58,6 +58,41 @@ public class GameIpcServerTests
         Assert.Contains("token", error.Message);
     }
 
+    [Fact]
+    public async Task Server_AcceptsNewClientAfterAnInterruptedRead()
+    {
+        if (!OperatingSystem.IsWindows()) return;
+        using var server = new GameIpcServer(Game.Oot);
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        using var first = new NamedPipeClientStream(".", server.Endpoint.Split('\\').Last(),
+            PipeDirection.InOut, PipeOptions.Asynchronous);
+        await first.ConnectAsync(timeout.Token);
+        var hello = $$"""{"type":"hello","protocolMajor":1,"protocolMinor":0,"token":"{{server.Token}}","game":"oot","pid":42,"build":"reconnect"}""";
+        await WriteFrameAsync(first, hello, timeout.Token);
+        await WaitForEventAsync(server, GameIpcEventType.Connected, timeout.Token);
+        var field = typeof(GameIpcServer).GetField("_pipe",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+        var pipe = Assert.IsType<NamedPipeServerStream>(field.GetValue(server));
+        while (!CancelIoEx(pipe.SafePipeHandle, IntPtr.Zero))
+        {
+            Assert.Equal(1168, System.Runtime.InteropServices.Marshal.GetLastWin32Error());
+            await Task.Delay(10, timeout.Token);
+        }
+        first.Dispose();
+        using var second = new NamedPipeClientStream(".", server.Endpoint.Split('\\').Last(),
+            PipeDirection.InOut, PipeOptions.Asynchronous);
+        await second.ConnectAsync(timeout.Token);
+        await WriteFrameAsync(second, hello, timeout.Token);
+        await WaitForEventAsync(server, GameIpcEventType.Connected, timeout.Token);
+        Assert.True(server.Send(GameIpcProtocol.BuildWelcome("session", "save", 1, Game.Oot)));
+        Assert.Equal(GameIpcProtocol.MessageType.Welcome,
+            GameIpcProtocol.ReadType(await ReadFrameAsync(second, timeout.Token)));
+    }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll", SetLastError = true)]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool CancelIoEx(Microsoft.Win32.SafeHandles.SafePipeHandle handle, IntPtr overlapped);
+
     private static async Task<GameIpcEvent> WaitForEventAsync(
         GameIpcServer server, GameIpcEventType type, CancellationToken cancellationToken)
     {

@@ -58,6 +58,7 @@ public static class GameIpcProtocol
             sessionId,
             saveId,
             playerId,
+            checkRewardProtocol = 1,
             game = GameInfo.ToSeedTag(game),
         });
 
@@ -119,7 +120,8 @@ public static class GameIpcProtocol
         ushort sourcePlayer,
         ushort recipientPlayer,
         bool debug,
-        ushort viewerPlayer = 0) =>
+        ushort viewerPlayer = 0,
+        string? checkKey = null) =>
         JsonSerializer.Serialize(new
         {
             type = MessageType.PresentItem,
@@ -131,6 +133,7 @@ public static class GameIpcProtocol
             recipientPlayer,
             viewerPlayer = viewerPlayer == 0 ? recipientPlayer : viewerPlayer,
             debug,
+            check = checkKey,
         });
 
     /// <summary>The live roster pushed to the running game. The type must stay the first key:
@@ -173,8 +176,13 @@ public static class GameIpcProtocol
             checks = checkKeys,
         });
 
-    public static bool TryParseCheckCollected(string json, out string checkKey, out string error)
+    public static bool TryParseCheckCollected(string json, out string checkKey, out string error) =>
+        TryParseCheckCollected(json, out checkKey, out _, out error);
+
+    public static bool TryParseCheckCollected(
+        string json, out string checkKey, out bool presentationRequested, out string error)
     {
+        presentationRequested = false;
         checkKey = "";
         error = "";
         try
@@ -196,6 +204,15 @@ public static class GameIpcProtocol
                 return false;
             }
 
+            if (root.TryGetProperty("present", out var present))
+            {
+                if (present.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                {
+                    error = "check presentation flag must be boolean";
+                    return false;
+                }
+                presentationRequested = present.GetBoolean();
+            }
             checkKey = check;
             return true;
         }

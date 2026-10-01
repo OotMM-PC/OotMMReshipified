@@ -139,7 +139,7 @@ public sealed class GameIpcServer : IDisposable
             {
                 break;
             }
-            catch (Exception ex) when (ex is IOException or ObjectDisposedException)
+            catch (Exception ex) when (ex is IOException or ObjectDisposedException or OperationCanceledException)
             {
                 if (!_stop.IsCancellationRequested)
                 {

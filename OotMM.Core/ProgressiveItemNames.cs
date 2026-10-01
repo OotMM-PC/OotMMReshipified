@@ -12,6 +12,34 @@ public static class ProgressiveItemNames
         "Clock (Night 3)",
     ];
 
+    public static ItemPlacement? ResolveCheck(
+        Seed seed,
+        Game checkGame,
+        string checkId,
+        IReadOnlyDictionary<string, uint> recipientInventory)
+    {
+        var placement = seed.FindPlacement(checkGame, checkId);
+        if (placement is null)
+        {
+            return null;
+        }
+        var item = ResolveItem(seed, placement.Item.Id, recipientInventory);
+        return item is null ? null : placement with { Item = item };
+    }
+
+    public static ItemRef? ResolveItem(
+        Seed seed,
+        string itemId,
+        IReadOnlyDictionary<string, uint> recipientInventory)
+    {
+        var item = seed.Placements.Select(placement => placement.Item)
+            .Concat(seed.StartingItems.Select(starting => starting.Item))
+            .FirstOrDefault(candidate => string.Equals(candidate.Id, itemId, StringComparison.Ordinal));
+        return item is null
+            ? null
+            : item with { Name = Resolve(seed, item.Game, item, recipientInventory) };
+    }
+
     public static string Resolve(
         Seed recipientSeed,
         Game destinationGame,

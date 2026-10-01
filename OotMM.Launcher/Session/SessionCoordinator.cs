@@ -30,20 +30,25 @@ public sealed class SessionCoordinator : IDisposable
     private bool _stateDirty;
     private bool _initialSyncDone;
     private bool _ended;
+    private bool _recoveryPending;
+    private bool _starting;
+    private CancellationTokenSource? _startupCancellation;
     private int _speedPercent = 100;
     private bool _speedSmooth;
     private bool _ipcSettingsDirty = true;
     private long _settingsRevision;
     private long _forceUnlockSeq;
+    private ulong _lastNativeSaveRequest;
+    private readonly Dictionary<string, ItemRef> _resolvedCheckRewards = new(StringComparer.Ordinal);
 
     public SessionCoordinator(Core.Session session, MultiworldSync? multiworld = null,
-                              ModelSyncCoordinator? modelSync = null)
+                              ModelSyncCoordinator? modelSync = null, Game? startingGame = null)
     {
         _session = session;
         _multiworld = multiworld;
         _modelSync = modelSync;
         _inventory = new SessionInventory(session.Seed, session.DebugItemsPath);
-        ActiveGame = session.RecoveredTransition?.ToGame ?? session.Seed.ResolveStartingGame();
+        ActiveGame = session.RecoveredTransition?.ToGame ?? startingGame ?? session.Seed.ResolveStartingGame();
         _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         _timer.Tick += (_, _) => Tick();
         // Clicks over the embedded game never reach the UI framework, so a fast
@@ -173,6 +178,7 @@ public sealed class SessionCoordinator : IDisposable
     public event Action<string>? EventLogged;
     public event Action<string>? RemoteEventLogged;
     public event Action<string>? Ended;
+    public event Action<Core.Session, Game>? SaveSelectionReady;
 
     public string? Start()
     {
@@ -193,7 +199,8 @@ public sealed class SessionCoordinator : IDisposable
         SyncCompletedFromState(force: true);
         ReconcileInventory();
         var error = StartActiveGame(entrance, ootAge);
-        if (error is null)
+        error = string.IsNullOrEmpty(error) ? null : error;
+        if (error is null && !_ended)
         {
             _timer.Start();
             _focusTimer.Start();
@@ -209,7 +216,8 @@ public sealed class SessionCoordinator : IDisposable
         // The dead game's archives just unlocked: model sets learned mid-session mount now.
         _modelSync?.InstallNow();
         LogEvent($"Restarting {GameInfo.Title(ActiveGame)}…");
-        StartActiveGame(null, null);
+        if (StartActiveGame(null, null) is { } error)
+            EndSession(error);
     }
 
     /// <summary>Dev-mode game switch. <paramref name="ootAge"/> (0 adult, 1 child) rides the
@@ -220,7 +228,8 @@ public sealed class SessionCoordinator : IDisposable
         _modelSync?.InstallNow();
         ActiveGame = ActiveGame == Game.Oot ? Game.Mm : Game.Oot;
         LogEvent($"Switching to {GameInfo.Title(ActiveGame)}…");
-        StartActiveGame(null, ActiveGame == Game.Mm ? ootAge : null);
+        if (StartActiveGame(null, ActiveGame == Game.Mm ? ootAge : null) is { } error)
+            EndSession(error);
     }
 
     public void EndSession(string reason)
@@ -231,6 +240,7 @@ public sealed class SessionCoordinator : IDisposable
         }
 
         _ended = true;
+        _startupCancellation?.Cancel();
         _timer.Stop();
         _focusTimer.Stop();
         _presenceTimer.Stop();
@@ -254,6 +264,7 @@ public sealed class SessionCoordinator : IDisposable
             return false;
         }
 
+        _startupCancellation?.Cancel();
         _process?.Terminate();
         var ok = true;
         try
@@ -307,6 +318,7 @@ public sealed class SessionCoordinator : IDisposable
         }
 
         CompletedChecks.Clear();
+        _resolvedCheckRewards.Clear();
         ok &= _inventory.TryClearDebugAdjustments();
         ReconcileInventory();
         _stateStamp = DateTime.MinValue;
@@ -318,6 +330,8 @@ public sealed class SessionCoordinator : IDisposable
 
     public void Dispose()
     {
+        _ended = true;
+        _startupCancellation?.Cancel();
         _timer.Stop();
         _focusTimer.Stop();
         _presenceTimer.Stop();
@@ -330,11 +344,93 @@ public sealed class SessionCoordinator : IDisposable
 
     private string? StartActiveGame(uint? bootEntrance, uint? ootAge)
     {
+        if (_ended) return "This session has ended.";
+        if (_session.RecoveredTransition is { } recovered && recovered.ToGame == ActiveGame)
+        {
+            bootEntrance ??= recovered.ToNativeId;
+            ootAge ??= recovered.OotAge;
+        }
+        _startupCancellation?.Cancel();
+        var startup = new CancellationTokenSource();
+        _startupCancellation = startup;
+        _starting = true;
+        _ = CompleteStartupAsync(bootEntrance, ootAge, startup);
+        return null;
+    }
+
+    private async Task CompleteStartupAsync(uint? bootEntrance, uint? ootAge, CancellationTokenSource startup)
+    {
+        try
+        {
+            var error = await PrepareAndStartGameAsync(bootEntrance, ootAge, startup.Token);
+            if (!startup.IsCancellationRequested && error is not null) EndSession(error);
+        }
+        catch (OperationCanceledException) when (startup.IsCancellationRequested)
+        {
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+            or InvalidOperationException or ArgumentException or System.ComponentModel.Win32Exception)
+        {
+            if (!startup.IsCancellationRequested) EndSession("Could not start the game: " + exception.Message);
+        }
+        finally
+        {
+            if (ReferenceEquals(_startupCancellation, startup))
+            {
+                _startupCancellation = null;
+                _starting = false;
+                if (!_ended) StateChanged?.Invoke();
+            }
+            startup.Dispose();
+        }
+    }
+
+    private async Task<string?> PrepareAndStartGameAsync(uint? bootEntrance, uint? ootAge, CancellationToken token)
+    {
+        var exe = ActiveGame == Game.Oot ? _session.OotExe : _session.MmExe;
+        var game = ActiveGame;
+        var compatibilityError = await Task.Run(() => NativeBuildCompatibility.Validate(exe, game, out var error)
+            ? null : error, token);
+        token.ThrowIfCancellationRequested();
+        if (compatibilityError is not null) return compatibilityError;
         var boot = SessionPaths.MakeBootConfig(_session, ActiveGame, bootEntrance, ootAge);
+        boot.OpenFileSelect = _session.OpenFileSelect;
+        MmSaveSource? selectedMm = null;
+        if ((ActiveGame == Game.Mm || _session.Seed.GetBoolSetting("sharedBombchu"))
+            && _session.LogicalSlot is { } slot)
+        {
+            var primary = Path.Combine(SessionPaths.MmNativeSavesRoot(_session),
+                "ootmm-" + SessionPaths.SaveTag(_session.Seed), $"file{slot + 1}.json");
+            if (File.Exists(primary + NativeMmSaveValidation.SavePairJournalSuffix))
+                LogEvent("Recovering an interrupted MM save…");
+            var pairError = await NativeMmSaveValidation.RecoverPairAsync(_session.MmExe, primary,
+                _session.SaveId, slot, token);
+            token.ThrowIfCancellationRequested();
+            if (pairError is not null) return pairError;
+            if (!MmSaveSource.TrySelect(primary, _session.SaveId, slot, out var source, out var recoveryError))
+                return recoveryError;
+            selectedMm = source;
+            if (source is not null)
+            {
+                LogEvent("Validating the MM save…");
+                var validationError = await NativeMmSaveValidation.ValidateAsync(_session.MmExe, source,
+                    _session.SaveId, slot, token);
+                token.ThrowIfCancellationRequested();
+                if (validationError is not null) return validationError;
+            }
+            if (ActiveGame == Game.Mm && source?.FromBackup == true)
+                boot.MmRecovery = new MmRecoveryRequest(source.Contents, source.DamagedPrimaryHex);
+        }
+        if (!DurableFile.Retire(_session.StatePath + ".recovery-result.json"))
+            return "Could not clear the previous save recovery result.";
+        if (!SharedResourceSaves.TryRead(_session, out var sharedResources, out var sharedError, selectedMm, true))
+            return sharedError;
+        boot.SharedResources = sharedResources;
         if (!DurableFile.WriteAtomic(_session.BootConfigPath, boot.Serialize()))
         {
             return $"cannot durably publish boot configuration {_session.BootConfigPath}";
         }
+        _recoveryPending = boot.MmRecovery is not null;
 
         if (!_session.Seed.IsMultiworld)
         {
@@ -342,7 +438,6 @@ public sealed class SessionCoordinator : IDisposable
             DurableFile.WriteOffset(ActiveOutboxCursor, 0);
         }
 
-        var exe = ActiveGame == Game.Oot ? _session.OotExe : _session.MmExe;
         _process?.Dispose();
         _ipc?.Dispose();
         _ipc = new GameIpcServer(ActiveGame);
@@ -377,12 +472,42 @@ public sealed class SessionCoordinator : IDisposable
             _session.RecoveredTransition = null;
         }
 
+        if (!SessionPaths.RecordSelectedSession(_session, out var selectionError))
+        {
+            _process.Terminate();
+            return selectionError;
+        }
+
         _outboxOffset = DurableFile.ReadOffset(ActiveOutboxCursor) ?? 0;
+        _session.OpenFileSelect = false;
+        _lastNativeSaveRequest = 0;
         _pendingTransition = null;
         _ipcSettingsDirty = true;
         LogEvent($"{GameInfo.Title(ActiveGame)} started.");
         StateChanged?.Invoke();
         return null;
+    }
+
+    private string? ReadRecoveryFailure()
+    {
+        try
+        {
+            var path = _session.StatePath + ".recovery-result.json";
+            if (!File.Exists(path)) return null;
+            using var document = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+            var root = document.RootElement;
+            if (root.GetProperty("version").GetInt32() != 1
+                || root.GetProperty("saveId").GetString() != _session.SaveId
+                || root.GetProperty("slot").GetUInt32() != _session.LogicalSlot)
+                return "Save recovery returned an invalid result. Existing save files were retained.";
+            return root.GetProperty("restored").GetBoolean() ? null
+                : "Save recovery stopped: " + root.GetProperty("reason").GetString();
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or System.Text.Json.JsonException
+            or InvalidOperationException or KeyNotFoundException or FormatException)
+        {
+            return "Could not read the save recovery result: " + ex.Message;
+        }
     }
 
     private string ActiveInbox => ActiveGame == Game.Oot ? _session.OotInbox : _session.MmInbox;
@@ -394,9 +519,21 @@ public sealed class SessionCoordinator : IDisposable
 
     private void Tick()
     {
-        if (_ended)
+        if (_ended || _starting)
         {
             return;
+        }
+
+        if (_recoveryPending && File.Exists(_session.StatePath + ".recovery-result.json"))
+        {
+            _recoveryPending = false;
+            if (ReadRecoveryFailure() is { } failure)
+            {
+                _process?.Terminate();
+                EndSession(failure);
+                return;
+            }
+            LogEvent("Recovered the MM save from its backup. The damaged original was preserved.");
         }
 
         DrainActiveOutbox();
@@ -433,7 +570,7 @@ public sealed class SessionCoordinator : IDisposable
         }
         else if (_process is not null && !_process.Running)
         {
-            EndSession($"{GameInfo.Title(ActiveGame)} exited — session closed.");
+            EndSession(ReadRecoveryFailure() ?? $"{GameInfo.Title(ActiveGame)} exited — session closed.");
         }
     }
 
@@ -501,14 +638,44 @@ public sealed class SessionCoordinator : IDisposable
             foreach (var entry in checks.EnumerateArray())
             {
                 if (entry.ValueKind == System.Text.Json.JsonValueKind.String
-                    && CompletedChecks.Add(entry.GetString()!))
+                    && ResolveLocalCheck(entry.GetString()!) is { } placement
+                    && CompletedChecks.Add(Identity.CheckKey(placement.Check.Game, placement.Check.Id)))
                 {
                     changed = true;
                     // The first sync reconciles resumed progress and must not
                     // flood the log; later syncs log fresh collections.
                     if (_initialSyncDone)
                     {
-                        LogCheckCollected(entry.GetString()!);
+                        LogCheckCollected(Identity.CheckKey(placement.Check.Game, placement.Check.Id));
+                    }
+                }
+            }
+
+            if (doc.RootElement.TryGetProperty("resolvedCheckRewards", out var resolved)
+                && resolved.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                foreach (var entry in resolved.EnumerateObject())
+                {
+                    if (ResolveLocalCheck(entry.Name) is not { } placement)
+                    {
+                        continue;
+                    }
+                    var key = Identity.CheckKey(placement.Check.Game, placement.Check.Id);
+                    if (!CompletedChecks.Contains(key))
+                    {
+                        continue;
+                    }
+                    try
+                    {
+                        var item = System.Text.Json.JsonSerializer.Deserialize<ItemRef>(entry.Value.GetRawText());
+                        if (item is not null && item.Id == placement.Item.Id && item.Game == placement.Item.Game
+                            && !string.IsNullOrWhiteSpace(item.Name))
+                        {
+                            _resolvedCheckRewards.TryAdd(key, item);
+                        }
+                    }
+                    catch (System.Text.Json.JsonException)
+                    {
                     }
                 }
             }
@@ -538,6 +705,10 @@ public sealed class SessionCoordinator : IDisposable
         var json = System.Text.Json.JsonSerializer.Serialize(new
         {
             completedChecks = CompletedChecks.Order(StringComparer.Ordinal),
+            resolvedCheckRewards = _resolvedCheckRewards,
+            sessionValues = _session.LogicalSlot is { } slot
+                ? new Dictionary<string, string> { ["ootmm.activeSlot"] = slot.ToString(System.Globalization.CultureInfo.InvariantCulture) }
+                : new Dictionary<string, string>(),
         });
         if (!DurableFile.WriteAtomic(_session.StatePath, json))
         {
@@ -601,6 +772,13 @@ public sealed class SessionCoordinator : IDisposable
                     LogEvent($"{GameInfo.Title(ActiveGame)} connected to the launcher.");
                     break;
                 case GameIpcEventType.Message:
+                    if (NativeSaveRequest.TryParse(ipcEvent.Message, out var saveRequest, out _))
+                    {
+                        HandleNativeSaveRequest(saveRequest!);
+                        if (_ended)
+                            return;
+                        break;
+                    }
                     // Presence is the hottest message on the pipe, so it is matched first.
                     if (GameIpcProtocol.TryParseLocalPlayerPose(ipcEvent.Message, out var pose))
                     {
@@ -627,9 +805,9 @@ public sealed class SessionCoordinator : IDisposable
                         break;
                     }
                     if (GameIpcProtocol.TryParseCheckCollected(
-                            ipcEvent.Message, out var checkKey, out _))
+                            ipcEvent.Message, out var checkKey, out var presentationRequested, out _))
                     {
-                        HandleCheckCollected(checkKey);
+                        HandleCheckCollected(checkKey, presentationRequested);
                         break;
                     }
                     if (GameIpcProtocol.TryParseCrossGameTransition(
@@ -669,11 +847,12 @@ public sealed class SessionCoordinator : IDisposable
             return;
         }
 
-        var item = _session.Seed.Placements
-            .Select(placement => placement.Item)
-            .Concat(_session.Seed.StartingItems.Select(starting => starting.Item))
-            .FirstOrDefault(candidate =>
-                string.Equals(candidate.Id, request.ItemId, StringComparison.Ordinal));
+        IReadOnlyDictionary<string, uint> recipientInventory =
+            request.RecipientPlayer == _session.Seed.PlayerId
+                ? _inventory.Items
+                : EmptyItemCounts;
+        var item = ProgressiveItemNames.ResolveItem(
+            _session.Seed, request.ItemId, recipientInventory);
         if (item is null && DebugTrapNames.TryGetValue(request.ItemId, out var trapName))
         {
             item = new ItemRef(Game.Oot, request.ItemId, trapName);
@@ -684,14 +863,8 @@ public sealed class SessionCoordinator : IDisposable
             return;
         }
 
-        IReadOnlyDictionary<string, uint> recipientInventory =
-            request.RecipientPlayer == _session.Seed.PlayerId
-                ? _inventory.Items
-                : EmptyItemCounts;
-        var itemName = ProgressiveItemNames.Resolve(
-            _session.Seed, item.Game, item, recipientInventory);
         _ipc?.Send(GameIpcProtocol.BuildPresentItem(
-            item with { Name = itemName },
+            item,
             item.Game,
             _session.Seed.PlayerId,
             request.RecipientPlayer,
@@ -790,7 +963,6 @@ public sealed class SessionCoordinator : IDisposable
         }
 
         _pendingTransition = transition;
-        // The game saves only once it sees the acknowledgement, so it needs the grace before termination.
         _handoffDeadline = DateTime.UtcNow.AddMilliseconds(HandoffGraceMs);
         return true;
     }
@@ -821,12 +993,14 @@ public sealed class SessionCoordinator : IDisposable
     /// pose out to the room, and the room's newest poses back down.</summary>
     private void PumpPresence()
     {
-        if (_ended)
+        if (_ended || _starting)
         {
             return;
         }
 
         PumpIpc();
+        if (_ended)
+            return;
         _multiworld?.PumpPresence();
         if (_multiworld is not null)
         {
@@ -886,7 +1060,8 @@ public sealed class SessionCoordinator : IDisposable
         var checkId = checkKey[(colon + 1)..];
         var placement = _session.Seed.FindPlacement(game, checkId);
         var name = placement?.Check.Name;
-        var itemName = placement?.Item.Name ?? "";
+        var itemName = _resolvedCheckRewards.TryGetValue(checkKey, out var reward)
+            ? reward.Name : placement?.Item.Name ?? "";
         var tag = game == Game.Oot ? "[OoT]" : "[MM]";
         var display = string.IsNullOrEmpty(name) ? checkId : name;
         if (itemName.Length == 0)
@@ -943,16 +1118,53 @@ public sealed class SessionCoordinator : IDisposable
         }
     }
 
-    private void HandleCheckCollected(string checkKey)
+    private ItemPlacement? ResolveLocalCheck(string checkKey)
     {
         var tag = GameIpcProtocol.SplitCheckKey(checkKey, out var checkId);
-        if (GameInfo.TryFromSeedTag(tag) is not { } game
-            || _session.Seed.FindPlacement(game, checkId) is null)
+        if (GameInfo.TryFromSeedTag(tag) is not { } game)
         {
-            LogEvent($"Game reported unknown check {checkKey}; not recorded.");
+            return null;
+        }
+        var placement = _session.Seed.FindPlacement(game, checkId);
+        return placement?.SourcePlayer == _session.Seed.PlayerId ? placement : null;
+    }
+
+    private void HandleCheckCollected(string reportedCheckKey, bool presentationRequested = false)
+    {
+        if (ResolveLocalCheck(reportedCheckKey) is not { } placement)
+        {
+            LogEvent($"Game reported unknown or foreign-world check {reportedCheckKey}; not recorded.");
             return;
         }
 
+        var game = placement.Check.Game;
+        var checkId = placement.Check.Id;
+        var checkKey = Identity.CheckKey(game, checkId);
+        if (presentationRequested && game != ActiveGame)
+        {
+            LogEvent("Game requested a reward from a different game instance.");
+            return;
+        }
+        var isNew = !CompletedChecks.Contains(checkKey);
+        if (isNew || presentationRequested && !_resolvedCheckRewards.ContainsKey(checkKey))
+        {
+            ReconcileInventory();
+            IReadOnlyDictionary<string, uint> recipientInventory = placement.OwnerPlayer == _session.Seed.PlayerId
+                ? _inventory.Items
+                : EmptyItemCounts;
+            var priorInventory = new Dictionary<string, uint>(recipientInventory, StringComparer.Ordinal);
+            if (!isNew && placement.OwnerPlayer == _session.Seed.PlayerId
+                && priorInventory.TryGetValue(placement.Item.Id, out var count) && count > 0)
+            {
+                priorInventory[placement.Item.Id] = count - 1;
+            }
+            var reward = ProgressiveItemNames.ResolveCheck(_session.Seed, game, checkId, priorInventory);
+            if (reward is null)
+            {
+                return;
+            }
+            _resolvedCheckRewards[checkKey] = reward.Item;
+        }
         if (CompletedChecks.Add(checkKey))
         {
             // The ack is the durability promise: an unpersisted check stays pending
@@ -960,6 +1172,7 @@ public sealed class SessionCoordinator : IDisposable
             if (!SaveCompletedState())
             {
                 CompletedChecks.Remove(checkKey);
+                _resolvedCheckRewards.Remove(checkKey);
                 return;
             }
 
@@ -967,7 +1180,117 @@ public sealed class SessionCoordinator : IDisposable
             _stateDirty = true;
         }
 
-        _ipc?.Send(GameIpcProtocol.BuildCheckAccepted(checkKey));
+        if (presentationRequested)
+        {
+            if (!SaveCompletedState())
+            {
+                return;
+            }
+            if (_resolvedCheckRewards.TryGetValue(checkKey, out var item))
+            {
+                _ipc?.Send(GameIpcProtocol.BuildPresentItem(
+                    item, item.Game, _session.Seed.PlayerId, placement.OwnerPlayer,
+                    debug: false, viewerPlayer: _session.Seed.PlayerId, checkKey: reportedCheckKey));
+            }
+        }
+        _ipc?.Send(GameIpcProtocol.BuildCheckAccepted(reportedCheckKey));
+    }
+
+    private void HandleNativeSaveRequest(NativeSaveRequest request)
+    {
+        void Reject(string reason)
+        {
+            _ipc?.Send(System.Text.Json.JsonSerializer.Serialize(new
+            {
+                type = "nativeSaveResult", version = 1, requestId = request.RequestId,
+                accepted = false, reason,
+            }));
+            LogEvent(reason);
+        }
+
+        if (SaveSelectionReady is null)
+        {
+            Reject("This save operation is not available in the current session host.");
+            return;
+        }
+        if (_pendingTransition is not null || _ended
+            || !request.MatchesActiveSave(_session.SaveId, _session.LogicalSlot, _lastNativeSaveRequest))
+        {
+            Reject("The save request does not match the active session or a transition is pending.");
+            return;
+        }
+        DrainActiveOutbox();
+        SyncCompletedFromState(force: true);
+        if (!SaveCompletedState())
+        {
+            Reject("Could not persist the current check state before selecting another save.");
+            return;
+        }
+        if (request.Operation == NativeSaveOperation.Copy)
+        {
+            var select = request with { Operation = NativeSaveOperation.Select };
+            if (!SessionPaths.TryPrepareSelectedSession(_session, select with { TargetSlot = request.SourceSlot },
+                    _lastNativeSaveRequest, out var source, out var copyError)
+                || !SessionPaths.TryPrepareSelectedSession(_session, select, _lastNativeSaveRequest,
+                    out var target, out copyError))
+            {
+                Reject(copyError);
+                return;
+            }
+            _process?.Terminate();
+            if (_process?.Running == true)
+            {
+                Reject("Could not stop the game before copying saves. Please retry.");
+                return;
+            }
+            var copied = NativeSaveCopy.TryExecute(source!, target!, out copyError);
+            LogEvent(copied ? $"Copied save {request.SourceSlot + 1} to save {request.TargetSlot + 1} in both games."
+                : copyError);
+            var root = Path.GetDirectoryName(_session.SessionDir)!;
+            var tag = SessionPaths.SeedTag(_session.Seed);
+            var key = SessionPaths.SessionBindingKey(_session, tag.Length == 0 ? "default" : tag);
+            if (!NativeSaveCopy.RecoverBindings(_session, root, key, out var recoveryError))
+            {
+                EndSession($"Save copy recovery must finish before restarting: {recoveryError}");
+                return;
+            }
+            if (!SessionPaths.TryPrepareSelectedSession(_session,
+                    select with { TargetSlot = request.ActiveSlot }, _lastNativeSaveRequest,
+                    out var reopened, out var restartError))
+            {
+                EndSession(restartError);
+                return;
+            }
+            reopened!.OpenFileSelect = true;
+            _ended = true;
+            _timer.Stop();
+            _focusTimer.Stop();
+            _presenceTimer.Stop();
+            var copyGame = ActiveGame;
+            Dispatcher.UIThread.Post(() => SaveSelectionReady?.Invoke(reopened, copyGame));
+            return;
+        }
+        if (!SessionPaths.TryPrepareSelectedSession(_session, request, _lastNativeSaveRequest,
+                out var selected, out var error)
+            || !SharedResourceSaves.TryRead(selected!, out _, out error))
+        {
+            Reject(error);
+            return;
+        }
+        var inventory = new SessionInventory(selected!.Seed, selected.DebugItemsPath);
+        if (!inventory.IsValid)
+        {
+            Reject(inventory.LastError);
+            return;
+        }
+        _lastNativeSaveRequest = request.RequestId;
+        _ended = true;
+        _timer.Stop();
+        _focusTimer.Stop();
+        _presenceTimer.Stop();
+        _process?.Terminate();
+        var game = ActiveGame;
+        Dispatcher.UIThread.Post(() => SaveSelectionReady?.Invoke(selected, game));
     }
 
     private void LogEvent(string message) => EventLogged?.Invoke(message);

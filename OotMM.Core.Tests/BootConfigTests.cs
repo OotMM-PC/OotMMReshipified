@@ -6,6 +6,15 @@ namespace OotMM.Core.Tests;
 public class BootConfigTests
 {
     [Fact]
+    public void FileSelectBootIsExplicitAndRejectsAmbiguousValues()
+    {
+        Assert.False(BootConfig.Parse("{}")!.OpenFileSelect);
+        Assert.True(BootConfig.Parse(new BootConfig { OpenFileSelect = true }.Serialize())!.OpenFileSelect);
+        Assert.Null(BootConfig.Parse("{\"openFileSelect\":1}"));
+        Assert.Null(BootConfig.Parse("{\"openFileSelect\":\"true\"}"));
+    }
+
+    [Fact]
     public void Serialize_OmitsEmptyAndDefaultFields()
     {
         var config = new BootConfig

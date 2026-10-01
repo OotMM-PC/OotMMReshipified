@@ -1,50 +1,72 @@
 using System.Security.Cryptography;
+using System.Text.Json;
 
 namespace OotMM.Core;
 
 /// <summary>Durable small-file primitives shared by the session layer.</summary>
 public static class DurableFile
 {
+    private const int TransientAttempts = 5;
+
+    private static bool IsTransient(Exception ex) =>
+        ex is UnauthorizedAccessException || (ex is IOException io && (io.HResult & 0xFFFF) is 32 or 33);
+
     public static bool WriteAtomic(string path, string contents)
     {
         var temporary = path + ".tmp";
-        try
-        {
-            using (var stream = new FileStream(temporary, FileMode.Create, FileAccess.Write))
-            {
-                var bytes = System.Text.Encoding.UTF8.GetBytes(contents);
-                stream.Write(bytes);
-                stream.Flush(flushToDisk: true);
-            }
-
-            File.Move(temporary, path, overwrite: true);
-            return true;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        for (var attempt = 1; ; attempt++)
         {
             try
             {
-                File.Delete(temporary);
-            }
-            catch (IOException)
-            {
-            }
+                using (var stream = new FileStream(temporary, FileMode.Create, FileAccess.Write))
+                {
+                    var bytes = System.Text.Encoding.UTF8.GetBytes(contents);
+                    stream.Write(bytes);
+                    stream.Flush(flushToDisk: true);
+                }
 
-            return false;
+                File.Move(temporary, path, overwrite: true);
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                try
+                {
+                    File.Delete(temporary);
+                }
+                catch (Exception cleanup) when (cleanup is IOException or UnauthorizedAccessException)
+                {
+                }
+
+                if (attempt >= TransientAttempts || !IsTransient(ex))
+                {
+                    return false;
+                }
+
+                Thread.Sleep(20 << attempt);
+            }
         }
     }
 
     public static bool TruncateDurably(string path)
     {
-        try
+        for (var attempt = 1; ; attempt++)
         {
-            using var stream = new FileStream(path, FileMode.Create, FileAccess.Write);
-            stream.Flush(flushToDisk: true);
-            return true;
-        }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-        {
-            return false;
+            try
+            {
+                using var stream = new FileStream(path, FileMode.Create, FileAccess.Write);
+                stream.Flush(flushToDisk: true);
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                if (attempt >= TransientAttempts || !IsTransient(ex))
+                {
+                    return false;
+                }
+
+                Thread.Sleep(20 << attempt);
+            }
         }
     }
 
@@ -107,6 +129,7 @@ public sealed class Session
     public required Seed Seed { get; init; }
     // Settable live: the dev-mode toggle applies on the next game boot.
     public bool AllowDebugMenus { get; set; }
+    public bool OpenFileSelect { get; set; }
 
     /// <summary>Set before PrepareSession; keys the v4 identity namespace.</summary>
     public bool V4Planned { get; init; }
@@ -275,7 +298,45 @@ public static class SessionPaths
         }
     }
 
-    private static string? PrepareSessionInner(Session session)
+    public static bool TryPrepareSelectedSession(Session current, NativeSaveRequest request,
+        ulong lastAcceptedRequestId, out Session? selected, out string error)
+    {
+        selected = null;
+        error = "Native save selection does not match the active session.";
+        if (request.Operation != NativeSaveOperation.Select || request.TargetSlot > 2
+            || request.RequestId == 0 || request.RequestId > NativeSaveRequest.MaximumRequestId
+            || !request.MatchesActiveSave(current.SaveId, current.LogicalSlot, lastAcceptedRequestId)
+            || !IsValidSaveId(current.SaveId))
+            return false;
+        var target = new Session
+        {
+            SeedPath = current.SeedPath,
+            OotExe = current.OotExe,
+            MmExe = current.MmExe,
+            Seed = current.Seed,
+            AllowDebugMenus = current.AllowDebugMenus,
+            V4Planned = current.V4Planned,
+            LogicalSlot = request.TargetSlot,
+        };
+        try
+        {
+            if (PrepareSessionInner(target, request.TargetSlot) is { } preparationError)
+            {
+                error = preparationError;
+                return false;
+            }
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            error = $"Save selection failed: {ex.Message}";
+            return false;
+        }
+        selected = target;
+        error = "";
+        return true;
+    }
+
+    private static string? PrepareSessionInner(Session session, uint? selectedSlot = null)
     {
         var sessionRoot = Path.GetFullPath(
             Path.Combine(Path.GetDirectoryName(session.SeedPath)!, ".ootmm-session"));
@@ -288,12 +349,42 @@ public static class SessionPaths
         }
 
         var bindingKey = SessionBindingKey(session, roomTag);
+        if (!NativeSaveCopy.RecoverBindings(session, sessionRoot, bindingKey, out var copyRecoveryError))
+            return $"Save copy recovery must finish before starting: {copyRecoveryError}";
         if (!session.V4Planned)
         {
             MigrateLegacySaveBinding(sessionRoot, bindingKey);
         }
 
-        var boundSlot = session.LogicalSlot
+        uint? recordedSelection = null;
+        if (selectedSlot is null && session.LogicalSlot is null)
+        {
+            var selectionPath = Path.Combine(sessionRoot, bindingKey + ".selected-save.json");
+            if (File.Exists(selectionPath))
+            {
+                try
+                {
+                    using var document = JsonDocument.Parse(File.ReadAllText(selectionPath));
+                    var root = document.RootElement;
+                    if (root.ValueKind != JsonValueKind.Object
+                        || root.EnumerateObject().Count() != 3
+                        || !root.TryGetProperty("version", out var version) || version.ValueKind != JsonValueKind.Number
+                        || !version.TryGetUInt32(out var versionNumber) || versionNumber != 1
+                        || !root.TryGetProperty("slot", out var slotValue) || slotValue.ValueKind != JsonValueKind.Number
+                        || !slotValue.TryGetUInt32(out var slot) || slot > 2
+                        || !root.TryGetProperty("saveId", out var identity) || identity.ValueKind != JsonValueKind.String
+                        || ReadSaveId(Path.Combine(sessionRoot, $"{bindingKey}_slot{slot}.save-id")) is not { } boundId
+                        || identity.GetString() != boundId)
+                        return "Selected save record is invalid or does not match its slot identity.";
+                    recordedSelection = slot;
+                }
+                catch (JsonException)
+                {
+                    return "Selected save record is malformed.";
+                }
+            }
+        }
+        var boundSlot = session.LogicalSlot ?? recordedSelection
                         ?? DiscoverBoundLogicalSlot(sessionRoot, bindingKey, SessionDirSuffix(session));
         session.LogicalSlot = boundSlot;
         var saveId = GetOrCreateSlotSaveId(sessionRoot, bindingKey, boundSlot, out var bindingError);
@@ -399,13 +490,62 @@ public static class SessionPaths
             }
         }
 
-        if (ResolveSessionLogicalSlot(session) is { } slotError)
+        if ((selectedSlot ?? recordedSelection) is { } explicitSlot)
+        {
+            if (File.Exists(session.StatePath))
+            {
+                var stateText = File.ReadAllText(session.StatePath);
+                var recordedSlot = SessionOwnership.ParseRuntimeLogicalSlot(stateText, out var stateError);
+                if ((stateError.Length > 0 && !IsLegacyCheckOnlyState(stateText))
+                    || recordedSlot is { } recorded && recorded != explicitSlot)
+                    return "Selected save state does not match its slot binding.";
+            }
+            session.LogicalSlot = explicitSlot;
+            session.LogicalSlotProvenNew = false;
+        }
+        else if (ResolveSessionLogicalSlot(session) is { } slotError)
         {
             // Keep the local slot binding; the warning surfaces via the caller's log.
             session.LogicalSlot = boundSlot;
         }
 
         return null;
+    }
+
+    private static bool IsLegacyCheckOnlyState(string text)
+    {
+        try
+        {
+            using var document = JsonDocument.Parse(text);
+            var root = document.RootElement;
+            return root.ValueKind == JsonValueKind.Object && root.EnumerateObject().Count() == 1
+                && root.TryGetProperty("completedChecks", out var checks) && checks.ValueKind == JsonValueKind.Array
+                && checks.EnumerateArray().All(check => check.ValueKind == JsonValueKind.String);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    public static bool RecordSelectedSession(Session session, out string error)
+    {
+        error = "Cannot record an unresolved or mismatched save selection.";
+        if (session.LogicalSlot is not { } slot || slot > 2 || !IsValidSaveId(session.SaveId))
+            return false;
+        var root = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(session.SeedPath)!, ".ootmm-session"));
+        var tag = SeedTag(session.Seed);
+        var key = SessionBindingKey(session, tag.Length == 0 ? "default" : tag);
+        if (ReadSaveId(Path.Combine(root, $"{key}_slot{slot}.save-id")) != session.SaveId)
+            return false;
+        var path = Path.Combine(root, key + ".selected-save.json");
+        if (!DurableFile.WriteAtomic(path, JsonSerializer.Serialize(new { version = 1, slot, saveId = session.SaveId })))
+        {
+            error = "Could not persist the selected save slot.";
+            return false;
+        }
+        error = "";
+        return true;
     }
 
     private static string? EnsureOutboxCursor(string outbox, string cursor)

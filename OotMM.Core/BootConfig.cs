@@ -18,11 +18,14 @@ public sealed class BootConfig
     public string SelftestReportPath { get; set; } = "";
     public string SelftestMode { get; set; } = "";
     public bool AllowDebugMenus { get; set; }
+    public bool OpenFileSelect { get; set; }
     public int MultiworldProtocol { get; set; } = 3;
     public Game BootGame { get; set; } = Game.Oot;
     public uint? BootEntrance { get; set; }
     public uint? OotAge { get; set; }
     public uint? LogicalSlot { get; set; }
+    public SharedResourceSnapshot? SharedResources { get; set; }
+    public MmRecoveryRequest? MmRecovery { get; set; }
     public ulong? ParentWindow { get; set; }
 
     /// <summary>Byte-identical to the C++ writer: optional fields are omitted
@@ -42,6 +45,8 @@ public sealed class BootConfig
         AppendString(outText, "selftestReportPath", SelftestReportPath);
         AppendString(outText, "selftestMode", SelftestMode);
         outText.Append(",\"allowDebugMenus\":").Append(AllowDebugMenus ? "true" : "false");
+        if (OpenFileSelect)
+            outText.Append(",\"openFileSelect\":true");
         if (MultiworldProtocol != 3)
         {
             outText.Append(",\"multiworldProtocol\":").Append(MultiworldProtocol);
@@ -68,6 +73,20 @@ public sealed class BootConfig
             outText.Append(",\"parentWindow\":").Append(JsonText.EscapeString(parentWindow.ToString()));
         }
 
+        if (SharedResources is { } shared)
+        {
+            if (LogicalSlot != shared.Slot || SaveId != shared.SaveId)
+                throw new InvalidOperationException("Shared resources do not belong to the boot save and slot.");
+            outText.Append(",\"sharedResources\":").Append(shared.Serialize());
+        }
+
+        if (MmRecovery is { } recovery)
+        {
+            if (BootGame != Game.Mm || LogicalSlot is null || !SessionPaths.IsValidSaveId(SaveId)
+                || !MmRecoveryRequest.TryParse(recovery.Serialize(), out _))
+                throw new InvalidOperationException("Invalid MM recovery boot request.");
+            outText.Append(",\"mmRecovery\":").Append(recovery.Serialize());
+        }
         return outText.Append('}').ToString();
     }
 
@@ -93,6 +112,10 @@ public sealed class BootConfig
                 return null;
             }
 
+            var names = root.EnumerateObject().Select(p => p.Name).ToArray();
+            if (names.Distinct(StringComparer.Ordinal).Count() != names.Length)
+                return null;
+
             var config = new BootConfig
             {
                 SaveId = ReadString(root, "saveId"),
@@ -112,6 +135,13 @@ public sealed class BootConfig
                 && allowDebug.ValueKind is JsonValueKind.True or JsonValueKind.False)
             {
                 config.AllowDebugMenus = allowDebug.GetBoolean();
+            }
+
+            if (root.TryGetProperty("openFileSelect", out var fileSelect))
+            {
+                if (fileSelect.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+                    return null;
+                config.OpenFileSelect = fileSelect.GetBoolean();
             }
 
             if (root.TryGetProperty("multiworldProtocol", out var protocol)
@@ -140,6 +170,24 @@ public sealed class BootConfig
                 }
 
                 config.LogicalSlot = slot;
+            }
+
+            if (root.TryGetProperty("sharedResources", out var shared))
+            {
+                if (config.LogicalSlot is not { } slot
+                    || !SharedResourceSnapshot.TryParse(shared.GetRawText(), config.SaveId, slot,
+                        out var snapshot, out _))
+                    return null;
+                config.SharedResources = snapshot;
+            }
+
+            if (root.TryGetProperty("mmRecovery", out var recovery))
+            {
+                if (config.BootGame != Game.Mm || config.LogicalSlot is null
+                    || !SessionPaths.IsValidSaveId(config.SaveId)
+                    || !MmRecoveryRequest.TryParse(recovery.GetRawText(), out var request))
+                    return null;
+                config.MmRecovery = request;
             }
 
             if (root.TryGetProperty("parentWindow", out var parentWindow))

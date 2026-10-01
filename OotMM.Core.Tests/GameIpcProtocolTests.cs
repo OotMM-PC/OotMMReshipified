@@ -38,6 +38,36 @@ public class GameIpcProtocolTests
         Assert.Equal(3u, delta.RootElement.GetProperty("items").GetProperty("OOT_COIN_RED").GetUInt32());
     }
 
+    [Theory]
+    [InlineData("{\"type\":\"checkCollected\",\"check\":\"mm:MM_NPC\"}", false)]
+    [InlineData("{\"type\":\"checkCollected\",\"check\":\"mm:MM_NPC\",\"present\":true}", true)]
+    public void CheckReport_PresentationOptInPreservesCheckIdentity(string json, bool requested)
+    {
+        Assert.True(GameIpcProtocol.TryParseCheckCollected(json, out var key, out var present, out _));
+        Assert.Equal("mm:MM_NPC", key);
+        Assert.Equal(requested, present);
+    }
+
+    [Theory]
+    [InlineData("{\"type\":\"checkCollected\",\"check\":\"mm:MM_NPC\",\"present\":1}")]
+    [InlineData("{\"type\":\"checkCollected\",\"check\":\"mm:MM_NPC\",\"present\":\"true\"}")]
+    public void CheckReport_RejectsInvalidPresentationFlag(string json)
+    {
+        Assert.False(GameIpcProtocol.TryParseCheckCollected(json, out _, out _, out _));
+    }
+
+    [Fact]
+    public void CheckReward_UsesExistingItemPresentationWithCheckCorrelation()
+    {
+        using var document = JsonDocument.Parse(GameIpcProtocol.BuildPresentItem(
+            new ItemRef(Game.Mm, "MM_DEED_LAND", "Land Title Deed"), Game.Mm, 1, 2,
+            debug: false, viewerPlayer: 1, checkKey: "mm:MM_NPC"));
+        Assert.Equal("presentItem", document.RootElement.GetProperty("type").GetString());
+        Assert.Equal("mm:MM_NPC", document.RootElement.GetProperty("check").GetString());
+        Assert.Equal(2, document.RootElement.GetProperty("recipientPlayer").GetInt32());
+        Assert.False(document.RootElement.GetProperty("debug").GetBoolean());
+    }
+
     [Fact]
     public void DebugPresentItemRoundTrips()
     {

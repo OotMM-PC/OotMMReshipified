@@ -790,6 +790,11 @@ public sealed class SessionCoordinator : IDisposable
                         _multiworld?.SubmitPvpHit(pvpHit);
                         break;
                     }
+                    if (GameIpcProtocol.TryParseDeathLink(ipcEvent.Message, out _))
+                    {
+                        _multiworld?.SubmitDeathLink();
+                        break;
+                    }
                     if (GameIpcProtocol.TryParseInventoryDebugSet(
                             ipcEvent.Message, out var itemUpdate, out _)
                         && itemUpdate is not null)
@@ -1025,6 +1030,11 @@ public sealed class SessionCoordinator : IDisposable
         foreach (var hit in hits)
         {
             _ipc.Send(GameIpcProtocol.BuildPvpHit(hit));
+        }
+
+        foreach (var death in _multiworld.TakeRemoteDeaths())
+        {
+            _ipc.Send(GameIpcProtocol.BuildDeathLink(death));
         }
     }
 

@@ -13,6 +13,9 @@ public sealed class V4RoomStore
     public static string SafeRoomName(string room) =>
         string.Concat(room.Select(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_' ? c : '_'));
 
+    public static string ProgressRoom(string seedId, string teamId) =>
+        teamId.Length == 0 || teamId == "default" || teamId.All(c => c == '0') ? seedId : seedId + "~" + teamId;
+
     public static string PathFor(string dir, string room) =>
         Path.Combine(dir, $"room_{SafeRoomName(room)}.v4.jsonl");
 

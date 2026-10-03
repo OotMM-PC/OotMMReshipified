@@ -48,6 +48,9 @@ public sealed class MultiworldSync : IDisposable
     // game has not been handed yet.
     private readonly Dictionary<int, (string Line, TimeSpan At)> _remotePoses = new();
     private readonly List<string> _pendingHits = [];
+    private readonly List<string> _pendingDeaths = [];
+    private readonly HashSet<string> _seenDeaths = [];
+    private uint _deathSeq = (uint)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
     private readonly List<string> _deferredInbound = [];
 
     public MultiworldSync(Core.Session session, string host, ushort port, string clientName)
@@ -87,6 +90,7 @@ public sealed class MultiworldSync : IDisposable
 
     // Server session rules (OOTMM_SESSION_META); players cannot override them.
     public bool Pvp { get; private set; }
+    public bool FriendlyFire { get; private set; }
     public bool DeathLink { get; private set; }
     public bool TimerEnabled { get; private set; } = true;
     public int TimerMin { get; private set; }
@@ -157,6 +161,15 @@ public sealed class MultiworldSync : IDisposable
                     if (RelayProtocol.ExtractIntField(line, "targetPlayer") == _session.Seed.PlayerId)
                     {
                         _pendingHits.Add(line);
+                    }
+
+                    break;
+                case PresencePackets.DeathLink:
+                    if (_seenDeaths.Add(RelayProtocol.ExtractStringField(line, "teamId") + ":"
+                                        + RelayProtocol.ExtractIntField(line, "sourcePlayer") + ":"
+                                        + RelayProtocol.ExtractU64Field(line, "seq")))
+                    {
+                        _pendingDeaths.Add(line);
                     }
 
                     break;
@@ -292,6 +305,7 @@ public sealed class MultiworldSync : IDisposable
                 {
                     _lastSessionMeta = line;
                     Pvp = line.Contains("\"pvp\":true");
+                    FriendlyFire = line.Contains("\"friendlyFire\":true");
                     DeathLink = line.Contains("\"deathLink\":true");
                     TimerEnabled = !line.Contains("\"timerEnabled\":false");
                     TimerMin = RelayProtocol.ExtractIntField(line, "timerMin");
@@ -299,12 +313,12 @@ public sealed class MultiworldSync : IDisposable
                     var rules = new List<string>();
                     if (Pvp)
                     {
-                        rules.Add("PvP");
+                        rules.Add(FriendlyFire ? "PvP with friendly fire" : "PvP");
                     }
 
                     if (DeathLink)
                     {
-                        rules.Add("death link");
+                        rules.Add("global death link");
                     }
 
                     EventLogged?.Invoke(
@@ -411,6 +425,23 @@ public sealed class MultiworldSync : IDisposable
         {
             _relay.QueueLine(line);
         }
+    }
+
+    public void SubmitDeathLink()
+    {
+        var line = GameIpcProtocol.BuildRelayPresenceLine(
+            PresencePackets.DeathLink, $"{{\"seq\":{++_deathSeq}}}", _session.Seed, "");
+        if (line.Length > 0)
+        {
+            _relay.QueueLine(line);
+        }
+    }
+
+    public List<string> TakeRemoteDeaths()
+    {
+        var deaths = new List<string>(_pendingDeaths);
+        _pendingDeaths.Clear();
+        return deaths;
     }
 
     /// <summary>The roster for the running game: every live remote pose, plus the hits aimed at

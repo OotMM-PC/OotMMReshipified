@@ -96,13 +96,13 @@ public class RelayEngineTests : IDisposable
         public void Dispose() => _client.Dispose();
     }
 
-    private static Seed MakeSeed(ushort playerId) => new()
+    private static Seed MakeSeed(ushort playerId, string teamId = "team") => new()
     {
         Format = Seed.CurrentFormat,
         GeneratorVersion = Seed.RequiredGeneratorVersion,
         SeedId = "protocol-test",
         SettingsHash = "settings",
-        TeamId = "team",
+        TeamId = teamId,
         PlayerId = playerId,
         PlayerCount = 2,
         SessionEpoch = 4,
@@ -115,8 +115,23 @@ public class RelayEngineTests : IDisposable
         ],
     };
 
-    private static string Hello(int player, string name) =>
-        RelayProtocol.BuildHello(MakeSeed((ushort)player), "cafe", name, 0);
+    private static string Hello(int player, string name, string teamId = "team") =>
+        RelayProtocol.BuildHello(MakeSeed((ushort)player, teamId), "cafe", name, 0);
+
+    private (Wire Source, Wire Teammate, Wire Rival) JoinTwoTeams(RelayRules rules)
+    {
+        var port = StartEngine(rules);
+        var source = new Wire(port);
+        var teammate = new Wire(port);
+        var rival = new Wire(port);
+        source.Send(Hello(1, "source"));
+        teammate.Send(Hello(2, "teammate"));
+        rival.Send(Hello(2, "rival", "rivals"));
+        Assert.NotNull(source.ReceiveType(RelayProtocol.Ready));
+        Assert.NotNull(teammate.ReceiveType(RelayProtocol.Ready));
+        Assert.NotNull(rival.ReceiveType(RelayProtocol.Ready));
+        return (source, teammate, rival);
+    }
 
     [Fact]
     public void V4FactLogSessionFlow()
@@ -153,7 +168,7 @@ public class RelayEngineTests : IDisposable
         var forwarded = p2.ReceiveType(RelayProtocol.SeedManifest);
         Assert.NotNull(forwarded);
         Assert.Equal(1, (int)SeedManifest.Parse(forwarded)!.Seed.PlayerId);
-        Assert.True(File.Exists(Path.Combine(_store, "room_protocol-test_p1.manifest.json")));
+        Assert.True(File.Exists(Path.Combine(_store, "room_protocol-test_team_p1.manifest.json")));
 
         // Duplicate publish re-acks idempotently with the existing seq.
         p1.Send("{\"v\":4,\"p\":1,\"g\":\"oot\",\"c\":\"CHECK_A\"}");
@@ -168,7 +183,59 @@ public class RelayEngineTests : IDisposable
         Assert.Equal(
             "{\"v\":4,\"seq\":1,\"p\":1,\"g\":\"oot\",\"c\":\"CHECK_A\"}\n"
             + "{\"v\":4,\"seq\":2,\"p\":1,\"g\":\"oot\",\"c\":\"CHECK_B\"}\n",
-            File.ReadAllText(Path.Combine(_store, "room_protocol-test.v4.jsonl")));
+            File.ReadAllText(Path.Combine(_store, "room_protocol-test_team.v4.jsonl")));
+    }
+
+    [Fact]
+    public void TeamsSharingASeedKeepSeparateProgressButShareTheLobby()
+    {
+        var port = StartEngine();
+        using var red = new Wire(port);
+        using var blue = new Wire(port);
+        red.Send(Hello(1, "red"));
+        blue.Send(Hello(1, "blue", "rivals"));
+        Assert.NotNull(red.ReceiveType(RelayProtocol.Ready));
+        Assert.NotNull(blue.ReceiveType(RelayProtocol.Ready));
+        red.Send(FactLog.EncodeCatchUp(0));
+        blue.Send(FactLog.EncodeCatchUp(0));
+        Assert.NotNull(red.ReceiveWhere(FactLog.DecodeLive));
+        Assert.NotNull(blue.ReceiveWhere(FactLog.DecodeLive));
+
+        red.Send("{\"v\":4,\"p\":1,\"g\":\"oot\",\"c\":\"CHECK_A\"}");
+        Assert.Equal(1ul, FactLog.DecodeAck(red.ReceiveWhere(l => FactLog.DecodeAck(l) is not null)!)!.Seq);
+        blue.Send("{\"v\":4,\"p\":1,\"g\":\"oot\",\"c\":\"CHECK_B\"}");
+        Assert.Equal(1ul, FactLog.DecodeAck(blue.ReceiveWhere(l => FactLog.DecodeAck(l) is not null)!)!.Seq);
+        Assert.Equal("{\"v\":4,\"seq\":1,\"p\":1,\"g\":\"oot\",\"c\":\"CHECK_B\"}",
+                     blue.ReceiveWhere(l => FactLog.DecodeFact(l) is { Seq: not 0 }));
+        Assert.Null(blue.ReceiveWhere(l => FactLog.DecodeFact(l) is { CheckId: "CHECK_A" }, timeoutMs: 400));
+
+        red.Send(SeedManifest.Build(MakeSeed(1)));
+        Assert.Null(blue.ReceiveType(RelayProtocol.SeedManifest, timeoutMs: 400));
+        Assert.True(File.Exists(Path.Combine(_store, "room_protocol-test_team_p1.manifest.json")));
+
+        var flag = "{\"type\":\"OOTMM_WORLD_FLAG\",\"seedId\":\"protocol-test\",\"settingsHash\":\"settings\","
+                   + "\"teamId\":\"team\",\"playerId\":1,\"playerCount\":2,\"flagGame\":\"oot\","
+                   + "\"kind\":\"chest\",\"sceneId\":1,\"flagIndex\":2}";
+        var pose = """{"type":"OOTMM_PLAYER_STATE","seedId":"protocol-test","teamId":"team","sourcePlayer":1,"game":"oot","sceneId":5}""";
+        red.Send(flag);
+        red.Send(pose);
+        Assert.Equal(pose, blue.ReceiveWhere(l =>
+            RelayProtocol.ExtractStringField(l, "type") is RelayProtocol.WorldFlag or PresencePackets.PlayerState));
+
+        Assert.Equal("{\"v\":4,\"seq\":1,\"p\":1,\"g\":\"oot\",\"c\":\"CHECK_A\"}\n",
+                     File.ReadAllText(Path.Combine(_store, "room_protocol-test_team.v4.jsonl")));
+        Assert.Equal("{\"v\":4,\"seq\":1,\"p\":1,\"g\":\"oot\",\"c\":\"CHECK_B\"}\n",
+                     File.ReadAllText(Path.Combine(_store, "room_protocol-test_rivals.v4.jsonl")));
+    }
+
+    [Theory]
+    [InlineData("", "seed")]
+    [InlineData("default", "seed")]
+    [InlineData("00000000000000000000000000000000", "seed")]
+    [InlineData("0123456789abcdef0123456789abcdef", "seed~0123456789abcdef0123456789abcdef")]
+    public void SingleTeamSeedsKeepTheirExistingStore(string teamId, string expected)
+    {
+        Assert.Equal(expected, V4RoomStore.ProgressRoom("seed", teamId));
     }
 
     [Fact]
@@ -222,6 +289,82 @@ public class RelayEngineTests : IDisposable
         Assert.Null(p2.ReceiveType(PresencePackets.PlayerState, timeoutMs: 400));
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PvpForwardingRespectsHostRule(bool? enabled)
+    {
+        var port = StartEngine(enabled is null ? null : new RelayRules { Pvp = enabled.Value, FriendlyFire = true });
+        using var p1 = new Wire(port);
+        using var p2 = new Wire(port);
+        p1.Send(Hello(1, "p1"));
+        p2.Send(Hello(2, "p2"));
+        Assert.NotNull(p1.ReceiveType(RelayProtocol.Ready));
+        Assert.NotNull(p2.ReceiveType(RelayProtocol.Ready));
+
+        var hit = """{"type":"OOTMM_PVP_HIT","seedId":"protocol-test","teamId":"team","sourcePlayer":1,"targetPlayer":2,"seq":1,"damage":8,"pvp":true}""";
+        var pose = """{"type":"OOTMM_PLAYER_STATE","seedId":"protocol-test","teamId":"team","sourcePlayer":1,"game":"oot","sceneId":5}""";
+        p1.Send(hit);
+        p1.Send(pose);
+        var first = p2.ReceiveWhere(line =>
+            RelayProtocol.ExtractStringField(line, "type") is PresencePackets.PvpHit or PresencePackets.PlayerState);
+        if (enabled == true)
+        {
+            Assert.Equal(hit, first);
+            Assert.Equal(pose, p2.ReceiveType(PresencePackets.PlayerState));
+        }
+        else
+        {
+            Assert.Equal(pose, first);
+        }
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void PvpHitsReachTeammatesOnlyWithFriendlyFire(bool friendlyFire)
+    {
+        var (source, teammate, rival) = JoinTwoTeams(new RelayRules { Pvp = true, FriendlyFire = friendlyFire });
+        using var a = source;
+        using var b = teammate;
+        using var c = rival;
+
+        var hit = """{"type":"OOTMM_PVP_HIT","seedId":"protocol-test","teamId":"team","sourcePlayer":1,"targetPlayer":2,"seq":1,"damage":8,"pvp":true}""";
+        source.Send(hit);
+        Assert.Equal(hit, rival.ReceiveType(PresencePackets.PvpHit));
+        var toTeammate = teammate.ReceiveType(PresencePackets.PvpHit, timeoutMs: friendlyFire ? 3000 : 400);
+        Assert.Equal(friendlyFire ? hit : null, toTeammate);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DeathLinkAlwaysReachesTeammatesAndOtherTeamsOnlyWhenGlobal(bool global)
+    {
+        var (source, teammate, rival) = JoinTwoTeams(new RelayRules { DeathLink = global });
+        using var a = source;
+        using var b = teammate;
+        using var c = rival;
+
+        var death = """{"type":"OOTMM_DEATH_LINK","seedId":"protocol-test","teamId":"team","sourcePlayer":1,"seq":3}""";
+        source.Send(death);
+        Assert.Equal(death, teammate.ReceiveType(PresencePackets.DeathLink));
+        var toRival = rival.ReceiveType(PresencePackets.DeathLink, timeoutMs: global ? 3000 : 400);
+        Assert.Equal(global ? death : null, toRival);
+    }
+
+    [Fact]
+    public void SessionMetaAnnouncesFriendlyFire()
+    {
+        var port = StartEngine(new RelayRules { Pvp = true, FriendlyFire = true });
+        using var p1 = new Wire(port);
+        p1.Send(Hello(1, "p1"));
+        var meta = p1.ReceiveType(RelayProtocol.SessionMeta);
+        Assert.NotNull(meta);
+        Assert.Contains("\"friendlyFire\":true", meta);
+    }
+
     [Fact]
     public void Allowlist_RejectsProgressAndUnboundFrames()
     {
@@ -262,7 +405,8 @@ public class RelayEngineTests : IDisposable
     public void ResetMarkerFailsJoinsClosed()
     {
         Directory.CreateDirectory(_store);
-        File.WriteAllText(V4RoomStore.ResetMarkerPathFor(_store, "protocol-test"), "{}");
+        File.WriteAllText(V4RoomStore.ResetMarkerPathFor(
+            _store, V4RoomStore.ProgressRoom("protocol-test", "team")), "{}");
         var port = StartEngine();
         using var p1 = new Wire(port);
         p1.Send(Hello(1, "p1"));

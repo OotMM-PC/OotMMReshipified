@@ -52,13 +52,16 @@ foreach (var arg in args)
     {
         case "-h" or "--help" or "/?":
             Console.WriteLine("OoTMM dedicated multiworld server (protocol v4)\n"
-                              + "usage: ootmm_server [port] [--pvp] [--death-link]\n"
+                              + "usage: ootmm_server [port] [--pvp] [--friendly-fire] [--death-link]\n"
                               + "       ootmm_server --register-manifest [--world-state <dir>]\n"
                               + "                    <player1-seed> ... <playerN-seed>\n\n"
                               + "Normal settings load from server.properties next to the executable.");
             return 0;
         case "--pvp":
             config.Rules.Pvp = true;
+            continue;
+        case "--friendly-fire":
+            config.Rules.FriendlyFire = true;
             continue;
         case "--death-link":
             config.Rules.DeathLink = true;
@@ -138,7 +141,7 @@ file sealed class ServerProperties
                 case "port":
                     Console.Error.WriteLine($"[server] server.properties line {lineNo}: invalid port '{value}'");
                     break;
-                case "pvp" or "death-link" or "timer-enabled" or "manifest-bootstrap":
+                case "pvp" or "friendly-fire" or "death-link" or "timer-enabled" or "manifest-bootstrap":
                 {
                     var lowered = value.ToLowerInvariant();
                     var parsed = lowered is "true" or "1" or "yes" or "on";
@@ -152,6 +155,7 @@ file sealed class ServerProperties
                     switch (key)
                     {
                         case "pvp": config.Rules.Pvp = parsed; break;
+                        case "friendly-fire": config.Rules.FriendlyFire = parsed; break;
                         case "death-link": config.Rules.DeathLink = parsed; break;
                         case "manifest-bootstrap": config.Rules.AllowManifestBootstrap = parsed; break;
                         default: config.Rules.TimerEnabled = parsed; break;
@@ -198,7 +202,10 @@ file sealed class ServerProperties
                 + "# Player-vs-player combat for every session on this server. A server\n"
                 + "# rule; players cannot override it from their launchers.\n"
                 + $"pvp={(config.Rules.Pvp ? "true" : "false")}\n\n"
-                + "# Death link: when one player dies, every player in the session dies.\n"
+                + "# With PvP on, whether teammates can hurt each other.\n"
+                + $"friendly-fire={(config.Rules.FriendlyFire ? "true" : "false")}\n\n"
+                + "# Teammates always share deaths. Global death link also kills every\n"
+                + "# player on every other team in the session.\n"
                 + $"death-link={(config.Rules.DeathLink ? "true" : "false")}\n\n"
                 + "# Timer (game speed) feature: each launcher offers a game-speed slider\n"
                 + "# constrained to [timer-min, timer-max] percent (100 = vanilla speed).\n"

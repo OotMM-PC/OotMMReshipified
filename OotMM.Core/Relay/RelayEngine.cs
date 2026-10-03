@@ -41,6 +41,7 @@ public sealed class RelayEngine
     private readonly Lock _commandLock = new();
     private readonly List<ClientConn> _clients = [];
     private readonly Dictionary<string, V4RoomStore> _rooms = [];
+    private readonly Dictionary<string, string> _progressSeeds = [];
     private readonly Dictionary<string, Dictionary<int, SeedManifestRegistration>> _manifests = [];
     private readonly Dictionary<string, Dictionary<int, (string Name, List<string> CheckIds)>> _catalogs = [];
 
@@ -98,7 +99,8 @@ public sealed class RelayEngine
 
         BoundPort = ((IPEndPoint)listener.LocalEndPoint!).Port;
         Log($"[relay] multiworld relay listening on port {BoundPort}"
-            + (_rules.Pvp ? " (PvP enabled)" : "") + (_rules.DeathLink ? " (death link enabled)" : ""));
+            + (_rules.Pvp ? " (PvP enabled)" : "") + (_rules.Pvp && _rules.FriendlyFire ? " (friendly fire enabled)" : "")
+            + (_rules.DeathLink ? " (global death link enabled)" : ""));
         Log($"[relay] check state persists in {_storeDir}");
 
         var lastMeta = SessionMetaLine();
@@ -257,7 +259,8 @@ public sealed class RelayEngine
         foreach (var seed in seeds)
         {
             var line = SeedManifest.Build(seed);
-            var path = V4RoomStore.ManifestPathFor(_storeDir, seed.SeedId, seed.PlayerId);
+            var path = V4RoomStore.ManifestPathFor(
+                _storeDir, V4RoomStore.ProgressRoom(seed.SeedId, seed.TeamId), seed.PlayerId);
             if (File.Exists(path) && File.ReadAllText(path) != line)
             {
                 return new RoomProvisionReport(false, first.SeedId,
@@ -267,8 +270,10 @@ public sealed class RelayEngine
 
         foreach (var seed in seeds)
         {
-            if (!DurableFile.WriteAtomic(V4RoomStore.ManifestPathFor(_storeDir, seed.SeedId, seed.PlayerId),
-                                         SeedManifest.Build(seed)))
+            if (!DurableFile.WriteAtomic(
+                    V4RoomStore.ManifestPathFor(
+                        _storeDir, V4RoomStore.ProgressRoom(seed.SeedId, seed.TeamId), seed.PlayerId),
+                    SeedManifest.Build(seed)))
             {
                 return new RoomProvisionReport(false, first.SeedId,
                     $"cannot durably register manifest for player {seed.PlayerId}");
@@ -281,6 +286,7 @@ public sealed class RelayEngine
 
     private string SessionMetaLine() =>
         $"{{\"type\":\"{RelayProtocol.SessionMeta}\",\"pvp\":{(_rules.Pvp ? "true" : "false")}"
+        + $",\"friendlyFire\":{(_rules.FriendlyFire ? "true" : "false")}"
         + $",\"deathLink\":{(_rules.DeathLink ? "true" : "false")}"
         + $",\"timerEnabled\":{(_rules.TimerEnabled ? "true" : "false")}"
         + $",\"timerMin\":{_rules.TimerMinPercent},\"timerMax\":{_rules.TimerMaxPercent}}}\n";
@@ -414,27 +420,32 @@ public sealed class RelayEngine
             return true;
         }
 
+        var teamId = RelayProtocol.ExtractStringField(line, "teamId");
+        var progress = V4RoomStore.ProgressRoom(room, teamId);
+
         // A surviving reset marker means an offline epoch reset is unfinished; fail closed.
-        if (File.Exists(V4RoomStore.ResetMarkerPathFor(_storeDir, room)))
+        if (File.Exists(V4RoomStore.ResetMarkerPathFor(_storeDir, progress)))
         {
-            Log($"[relay] refused v4 hello from '{clientName}': room {room} has an epoch reset in progress");
+            Log($"[relay] refused v4 hello from '{clientName}': room {progress} has an epoch reset in progress");
             c.QueueWire(StatusError("room epoch reset in progress - joins are disabled until it completes"));
             return true;
         }
 
-        var store = RoomStore(room);
-        if (!store.Load(_storeDir, room))
+        var store = RoomStore(progress);
+        if (!store.Load(_storeDir, progress))
         {
             c.QueueWire(StatusError("room store unavailable"));
             return true;
         }
 
+        _progressSeeds[progress] = room;
         c.Room = room;
+        c.Progress = progress;
         c.Name = clientName;
         c.PlayerId = playerId;
         c.PlayerCount = playerCount;
         c.SettingsHash = RelayProtocol.ExtractStringField(line, "settingsHash");
-        c.TeamId = RelayProtocol.ExtractStringField(line, "teamId");
+        c.TeamId = teamId;
         c.QueueWire($"{{\"type\":\"{RelayProtocol.Ready}\",\"protocolVersion\":4,\"seedId\":"
                     + JsonText.EscapeString(room) + "}\n");
         c.QueueWire(SessionMetaLine());
@@ -448,7 +459,7 @@ public sealed class RelayEngine
                 continue;
             }
 
-            var path = V4RoomStore.ManifestPathFor(_storeDir, room, player);
+            var path = V4RoomStore.ManifestPathFor(_storeDir, progress, player);
             if (!File.Exists(path))
             {
                 continue;
@@ -470,7 +481,7 @@ public sealed class RelayEngine
             }
         }
 
-        Log($"[relay] '{c.Name}' joined v4 room {room} (player {playerId}); "
+        Log($"[relay] '{c.Name}' joined v4 room {progress} (player {playerId}); "
             + $"{store.Lines.Count} fact(s) durable, {manifestsForwarded} manifest(s) forwarded");
         return true;
     }
@@ -490,16 +501,16 @@ public sealed class RelayEngine
             return;
         }
 
-        _manifests.TryAdd(c.Room, []);
-        _manifests[c.Room][c.PlayerId] = requested!;
-        _catalogs.TryAdd(c.Room, []);
-        _catalogs[c.Room][c.PlayerId] =
+        _manifests.TryAdd(c.Progress, []);
+        _manifests[c.Progress][c.PlayerId] = requested!;
+        _catalogs.TryAdd(c.Progress, []);
+        _catalogs[c.Progress][c.PlayerId] =
             (c.Name, requested!.Seed.Placements.Select(p => p.Check.Id).ToList());
 
         if (bootstrapped)
         {
-            Log($"[relay] registered v4 player manifest for room {c.Room} player {c.PlayerId}");
-            Broadcast(c.Room, line + "\n", except: c);
+            Log($"[relay] registered v4 player manifest for room {c.Progress} player {c.PlayerId}");
+            BroadcastProgress(c.Progress, line + "\n", except: c);
         }
     }
 
@@ -507,7 +518,9 @@ public sealed class RelayEngine
                                         out bool bootstrapped)
     {
         bootstrapped = false;
-        var path = V4RoomStore.ManifestPathFor(_storeDir, requested.Seed.SeedId, requested.Seed.PlayerId);
+        var path = V4RoomStore.ManifestPathFor(
+            _storeDir, V4RoomStore.ProgressRoom(requested.Seed.SeedId, requested.Seed.TeamId),
+            requested.Seed.PlayerId);
         if (File.Exists(path))
         {
             string text;
@@ -558,14 +571,39 @@ public sealed class RelayEngine
             return;
         }
 
+        if (type == PresencePackets.PvpHit && !_rules.Pvp)
+        {
+            return;
+        }
+
+        if (type == PresencePackets.PvpHit)
+        {
+            Broadcast(c.Room, line + "\n", except: c,
+                      recipient => _rules.FriendlyFire || recipient.TeamId != c.TeamId);
+            return;
+        }
+
+        if (type == PresencePackets.DeathLink)
+        {
+            Broadcast(c.Room, line + "\n", except: c,
+                      recipient => _rules.DeathLink || recipient.TeamId == c.TeamId);
+            return;
+        }
+
+        if (type == RelayProtocol.WorldFlag)
+        {
+            BroadcastProgress(c.Progress, line + "\n", except: c);
+            return;
+        }
+
         Broadcast(c.Room, line + "\n", except: c);
     }
 
     private void HandleCatchUp(ClientConn c, string line)
     {
         var since = FactLog.DecodeCatchUp(line);
-        var store = RoomStore(c.Room);
-        if (since is null || !store.Load(_storeDir, c.Room))
+        var store = RoomStore(c.Progress);
+        if (since is null || !store.Load(_storeDir, c.Progress))
         {
             Log($"[relay] dropped malformed/unserviceable v4 catch-up from '{c.Name}'");
             return;
@@ -595,8 +633,8 @@ public sealed class RelayEngine
             return;
         }
 
-        var store = RoomStore(c.Room);
-        if (!store.Load(_storeDir, c.Room))
+        var store = RoomStore(c.Progress);
+        if (!store.Load(_storeDir, c.Progress))
         {
             // No ack; the client republishes and relay dedup absorbs it.
             Log("[relay] v4 store reload failed; fact not acknowledged");
@@ -612,7 +650,7 @@ public sealed class RelayEngine
 
         var assigned = fact with { Seq = (ulong)store.Lines.Count + 1 };
         var factLine = FactLog.EncodeFact(assigned);
-        if (!store.Append(_storeDir, c.Room, factLine))
+        if (!store.Append(_storeDir, c.Progress, factLine))
         {
             Log("[relay] durable v4 fact append failed; fact not acknowledged");
             return;
@@ -621,14 +659,25 @@ public sealed class RelayEngine
         store.Lines.Add(factLine);
         store.SeqByKey[key] = assigned.Seq;
         c.QueueWire(FactLog.EncodeAck(assigned) + "\n");
-        Broadcast(c.Room, factLine + "\n", except: null); // sender included
+        BroadcastProgress(c.Progress, factLine + "\n", except: null); // sender included
     }
 
-    private void Broadcast(string room, string wire, ClientConn? except)
+    private void Broadcast(string room, string wire, ClientConn? except, Func<ClientConn, bool>? accepts = null)
     {
         foreach (var client in _clients)
         {
-            if (client.Room == room && client != except)
+            if (client.Room == room && client != except && (accepts is null || accepts(client)))
+            {
+                client.QueueWire(wire);
+            }
+        }
+    }
+
+    private void BroadcastProgress(string progress, string wire, ClientConn? except)
+    {
+        foreach (var client in _clients)
+        {
+            if (client.Progress == progress && client != except)
             {
                 client.QueueWire(wire);
             }
@@ -646,6 +695,8 @@ public sealed class RelayEngine
         return store;
     }
 
+    private string SeedOf(string progress) => _progressSeeds.GetValueOrDefault(progress, progress);
+
     private static string StatusError(string message) =>
         $"{{\"type\":\"{RelayProtocol.Status}\",\"level\":\"error\",\"message\":\"{message}\"}}\n";
 
@@ -655,7 +706,7 @@ public sealed class RelayEngine
         var sent = 0;
         foreach (var client in _clients)
         {
-            if (client.Room == room && client.QueueWire(line + "\n"))
+            if (client.Progress == room && client.QueueWire(line + "\n"))
             {
                 sent++;
             }
@@ -691,9 +742,9 @@ public sealed class RelayEngine
             case "/list-players":
                 foreach (var client in _clients)
                 {
-                    if (client.Room.Length > 0 && (parts.Length < 2 || client.Room == parts[1]))
+                    if (client.Progress.Length > 0 && (parts.Length < 2 || client.Progress == parts[1]))
                     {
-                        Log($"  '{client.Name}' in {client.Room}");
+                        Log($"  '{client.Name}' in {client.Progress}");
                     }
                 }
 
@@ -713,18 +764,18 @@ public sealed class RelayEngine
                     return;
                 }
 
-                InjectRoomLine(parts[1], $"{{\"type\":\"{RelayProtocol.AdminUnlockAll}\",\"seedId\":\"{parts[1]}\""
+                InjectRoomLine(parts[1], $"{{\"type\":\"{RelayProtocol.AdminUnlockAll}\",\"seedId\":\"{SeedOf(parts[1])}\""
                                          + $",\"who\":\"{parts[2]}\",\"game\":\"{game}\"}}");
                 return;
             }
             case "/teleport" when parts.Length >= 4:
-                InjectRoomLine(parts[1], $"{{\"type\":\"{RelayProtocol.Teleport}\",\"seedId\":\"{parts[1]}\""
+                InjectRoomLine(parts[1], $"{{\"type\":\"{RelayProtocol.Teleport}\",\"seedId\":\"{SeedOf(parts[1])}\""
                                          + $",\"who\":\"{parts[2]}\",\"dest\":\"{parts[3]}\"}}");
                 return;
             case "/say" when parts.Length >= 3:
             {
                 var message = raw[(raw.IndexOf(parts[1], StringComparison.Ordinal) + parts[1].Length)..].Trim();
-                InjectRoomLine(parts[1], $"{{\"type\":\"{RelayProtocol.Chat}\",\"seedId\":\"{parts[1]}\""
+                InjectRoomLine(parts[1], $"{{\"type\":\"{RelayProtocol.Chat}\",\"seedId\":\"{SeedOf(parts[1])}\""
                                          + $",\"from\":\"server\",\"text\":{JsonText.EscapeString(message)}}}");
                 return;
             }
@@ -739,16 +790,16 @@ public sealed class RelayEngine
         var active = new SortedSet<string>(_rooms.Keys);
         foreach (var client in _clients)
         {
-            if (client.Room.Length > 0)
+            if (client.Progress.Length > 0)
             {
-                active.Add(client.Room);
+                active.Add(client.Progress);
             }
         }
 
         Log($"[relay] {active.Count} session(s):");
         foreach (var room in active)
         {
-            var online = _clients.Count(c => c.Room == room);
+            var online = _clients.Count(c => c.Progress == room);
             var stored = _rooms.TryGetValue(room, out var store) ? store.Lines.Count : 0;
             Log($"  {room}  ({online} online, {stored} stored facts)");
         }
@@ -837,7 +888,7 @@ public sealed class RelayEngine
         {
             foreach (var client in _clients)
             {
-                if (client.Room == room && client.PlayerId > 0)
+                if (client.Progress == room && client.PlayerId > 0)
                 {
                     targets.Add(client.PlayerId);
                 }
@@ -884,7 +935,7 @@ public sealed class RelayEngine
             }
 
             var commandId = "admin-" + Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
-            InjectRoomLine(room, $"{{\"type\":\"{RelayProtocol.AdminUnlockCheck}\",\"seedId\":\"{room}\""
+            InjectRoomLine(room, $"{{\"type\":\"{RelayProtocol.AdminUnlockCheck}\",\"seedId\":\"{SeedOf(room)}\""
                                  + $",\"who\":\"player-id={player}\",\"checkId\":\"{matches[0].Check.Id}\""
                                  + $",\"commandId\":\"{commandId}\",\"grant\":false}}");
             dispatched++;
@@ -923,7 +974,7 @@ public sealed class RelayEngine
 
         foreach (var client in _clients)
         {
-            if (client.Room == room && client.Name == arg)
+            if (client.Progress == room && client.Name == arg)
             {
                 return client.PlayerId;
             }
@@ -938,6 +989,7 @@ public sealed class RelayEngine
         public List<byte> Buffer { get; } = [];
         public byte[] RecvChunk { get; } = new byte[4096];
         public string Room { get; set; } = "";
+        public string Progress { get; set; } = "";
         public string Name { get; set; } = "";
         public int PlayerId { get; set; }
         public int PlayerCount { get; set; }

@@ -42,6 +42,7 @@ public static class GameIpcProtocol
         public const string LocalPlayerPose = "localPlayerPose";
         public const string RemotePlayerPoses = "remotePlayerPoses";
         public const string PvpHit = "pvpHit";
+        public const string DeathLink = "deathLink";
         public const string ModelReady = "modelReady";
         public const string ModelMounted = "modelMounted";
         public const string CrossGameTransition = "crossGameTransition";
@@ -160,6 +161,9 @@ public static class GameIpcProtocol
     public static string BuildPvpHit(string hitBody) =>
         "{\"type\":\"" + MessageType.PvpHit + "\",\"hit\":" + hitBody + "}";
 
+    public static string BuildDeathLink(string deathBody) =>
+        "{\"type\":\"" + MessageType.DeathLink + "\",\"death\":" + deathBody + "}";
+
     public static string BuildCheckAccepted(string checkKey) =>
         JsonSerializer.Serialize(new
         {
@@ -243,6 +247,9 @@ public static class GameIpcProtocol
 
     public static bool TryParsePvpHit(string json, out string hit) =>
         TryParseEnvelopeBody(json, MessageType.PvpHit, "hit", out hit);
+
+    public static bool TryParseDeathLink(string json, out string death) =>
+        TryParseEnvelopeBody(json, MessageType.DeathLink, "death", out death);
 
     private static bool TryParseEnvelopeBody(
         string json, string expectedType, string bodyName, out string body)

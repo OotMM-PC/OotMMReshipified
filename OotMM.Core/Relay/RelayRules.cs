@@ -5,6 +5,7 @@ namespace OotMM.Core.Relay;
 public sealed class RelayRules
 {
     public bool Pvp { get; set; }
+    public bool FriendlyFire { get; set; }
     public bool DeathLink { get; set; }
     public bool TimerEnabled { get; set; } = true;
     public int TimerMinPercent { get; set; }
@@ -55,8 +56,10 @@ public static class SideChannelPolicy
             case PresencePackets.PvpHit:
             {
                 var target = RelayProtocol.ExtractIntField(line, "targetPlayer");
+                var damage = RelayProtocol.ExtractIntField(line, "damage");
                 return sourcePlayer == client.PlayerId && target != 0 && target <= client.PlayerCount
-                       && RelayProtocol.ExtractIntField(line, "seq") != 0;
+                       && RelayProtocol.ExtractIntField(line, "seq") != 0
+                       && damage is >= 1 and <= 255;
             }
             case PresencePackets.DeathLink:
                 return sourcePlayer == client.PlayerId

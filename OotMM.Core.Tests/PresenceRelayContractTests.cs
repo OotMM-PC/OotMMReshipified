@@ -47,6 +47,43 @@ public class PresenceRelayContractTests
         Assert.True(SideChannelPolicy.IsRoomPacketAllowed(line, TestClient));
     }
 
+    [Theory]
+    [InlineData("targetPlayer", -1)]
+    [InlineData("targetPlayer", 0)]
+    [InlineData("targetPlayer", 5)]
+    [InlineData("seq", -1)]
+    [InlineData("seq", 0)]
+    [InlineData("damage", -1)]
+    [InlineData("damage", 0)]
+    [InlineData("damage", 256)]
+    [InlineData("damage", 100000)]
+    public void PvpHitRejectsInvalidTargetSequenceAndDamage(string field, int value)
+    {
+        var body = System.Text.Json.Nodes.JsonNode.Parse(HitBody)!;
+        body[field] = value;
+        var line = GameIpcProtocol.BuildRelayPresenceLine(
+            PresencePackets.PvpHit, body.ToJsonString(), TestSeed, "");
+        Assert.False(SideChannelPolicy.IsRoomPacketAllowed(line, TestClient));
+    }
+
+    [Fact]
+    public void PvpHitRejectsASpoofedSender()
+    {
+        var line = """{"type":"OOTMM_PVP_HIT","seedId":"seed","teamId":"team","sourcePlayer":3,"targetPlayer":4,"damage":8,"yaw":0,"seq":1}""";
+        Assert.False(SideChannelPolicy.IsRoomPacketAllowed(line, TestClient));
+        Assert.True(SideChannelPolicy.IsRoomPacketAllowed(line.Replace("\"sourcePlayer\":3", "\"sourcePlayer\":2"), TestClient));
+    }
+
+    [Theory]
+    [InlineData(-1)]
+    [InlineData(0)]
+    public void DeathLinkRejectsNonpositiveSequence(int sequence)
+    {
+        var line = GameIpcProtocol.BuildRelayPresenceLine(PresencePackets.DeathLink,
+            $$"""{"sourcePlayer":2,"seq":{{sequence}}}""", TestSeed, "");
+        Assert.False(SideChannelPolicy.IsRoomPacketAllowed(line, TestClient));
+    }
+
     [Fact]
     public void PresenceLine_CarriesTheRoomIdentityTheAllowlistRequires()
     {

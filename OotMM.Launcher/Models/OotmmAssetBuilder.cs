@@ -29,6 +29,18 @@ public static class OotmmAssetBuilder
         new("Map", 0xc7, 0x50, 0x00),
     ];
 
+    private static readonly Dictionary<string, (uint Primitive, uint Environment)> SkulltulaColors = new()
+    {
+        ["Normal"] = (0x755726ff, 0x0c0904ff),
+        ["BossKey"] = (0x0000ffff, 0x000019ff),
+        ["Key"] = (0x646464ff, 0x0a0a0aff),
+        ["Spider"] = (0xffffffff, 0x191919ff),
+        ["Fairy"] = (0xe69df2ff, 0x170f18ff),
+        ["Heart"] = (0xff0000ff, 0x190000ff),
+        ["Soul"] = (0x340b9cff, 0x05010fff),
+        ["Map"] = (0xfc5603ff, 0x4a1900ff),
+    };
+
     private static readonly Dictionary<string, (string Side, string Top)> PotArt = new()
     {
         ["BossKey"] = ("pots/bosskey_side.png", "pots/bosskey_top.png"),
@@ -132,6 +144,12 @@ public static class OotmmAssetBuilder
             {
                 var writer = new AssetWriter(zip);
                 WriteCsmcAssets(writer, source, isOot, log);
+                WriteRustyDoorLock(writer, source, log);
+                WriteMenuAssets(writer, source, isOot, log);
+                if (!isOot)
+                {
+                    WritePalmTree(writer, source, log);
+                }
                 WriteForeignObjects(writer, foreignInputs, foreignNamespace, log);
                 count = writer.Count;
             }
@@ -176,6 +194,80 @@ public static class OotmmAssetBuilder
         }
     }
 
+    private static readonly (string Source, string Output)[] RustyDoorLock =
+    [
+        ("objects/gameplay_dangeon_keep/gDoorChainDL", "objects/ootmm_door_lock/gRustyDoorChainDL"),
+        ("objects/gameplay_dangeon_keep/gDoorLockDL", "objects/ootmm_door_lock/gRustyDoorLockDL"),
+    ];
+
+    private static readonly Category RustyLockColor = new("Rusty", 255, 140, 64);
+
+    private static void WriteRustyDoorLock(AssetWriter output, ArchiveSet source, List<string> log)
+    {
+        var baked = new List<(string Name, byte[] Data)>();
+        foreach (var (path, name) in RustyDoorLock)
+        {
+            if (!source.TryRead(path, out var data))
+            {
+                log.Add($"Skipped the rusty door lock: {path} is missing.");
+                return;
+            }
+
+            try
+            {
+                baked.Add((name, RecolorPrimitive(data, RustyLockColor, 0xffffffff)));
+            }
+            catch (InvalidDataException ex)
+            {
+                log.Add($"Skipped the rusty door lock: {path} {ex.Message}.");
+                return;
+            }
+        }
+
+        foreach (var (name, data) in baked)
+        {
+            output.Emit(name, data);
+        }
+
+        log.Add("Baked the rusty door lock.");
+    }
+
+    private static void WritePalmTree(AssetWriter output, ArchiveSet source, List<string> log)
+    {
+        const string palmTree = "objects/object_obj_yasi/gPalmTreeDL";
+        if (!source.TryRead(palmTree, out var data))
+        {
+            log.Add($"Skipped the shuffled palm tree: {palmTree} is missing.");
+            return;
+        }
+
+        var offset = 0x58;
+        while (offset + 8 <= data.Length)
+        {
+            var word0 = ReadUInt32(data, offset);
+            var operation = word0 >> 24;
+            if (operation == 0xdf)
+            {
+                break;
+            }
+
+            var size = IsExpandedOperation(word0) ? 16 : 8;
+            if (operation == 0x32 && ((word0 >> 12) & 0xff) == 9 && ReadUInt32(data, offset + 4) == 0xf0
+                && offset + size + 16 <= data.Length
+                && ReadUInt32(data, offset + size) >> 24 == 0x06 && ReadUInt32(data, offset + size + 8) >> 24 == 0x05)
+            {
+                Array.Clear(data, offset, size + 16);
+                output.Emit("objects/ootmm_yasi/gPalmTreeShuffledDL", data);
+                log.Add("Baked the shuffled palm tree.");
+                return;
+            }
+
+            offset += size;
+        }
+
+        log.Add("Skipped the shuffled palm tree: the deku nut geometry was not found.");
+    }
+
     private static void WriteCsmcAssets(AssetWriter output, ArchiveSet source, bool isOot, List<string> log)
     {
         var byHash = source.Names.ToDictionary(PathCrc64, name => name);
@@ -184,6 +276,7 @@ public static class OotmmAssetBuilder
             if (family.Mode == FamilyMode.Chest)
             {
                 WriteChestFamily(output, source, family, log);
+                WriteSongTagAssets(output, source, family, log);
                 continue;
             }
 
@@ -193,7 +286,10 @@ public static class OotmmAssetBuilder
                 continue;
             }
 
-            foreach (var category in Categories)
+            var categories = family.Mode == FamilyMode.SkulltulaTint
+                ? SkulltulaColors.Keys.Select(name => new Category(name, 0, 0, 0))
+                : Categories.Concat(family.Extra);
+            foreach (var category in categories)
             {
                 WriteFamilyCategory(output, source, byHash, family, category, displayList, log);
             }
@@ -631,6 +727,110 @@ public static class OotmmAssetBuilder
         }
     }
 
+    // Index order matches the song-event song ids the seed assigns (0-19); Pad is extra.
+    private static readonly string[] SongTagNames =
+    [
+        "Lullaby", "Epona", "Saria", "Storms", "Sun", "Time", "Minuet", "Bolero", "Serenade",
+        "Requiem", "Nocturne", "Prelude", "Healing", "Soaring", "Awakening", "Goron", "GoronHalf",
+        "Zora", "Emptiness", "Order", "Pad",
+    ];
+
+    private static void WriteSongTagAssets(
+        AssetWriter output, ArchiveSet source, Family chestFamily, List<string> log)
+    {
+        if (!source.Contains(chestFamily.Front))
+        {
+            log.Add("Skipped song tags: the chest texture template is missing.");
+            return;
+        }
+
+        var template = TextureEntry.Parse(source.Read(chestFamily.Front));
+        foreach (var name in SongTagNames)
+        {
+            var fileName = char.ToLowerInvariant(name[0]) + name[1..];
+            var art = PngArt.Load($"song_tags/{fileName}.png");
+            var header = (byte[])template.Header.Clone();
+            WriteUInt32(header, 0x40, 8); // grayscale-alpha 8bpp: IA8, one byte per texel
+            WriteUInt32(header, 0x44, (uint)art.Width);
+            WriteUInt32(header, 0x48, (uint)art.Height);
+            WriteUInt32(header, 0x4c, (uint)(art.Width * art.Height));
+            output.Emit($"objects/ootmm_song_tags/gSongTag{name}Tex", [.. header, .. ToIa8(art.Pixels)]);
+        }
+
+        log.Add($"Baked {SongTagNames.Length} song tag textures.");
+    }
+
+    private const string MenuDirectory = "objects/ootmm_menu";
+    private const int MenuGlyphWidth = 8;
+    private const int MenuGlyphHeight = 12;
+
+    private static readonly (string File, string Name)[] MenuIcons =
+    [
+        ("key", "Key"), ("boss_key", "BossKey"), ("map", "Map"), ("compass", "Compass"), ("fairy", "Fairy"),
+        ("skull", "Skull"), ("triforce", "Triforce"), ("rupee", "Rupee"), ("coin", "Coin"), ("sun", "Sun"),
+        ("moon", "Moon"),
+    ];
+
+    private static void WriteMenuAssets(AssetWriter output, ArchiveSet source, bool isOot, List<string> log)
+    {
+        var chest = Families(isOot).First(family => family.Mode == FamilyMode.Chest);
+        if (!source.Contains(chest.Front))
+        {
+            log.Add("Skipped the info menu art: the chest texture template is missing.");
+            return;
+        }
+
+        var template = TextureEntry.Parse(source.Read(chest.Front));
+        var font = PngArt.Load("menu/font_8x12.png");
+        var columns = font.Width / MenuGlyphWidth;
+        var glyphs = columns * (font.Height / MenuGlyphHeight);
+        for (var index = 0; index < glyphs; index++)
+        {
+            var pixels = new byte[MenuGlyphWidth * MenuGlyphHeight];
+            for (var row = 0; row < MenuGlyphHeight; row++)
+            {
+                for (var column = 0; column < MenuGlyphWidth; column++)
+                {
+                    var x = index % columns * MenuGlyphWidth + column;
+                    var y = index / columns * MenuGlyphHeight + row;
+                    pixels[row * MenuGlyphWidth + column] = font.Pixels[(y * font.Width + x) * 4] >= 128 ? (byte)0xff : (byte)0;
+                }
+            }
+            output.Emit($"{MenuDirectory}/gMenuGlyph{index + 0x20:X2}Tex",
+                MenuTexture(template, 8, MenuGlyphWidth, MenuGlyphHeight, pixels));
+        }
+
+        foreach (var (file, name) in MenuIcons)
+        {
+            var art = PngArt.Load($"menu/small_icon_{file}.png");
+            output.Emit($"{MenuDirectory}/gMenuIcon{name}Tex", MenuTexture(template, 2, art.Width, art.Height, ToRgba16(art.Pixels)));
+        }
+
+        log.Add($"Baked {glyphs} info menu glyphs and {MenuIcons.Length} icons.");
+    }
+
+    private static byte[] MenuTexture(TextureEntry template, uint type, int width, int height, byte[] payload)
+    {
+        var header = (byte[])template.Header.Clone();
+        WriteUInt32(header, 0x40, type);
+        WriteUInt32(header, 0x44, (uint)width);
+        WriteUInt32(header, 0x48, (uint)height);
+        WriteUInt32(header, 0x4c, (uint)payload.Length);
+        return [.. header, .. payload];
+    }
+
+    private static byte[] ToIa8(byte[] rgba)
+    {
+        var result = new byte[rgba.Length / 4];
+        for (var i = 0; i < result.Length; i++)
+        {
+            var luma = (rgba[i * 4] * 299 + rgba[i * 4 + 1] * 587 + rgba[i * 4 + 2] * 114) / 1000;
+            result[i] = (byte)(((luma / 17) << 4) | (rgba[i * 4 + 3] / 17));
+        }
+
+        return result;
+    }
+
     private static Dictionary<string, string> WithMapping(
         Dictionary<string, string> source, string oldPath, string newPath)
     {
@@ -670,6 +870,7 @@ public static class OotmmAssetBuilder
                     break;
 
                 case FamilyMode.TintPrimitive:
+                case FamilyMode.SkulltulaTint:
                     break;
 
                 case FamilyMode.Pot:
@@ -714,7 +915,12 @@ public static class OotmmAssetBuilder
             var baked = SwapHashes(displayList, mapping);
             baked = family.Mode switch
             {
-                FamilyMode.TintPrimitive => RecolorPrimitive(baked, category),
+                FamilyMode.TintPrimitive => RecolorPrimitive(baked,
+                    family.SpiderShade is { } shade && category.Name == "Spider"
+                        ? category with { Red = shade, Green = shade, Blue = shade }
+                        : category,
+                    family.Primitive, family.LeavesOnly),
+                FamilyMode.SkulltulaTint => RecolorSkulltula(baked, SkulltulaColors[category.Name]),
                 FamilyMode.Crate => RewriteCrateDisplayList(baked, PathCrc64(family.Tlut)),
                 FamilyMode.Barrel => RewriteBarrelDisplayList(baked),
                 _ => baked,
@@ -771,6 +977,13 @@ public static class OotmmAssetBuilder
             {
                 Rgba = "objects/gameplay_dangeon_keep/gameplay_dangeon_keepTex_011CA0",
             },
+            new("GsBody", FamilyMode.SkulltulaTint, "objects/object_st/object_st_DL_003FB0"),
+            new("GsHead", FamilyMode.SkulltulaTint, "objects/object_st/object_st_DL_0043D8"),
+            new("CowRing", FamilyMode.TintPrimitive, "objects/object_cow/gCowNoseRingDL")
+            {
+                Primitive = 0xffffffff,
+                Extra = [new("Normal", 0x30, 0x0f, 0x02), new("Renewable", 0x00, 0xff, 0x00)],
+            },
             new("Chest", FamilyMode.Chest)
             {
                 Side = "objects/object_box/gTreasureChestSideAndTopTex",
@@ -787,7 +1000,25 @@ public static class OotmmAssetBuilder
             new("RockXlu", FamilyMode.Tint, "objects/gameplay_field_keep/gFieldSmallRockXluDL"),
             new("RockIshi", FamilyMode.Tint, "objects/object_ishi/gSmallRockDL"),
             new("Tree", FamilyMode.Tint, "objects/object_tree/gTreeLeavesDL"),
-            new("Wood02", FamilyMode.TintPrimitive, "objects/object_wood02/object_wood02_DL_007968"),
+            new("Wood02", FamilyMode.TintPrimitive, "objects/object_wood02/object_wood02_DL_007968")
+            {
+                Primitive = 0x1c580dff,
+            },
+            new("Wood02Bush", FamilyMode.TintPrimitive, "objects/object_wood02/object_wood02_DL_000090")
+            {
+                Primitive = 0x669870ff,
+            },
+            new("Snowball", FamilyMode.TintPrimitive, "objects/object_goroiwa/object_goroiwa_DL_008B90")
+            {
+                Primitive = 0xffffffff,
+                SpiderShade = 0x90,
+            },
+            new("SnowTree", FamilyMode.TintPrimitive, "objects/object_snowwd/gSnowTreeDL")
+            {
+                Primitive = 0xffffffff,
+                SpiderShade = 0x90,
+                LeavesOnly = true,
+            },
             new("FlowerpotPot", FamilyMode.Tint, "objects/object_flowerpot/object_flowerpot_DL_0012E0"),
             new("FlowerpotGrass", FamilyMode.Tint, "objects/object_flowerpot/object_flowerpot_DL_001408"),
             new("Pot", FamilyMode.Pot, "objects/object_tsubo/gPotDL")
@@ -813,6 +1044,13 @@ public static class OotmmAssetBuilder
                 Side = "objects/object_taru/gObjTaruBarrelSideTex",
                 Top = "objects/object_taru/gObjTaruBarrelTopTex",
                 Rgba = "objects/object_tsubo/gPotWallTex",
+            },
+            new("GsBody", FamilyMode.SkulltulaTint, "objects/object_st/object_st_DL_003FB0"),
+            new("GsHead", FamilyMode.SkulltulaTint, "objects/object_st/object_st_DL_0043D8"),
+            new("CowRing", FamilyMode.TintPrimitive, "objects/object_cow/gCowNoseRingDL")
+            {
+                Primitive = 0xffffffff,
+                Extra = [new("Normal", 0x30, 0x0f, 0x02), new("Renewable", 0x00, 0xff, 0x00)],
             },
             new("Chest", FamilyMode.Chest)
             {
@@ -1159,10 +1397,50 @@ public static class OotmmAssetBuilder
         return data;
     }
 
-    private static byte[] RecolorPrimitive(byte[] data, Category category)
+    private static byte[] RecolorSkulltula(byte[] data, (uint Primitive, uint Environment) colors)
     {
-        const uint expectedColor = 0x1c580dff;
+        const uint goldPrimitive = 0xf0dc1eff;
+        const uint goldEnvironment = 0x141400ff;
+        var primitives = 0;
+        var environments = 0;
+        var offset = 0x58;
+        while (offset + 8 <= data.Length)
+        {
+            var word0 = ReadUInt32(data, offset);
+            var operation = word0 >> 24;
+            if (operation == 0xdf)
+            {
+                break;
+            }
+
+            if (operation == 0xfa && ReadUInt32(data, offset + 4) == goldPrimitive)
+            {
+                WriteUInt32(data, offset + 4, colors.Primitive);
+                primitives++;
+            }
+            else if (operation == 0xfb && ReadUInt32(data, offset + 4) == goldEnvironment)
+            {
+                WriteUInt32(data, offset + 4, colors.Environment);
+                environments++;
+            }
+
+            offset += IsExpandedOperation(word0) ? 16 : 8;
+        }
+
+        if (primitives != 1 || environments != 1)
+        {
+            throw new InvalidDataException("display list does not contain the gold skulltula colors");
+        }
+
+        return data;
+    }
+
+    private static byte[] RecolorPrimitive(byte[] data, Category category, uint expectedColor, bool leavesOnly = false)
+    {
         var writes = 0;
+        uint primitiveWord = 0;
+        var drewLeaves = false;
+        var restored = !leavesOnly;
         var offset = 0x58;
         while (offset + 8 <= data.Length)
         {
@@ -1177,7 +1455,18 @@ public static class OotmmAssetBuilder
             {
                 WriteUInt32(data, offset + 4,
                     ((uint)category.Red << 24) | ((uint)category.Green << 16) | ((uint)category.Blue << 8) | 0xff);
+                primitiveWord = word0;
                 writes++;
+            }
+            else if (writes == 1 && operation is 0x05 or 0x06 or 0x07)
+            {
+                drewLeaves = true;
+            }
+            else if (!restored && drewLeaves && operation == 0xe7)
+            {
+                WriteUInt32(data, offset, primitiveWord);
+                WriteUInt32(data, offset + 4, expectedColor);
+                restored = true;
             }
 
             offset += IsExpandedOperation(word0) ? 16 : 8;
@@ -1186,6 +1475,11 @@ public static class OotmmAssetBuilder
         if (writes != 1)
         {
             throw new InvalidDataException("display list does not contain the expected primitive color");
+        }
+
+        if (!restored)
+        {
+            throw new InvalidDataException("display list has no material after the recolored leaves");
         }
 
         return data;
@@ -1472,6 +1766,7 @@ public static class OotmmAssetBuilder
     {
         Tint,
         TintPrimitive,
+        SkulltulaTint,
         Pot,
         Barrel,
         Crate,
@@ -1489,5 +1784,9 @@ public static class OotmmAssetBuilder
         public string BodyDisplayList { get; init; } = "";
         public string LidDisplayList { get; init; } = "";
         public string Front { get; init; } = "";
+        public uint Primitive { get; init; }
+        public byte? SpiderShade { get; init; }
+        public bool LeavesOnly { get; init; }
+        public IReadOnlyList<Category> Extra { get; init; } = [];
     }
 }

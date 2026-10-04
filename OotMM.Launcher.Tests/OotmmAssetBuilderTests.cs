@@ -36,13 +36,13 @@ public sealed class OotmmAssetBuilderTests : IDisposable
         var result = OotmmAssetBuilder.Build(oot.Executable, mm.Executable);
 
         Assert.True(result.Ok, result.Error);
-        Assert.Equal(69, result.Entries);
+        Assert.Equal(325, result.Entries);
         Assert.False(File.Exists(ootLegacy));
         Assert.False(File.Exists(mmLegacy));
-        AssertAssetArchive(Path.Combine(oot.Directory, "mods", OotmmAssetBuilder.ArchiveName), 34,
+        AssertAssetArchive(Path.Combine(oot.Directory, "mods", OotmmAssetBuilder.ArchiveName), 162,
             "objects/mm_gameplay_keep/gStrayFairySkel");
         var mmAssets = Path.Combine(mm.Directory, "mods", OotmmAssetBuilder.ArchiveName);
-        AssertAssetArchive(mmAssets, 35, "objects/ot_obj_trap/gSlidingBladeTrapDL");
+        AssertAssetArchive(mmAssets, 163, "objects/ot_obj_trap/gSlidingBladeTrapDL");
         AssertTextPath(mmAssets, "objects/ot_obj_key/gSkeletonKeyDL",
             "objects/ot_obj_key/gSkeletonKeyDL_tri_0");
         AssertSerializedPath(
@@ -51,6 +51,82 @@ public sealed class OotmmAssetBuilderTests : IDisposable
             "objects/mm_gameplay_keep/gStrayFairyFlyingAnim");
         Assert.False(OotmmAssetBuilder.NeedsBuild(oot.Executable, isOot: true));
         Assert.False(OotmmAssetBuilder.NeedsBuild(mm.Executable, isOot: false));
+    }
+
+    [Fact]
+    public void Build_BakesTheRustyDoorLockInOgsColor()
+    {
+        var entries = new Dictionary<string, byte[]>(OotChestEntries())
+        {
+            ["objects/gameplay_dangeon_keep/gDoorChainDL"] = PrimitiveDisplayList(0xffffffff),
+            ["objects/gameplay_dangeon_keep/gDoorLockDL"] = PrimitiveDisplayList(0xffffffff),
+        };
+        var oot = CreateGame("oot", "soh.exe", "oot.o2r", "soh.o2r", entries);
+        var mm = CreateGame("mm", "2ship.exe", "mm.o2r", "2ship.o2r", MmChestEntries());
+
+        var result = OotmmAssetBuilder.Build(oot.Executable, mm.Executable);
+
+        Assert.True(result.Ok, result.Error);
+        var ootAssets = Path.Combine(oot.Directory, "mods", OotmmAssetBuilder.ArchiveName);
+        Assert.Equal(0xff8c40ffu, PrimitiveColor(ootAssets, "objects/ootmm_door_lock/gRustyDoorChainDL"));
+        Assert.Equal(0xff8c40ffu, PrimitiveColor(ootAssets, "objects/ootmm_door_lock/gRustyDoorLockDL"));
+        using var mmAssets = ZipFile.OpenRead(Path.Combine(mm.Directory, "mods", OotmmAssetBuilder.ArchiveName));
+        Assert.DoesNotContain(mmAssets.Entries,
+            entry => entry.FullName.StartsWith("objects/ootmm_door_lock/", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Build_BakesOgsInfoMenuFontAndIconsForBothGames()
+    {
+        var oot = CreateGame("oot", "soh.exe", "oot.o2r", "soh.o2r", OotChestEntries());
+        var mm = CreateGame("mm", "2ship.exe", "mm.o2r", "2ship.o2r", MmChestEntries());
+
+        var result = OotmmAssetBuilder.Build(oot.Executable, mm.Executable);
+
+        Assert.True(result.Ok, result.Error);
+        foreach (var directory in new[] { oot.Directory, mm.Directory })
+        {
+            using var archive = ZipFile.OpenRead(Path.Combine(directory, "mods", OotmmAssetBuilder.ArchiveName));
+            var glyph = ReadEntry(archive, "objects/ootmm_menu/gMenuGlyph41Tex");
+            Assert.Equal(8u, BinaryPrimitives.ReadUInt32LittleEndian(glyph.AsSpan(0x40)));
+            Assert.Equal(8u, BinaryPrimitives.ReadUInt32LittleEndian(glyph.AsSpan(0x44)));
+            Assert.Equal(12u, BinaryPrimitives.ReadUInt32LittleEndian(glyph.AsSpan(0x48)));
+            Assert.Contains(glyph[0x50..], texel => texel == 0xff);
+            Assert.Contains(glyph[0x50..], texel => texel == 0x00);
+            var space = ReadEntry(archive, "objects/ootmm_menu/gMenuGlyph20Tex");
+            Assert.All(space[0x50..], texel => Assert.Equal(0, texel));
+            var key = ReadEntry(archive, "objects/ootmm_menu/gMenuIconKeyTex");
+            Assert.Equal(2u, BinaryPrimitives.ReadUInt32LittleEndian(key.AsSpan(0x40)));
+            Assert.Equal(12u * 12u * 2u, BinaryPrimitives.ReadUInt32LittleEndian(key.AsSpan(0x4c)));
+            Assert.Equal(96, archive.Entries.Count(entry => entry.FullName.StartsWith("objects/ootmm_menu/gMenuGlyph", StringComparison.Ordinal)));
+            Assert.Equal(11, archive.Entries.Count(entry => entry.FullName.StartsWith("objects/ootmm_menu/gMenuIcon", StringComparison.Ordinal)));
+        }
+    }
+
+    private static byte[] ReadEntry(ZipArchive archive, string entryPath)
+    {
+        using var stream = archive.GetEntry(entryPath)!.Open();
+        using var output = new MemoryStream();
+        stream.CopyTo(output);
+        return output.ToArray();
+    }
+
+    private static byte[] PrimitiveDisplayList(uint color)
+    {
+        var data = new byte[0x68];
+        BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(0x58), 0xfa000000);
+        BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(0x5c), color);
+        BinaryPrimitives.WriteUInt32LittleEndian(data.AsSpan(0x60), 0xdf000000);
+        return data;
+    }
+
+    private static uint PrimitiveColor(string archivePath, string entryPath)
+    {
+        using var archive = ZipFile.OpenRead(archivePath);
+        using var stream = archive.GetEntry(entryPath)!.Open();
+        using var output = new MemoryStream();
+        stream.CopyTo(output);
+        return BinaryPrimitives.ReadUInt32LittleEndian(output.ToArray().AsSpan(0x5c));
     }
 
     private (string Directory, string Executable) CreateGame(

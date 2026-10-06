@@ -10,6 +10,7 @@ namespace OotMM.Launcher.Session;
 public sealed class SessionCoordinator : IDisposable
 {
     private const int HandoffGraceMs = 400;
+    private const uint FaroresWindCrossEntrance = 0xFFFD;
 
     private readonly Core.Session _session;
     private readonly DispatcherTimer _timer;
@@ -396,7 +397,7 @@ public sealed class SessionCoordinator : IDisposable
         var boot = SessionPaths.MakeBootConfig(_session, ActiveGame, bootEntrance, ootAge);
         boot.OpenFileSelect = _session.OpenFileSelect;
         MmSaveSource? selectedMm = null;
-        if ((ActiveGame == Game.Mm || _session.Seed.GetBoolSetting("sharedBombchu"))
+        if ((ActiveGame == Game.Mm || SharedResourceFamilies.AnyEnabled(_session.Seed))
             && _session.LogicalSlot is { } slot)
         {
             var primary = Path.Combine(SessionPaths.MmNativeSavesRoot(_session),
@@ -950,6 +951,11 @@ public sealed class SessionCoordinator : IDisposable
         && transition.ToEntrance == (transition.ToGame == Game.Oot ? "OoT dungeon exit" : "MM dungeon exit")
         && BossWarp.IsDestinationAllowed(_session.Seed.DungeonWarps, transition.ToGame, nativeId);
 
+    private bool IsFaroresWindTarget(CrossGameTransition transition) =>
+        transition.ToNativeId == FaroresWindCrossEntrance
+        && transition.ToEntrance == "Farore's Wind"
+        && _session.Seed.GetBoolSetting("crossGameFw");
+
     private bool AcceptTransition(CrossGameTransition transition, string durablePacket)
     {
         if (_pendingTransition is not null
@@ -957,7 +963,8 @@ public sealed class SessionCoordinator : IDisposable
             || transition.ToGame == ActiveGame
             || transition.ToNativeId is null
             || !(IsShuffledCrossGameEntrance(transition) || IsOwlWarp(transition)
-                || IsWarpSongTarget(transition) || IsSpawnTarget(transition) || IsBossWarpTarget(transition)))
+                || IsWarpSongTarget(transition) || IsSpawnTarget(transition) || IsBossWarpTarget(transition)
+                || IsFaroresWindTarget(transition)))
         {
             return false;
         }

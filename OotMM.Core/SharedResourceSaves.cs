@@ -9,7 +9,7 @@ public static class SharedResourceSaves
     {
         latest = null;
         error = "";
-        if (!session.Seed.GetBoolSetting("sharedBombchu"))
+        if (!SharedResourceFamilies.AnyEnabled(session.Seed))
             return true;
         if (session.LogicalSlot is not { } slot)
         {

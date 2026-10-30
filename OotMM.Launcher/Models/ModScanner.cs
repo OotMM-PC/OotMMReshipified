@@ -2,22 +2,8 @@ using System.IO;
 
 namespace OotMM.Launcher.Models;
 
-/// <summary>One archive in a game's mods/ directory as found on disk.</summary>
 public sealed record ModInfo(string Name, string FullPath, bool Required, bool EnabledOnDisk);
 
-/// <summary>
-/// Lists the mod archives of a game the same way the games themselves do.
-/// Semantics ported from the original launcher:
-///  - only *.o2r / *.otr files inside "mods" next to the game exe count;
-///  - a ".disabled" filename suffix means present-but-disabled;
-///  - launcher-built OoTMM assets and seed music are required and forced on, but
-///    rank like anything else so a pack can override what they provide;
-///  - "zz_coop_*" / "zz_localmodel_*" are launcher-regenerated internals, hidden
-///    from the user list;
-///  - loadorder.txt ranks listed archives above unlisted ones (top line = highest
-///    priority). The list reads top-priority-first, which is the reverse of the
-///    order the games mount in, because a later mount overrides an earlier one.
-/// </summary>
 public static class ModScanner
 {
     private const string DisabledSuffix = ".disabled";
@@ -89,9 +75,6 @@ public static class ModScanner
             return -1;
         }
 
-        // Listed archives rank above unlisted ones. Unlisted fall back to the games' own
-        // tie-break, which is alphabetical mount order, so the last name alphabetically ends
-        // up highest and the list shows them reversed.
         return mods
             .Select(mod => (mod, rank: RankOf(mod)))
             .OrderBy(x => x.rank < 0 ? 1 : 0)
@@ -101,8 +84,6 @@ public static class ModScanner
             .ToList();
     }
 
-    /// <summary>Enables/disables an archive on disk via the ".disabled" filename
-    /// rename the games understand. Disk is the sole source of truth.</summary>
     public static bool SetEnabledOnDisk(ModInfo mod, bool enabled)
     {
         if (mod.Required)
@@ -130,9 +111,6 @@ public static class ModScanner
         }
     }
 
-    /// <summary>Writes loadorder.txt (top line = highest priority) atomically;
-    /// same header and format as the original launcher so hand-edits and the
-    /// C++ build stay interchangeable.</summary>
     public static bool SaveLoadOrder(string exePath, IEnumerable<string> namesTopFirst)
     {
         var exeDir = Path.GetDirectoryName(exePath);
@@ -193,8 +171,6 @@ public static class ModScanner
         }
         catch (IOException)
         {
-            // A half-written or locked manifest just means "no explicit order"
-            // for this scan; the next 2s rescan picks it up once readable.
             return [];
         }
     }

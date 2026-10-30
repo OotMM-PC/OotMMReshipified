@@ -8,11 +8,6 @@ using OotMM.Launcher.Session;
 
 namespace OotMM.Launcher.ViewModels;
 
-/// <summary>
-/// The pre-launch configuration form: seed, game builds, mods, multiworld.
-/// State mirrors the original launcher's ConfigForm and drives first-run game
-/// extraction before handing a ready configuration to the session coordinator.
-/// </summary>
 public sealed class ConfigViewModel : ViewModelBase
 {
     private readonly UiSettings _settings;
@@ -51,9 +46,6 @@ public sealed class ConfigViewModel : ViewModelBase
         LaunchCommand = new RelayCommand(OnLaunchClicked);
         PreviewRuntimeCommand = new RelayCommand(_previewRuntime);
 
-        // Restore the last session's form. Saving is suppressed until every field
-        // is back: the first card's change callback would otherwise persist the
-        // not-yet-restored fields as empty, wiping them.
         _restoring = true;
         _seedPath = settings.SeedPath;
         _hostRelay = settings.HostRelay;
@@ -69,9 +61,6 @@ public sealed class ConfigViewModel : ViewModelBase
         RefreshSeedPreview();
         _restoring = false;
 
-        // Periodic rescan so archives dropped into mods/ while the launcher is
-        // open show up (and selections pointing at removed files fall out)
-        // without a restart — same 2s cadence as the original.
         _rescanTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
         _rescanTimer.Tick += (_, _) =>
         {
@@ -106,15 +95,12 @@ public sealed class ConfigViewModel : ViewModelBase
         return $"{label} ({count} archive{(count == 1 ? "" : "s")} selected)";
     }
 
-    /// <summary>Paused while the runtime screen is shown so the timer does not
-    /// churn the disk behind an active session.</summary>
     public bool IsActive
     {
         get => _isActive;
         set => Set(ref _isActive, value);
     }
 
-    // --- Seed ---------------------------------------------------------------
 
     public string SeedPath
     {
@@ -165,7 +151,6 @@ public sealed class ConfigViewModel : ViewModelBase
             : $"{Seed.Placements.Count} checks — begins in {GameInfo.Title(Seed.ResolveStartingGame())}"
               + (Seed.IsMultiworld ? " — MULTIWORLD" : "");
 
-    // --- Multiworld ----------------------------------------------------------
 
     public bool ShowMultiworld => Seed?.IsMultiworld == true;
 
@@ -189,7 +174,6 @@ public sealed class ConfigViewModel : ViewModelBase
         get => _relayPort;
         set
         {
-            // Same clamp as the original: any TCP port, silently corrected.
             var clamped = Math.Clamp(value, 1, 65535);
             if (Set(ref _relayPort, clamped))
             {
@@ -234,7 +218,6 @@ public sealed class ConfigViewModel : ViewModelBase
         }
     }
 
-    // --- Launch button -------------------------------------------------------
 
     public bool SetupNeeded =>
         OotCard.MissingArchives.Count > 0
@@ -262,7 +245,6 @@ public sealed class ConfigViewModel : ViewModelBase
         private set => Set(ref _statusMessage, value);
     }
 
-    // --- Internals -----------------------------------------------------------
 
     private async Task BrowseSeedAsync(IFilePicker picker)
     {
@@ -299,13 +281,9 @@ public sealed class ConfigViewModel : ViewModelBase
             }
         }
 
-        // An MQ seed changes which archives OoT needs, so setup state follows
-        // the seed, not just the exe paths.
         RefreshDerivedState();
     }
 
-    /// <summary>Any form change funnels here: revalidate, refresh setup state,
-    /// rebuild model picks, persist.</summary>
     private void FormChanged()
     {
         RefreshDerivedState();
@@ -341,9 +319,6 @@ public sealed class ConfigViewModel : ViewModelBase
         Raise(nameof(MmModelSummary));
     }
 
-    /// <summary>Keeps each pick list in sync with the scanned mods while
-    /// preserving selections; a stale selection (archive renamed or removed)
-    /// silently falls out, matching the original launcher.</summary>
     private void RebuildModelPicks(
         ObservableCollection<ModelPickViewModel> picks, GameCardViewModel card, List<string> saved)
     {
@@ -354,12 +329,12 @@ public sealed class ConfigViewModel : ViewModelBase
         var wanted = card.Mods.Where(m => !m.Required).Select(m => m.Name).ToList();
         if (wanted.Count == 0 && picks.Count > 0)
         {
-            return; // transient exe/drive hiccup must not wipe the pick list
+            return;
         }
 
         if (wanted.SequenceEqual(picks.Select(p => p.Name), StringComparer.OrdinalIgnoreCase))
         {
-            return; // no churn: rebuilding on every tick would fight open dropdowns
+            return;
         }
 
         picks.Clear();
@@ -453,7 +428,6 @@ public sealed class ConfigViewModel : ViewModelBase
             return;
         }
 
-        // Carry the OoT model into MM; failure means vanilla, never a blocked launch.
         var picked = OotModelPicks.Where(p => p.IsSelected).Select(p => p.Name).ToList();
         var adult = LocalModelPort.EnsureAdult(OotCard.ExePath, MmCard.ExePath, picked, MmCard.PortAdultModel);
         var child = LocalModelPort.EnsureChild(OotCard.ExePath, MmCard.ExePath, picked, MmCard.PortChildModel);
@@ -680,8 +654,6 @@ public sealed class ConfigViewModel : ViewModelBase
         _settings.PortOotChildModel = MmCard.PortChildModel;
         _settings.MultiworldAddress = MultiworldAddress;
         _settings.PlayerName = PlayerName;
-        // An empty pick collection means "no scan results", never "deselect all";
-        // persisting it would wipe the saved cosmetics.
         if (OotModelPicks.Count > 0)
         {
             _settings.PlayerModelOot = OotModelPicks.Where(p => p.IsSelected).Select(p => p.Name).ToList();

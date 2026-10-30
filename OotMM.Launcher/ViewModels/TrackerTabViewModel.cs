@@ -1,6 +1,5 @@
 namespace OotMM.Launcher.ViewModels;
 
-/// <summary>One check in the tracker list.</summary>
 public sealed class CheckRowViewModel : ViewModelBase
 {
     private readonly Action<CheckRowViewModel>? _clicked;
@@ -21,14 +20,12 @@ public sealed class CheckRowViewModel : ViewModelBase
         ClickCommand = new RelayCommand(() => _clicked?.Invoke(this));
     }
 
-    /// <summary>"OOT" or "MM" — shown as the row's leading badge.</summary>
     public string GameTag { get; }
 
     public string Name { get; }
 
     public string CheckId { get; }
 
-    /// <summary>What was found here, revealed once collected (empty until then).</summary>
     public string ItemText { get; }
 
     public RelayCommand ClickCommand { get; }
@@ -45,7 +42,6 @@ public sealed class CheckRowViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Reachable with current items per the reverse-logic solver.</summary>
     public bool InLogic
     {
         get => _inLogic;
@@ -64,7 +60,6 @@ public sealed class CheckRowViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Unlock order sent; waiting for the game's collection echo.</summary>
     public bool IsPending
     {
         get => _isPending;
@@ -82,14 +77,11 @@ public sealed class CheckRowViewModel : ViewModelBase
         : Name;
 }
 
-/// <summary>The open-checks tracker tab: stats, filters, and the (dev-mode)
-/// force-unlock cheat over the full check list.</summary>
 public sealed class TrackerTabViewModel : ViewModelBase
 {
     private List<CheckRowViewModel> _allChecks = [];
     private string _filterText = "";
-    private int _gameFilterIndex; // 0 = both, 1 = OoT, 2 = MM
-    // The play view by default: what is still to do, and reachable right now.
+    private int _gameFilterIndex;
     private bool _hideCollected = true;
     private bool _onlyInLogic = true;
     private bool _devMode;
@@ -100,8 +92,6 @@ public sealed class TrackerTabViewModel : ViewModelBase
     private bool _solverLoaded;
     private bool _isMultiworld;
 
-    /// <summary>Sends a force-unlock order for a check id; false when the game
-    /// cannot take it right now.</summary>
     public Func<string, bool>? ForceUnlockSender { get; set; }
 
     public string FilterText
@@ -220,8 +210,6 @@ public sealed class TrackerTabViewModel : ViewModelBase
         ? $"{_inLogicCount} check{(_inLogicCount == 1 ? "" : "s")} in logic right now"
         : "No logic data in this seed — regenerate it to see check availability.";
 
-    // Zero-in-logic with open checks is a real multiworld state: everything
-    // reachable is swept and the next progression item is in another world.
     public bool ShowStuckNote => _solverLoaded && _isMultiworld && _inLogicCount == 0
                                  && _allChecks.Any(r => !r.Collected);
 
@@ -237,8 +225,6 @@ public sealed class TrackerTabViewModel : ViewModelBase
         Raise(nameof(ShowStuckNote));
     }
 
-    /// <summary>Cheat interaction: click once to arm, click the same row again
-    /// within 5s to send the unlock order.</summary>
     public void OnRowClicked(CheckRowViewModel row)
     {
         if (!ForceUnlockMode || row.Collected || row.IsPending || row.CheckId.Length == 0)
@@ -272,8 +258,6 @@ public sealed class TrackerTabViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Entry point for the Tracker module port: replaces the model and
-    /// re-runs the active filters.</summary>
     public void SetChecks(IEnumerable<CheckRowViewModel> checks)
     {
         _allChecks = checks.ToList();
@@ -287,11 +271,8 @@ public sealed class TrackerTabViewModel : ViewModelBase
         Raise(nameof(CollectedFraction));
     }
 
-    /// <summary>Call after mutating row Collected/InLogic flags in place.</summary>
     public void NotifyCheckStatesChanged() => RaiseListChanged();
 
-    /// <summary>Representative rows for the layout preview (real check names
-    /// from the seed format, hand-picked states to show every row style).</summary>
     public void LoadSampleData()
     {
         CheckRowViewModel Row(string tag, string name, string item, bool collected, bool inLogic) =>

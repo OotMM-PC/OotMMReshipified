@@ -3,12 +3,8 @@ using System.Text.Json;
 
 namespace OotMM.Core;
 
-/// <summary>A verified OOTMM_SEED_MANIFEST upload: the sender's world as a Seed
-/// (identity + placements only) with its protocol epoch and manifest hash.</summary>
 public sealed record SeedManifestRegistration(Seed Seed, ulong SessionEpoch, string ManifestHash);
 
-/// <summary>The OOTMM_SEED_MANIFEST packet codec (AnchorBridge.cpp). Build is
-/// byte-identical to the C++ writer; Parse re-verifies the manifest hash.</summary>
 public static class SeedManifest
 {
     public static string Build(Seed seed)
@@ -27,7 +23,6 @@ public static class SeedManifest
             .Append(",\"format\":").Append(JsonText.EscapeString(seed.Format));
         if (seed.GetBoolSetting("trapsLink"))
         {
-            // Emitted only when on; absence reads as the OFF default.
             text.Append(",\"trapsLink\":true");
         }
 

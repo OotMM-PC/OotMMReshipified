@@ -4,10 +4,6 @@ namespace OotMM.Launcher.ViewModels;
 
 public sealed record LogEntryViewModel(string Time, string Message, bool IsRemote);
 
-/// <summary>
-/// The check-event feed (bombers notebook tab): what was found, what arrived
-/// from other players. The coordinator appends entries as packets flow.
-/// </summary>
 public sealed class LogTabViewModel : ViewModelBase
 {
     public ObservableCollection<LogEntryViewModel> Entries { get; } = [];

@@ -5,11 +5,6 @@ using OotMM.Launcher.Services;
 
 namespace OotMM.Launcher.ViewModels;
 
-/// <summary>
-/// One of the two per-game panels on the config screen: exe path + mods list.
-/// The owning ConfigViewModel supplies change notification (validation and
-/// persistence run there, where the full form is visible).
-/// </summary>
 public sealed class GameCardViewModel : ViewModelBase
 {
     private readonly IFilePicker _picker;
@@ -70,7 +65,6 @@ public sealed class GameCardViewModel : ViewModelBase
 
     public bool HasLoadOrderError => LoadOrderError.Length > 0;
 
-    /// <summary>MM-card-only toggle: adult Link in MM renders from the player's OoT model.</summary>
     public bool PortAdultModel
     {
         get => _portAdultModel;
@@ -83,7 +77,6 @@ public sealed class GameCardViewModel : ViewModelBase
         }
     }
 
-    /// <summary>MM-card-only toggle: MM's human form renders from the player's OoT child model.</summary>
     public bool PortChildModel
     {
         get => _portChildModel;
@@ -96,7 +89,6 @@ public sealed class GameCardViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Launch-time port outcome line; set by the owner, shown under the toggles.</summary>
     public string ModelPortStatus
     {
         get => _modelPortStatus;
@@ -126,8 +118,6 @@ public sealed class GameCardViewModel : ViewModelBase
 
     public bool ExeExists => !string.IsNullOrWhiteSpace(ExePath) && File.Exists(ExePath);
 
-    /// <summary>Base-game archives the setup flow still has to produce; drives
-    /// the SETUP button state and the per-card status line.</summary>
     public IReadOnlyList<string> MissingArchives
     {
         get => _missingArchives;
@@ -162,22 +152,18 @@ public sealed class GameCardViewModel : ViewModelBase
 
     public bool StatusIsError => !string.IsNullOrWhiteSpace(ExePath) && !ExeExists;
 
-    /// <summary>Recomputes setup state; called by the owner whenever the seed
-    /// changes because an MQ seed adds oot-mq.o2r to OoT's requirements.</summary>
     public void RefreshSetupState(bool seedNeedsMq)
     {
         MissingArchives = GameSetup.MissingArchives(ExePath, IsOot, IsOot && seedNeedsMq);
         Raise(nameof(ExeExists));
     }
 
-    /// <summary>Disk (files + loadorder.txt) is the sole source of truth, re-read fresh every
-    /// call; the view only rebuilds on real change, so rescans cannot disturb selection.</summary>
     public void RefreshMods()
     {
         var scanned = ModScanner.Scan(ExePath);
         if (scanned.Count == 0 && Mods.Count > 0 && !ExeExists)
         {
-            return; // transient exe/drive hiccup: keep the last known list
+            return;
         }
 
         var signature = string.Join("\n", scanned.Select(m => $"{m.Name}|{m.EnabledOnDisk}|{m.Required}"));
@@ -206,7 +192,6 @@ public sealed class GameCardViewModel : ViewModelBase
         Raise(nameof(ModsSummary));
     }
 
-    /// <summary>Reorders a mod one slot; the games pick the manifest up on their next boot.</summary>
     private void MoveMod(ModEntryViewModel entry, int delta)
     {
         var index = Mods.IndexOf(entry);
@@ -220,8 +205,6 @@ public sealed class GameCardViewModel : ViewModelBase
         PersistOrder();
     }
 
-    // A selected mod resting against the edge or another selected one stays put, so a
-    // scattered selection converges into a block instead of jamming.
     private void MoveSelectedByOne(int delta)
     {
         var moved = false;
@@ -267,8 +250,6 @@ public sealed class GameCardViewModel : ViewModelBase
         ReplaceOrder(reordered.ToList());
     }
 
-    /// <summary>Drop target for drag reordering: inserts the selected block at
-    /// <paramref name="insertIndex"/> (an index into the current list, 0..Count).</summary>
     public void MoveSelectedTo(int insertIndex)
     {
         var selected = Mods.Where(m => m.IsSelected).ToList();
@@ -278,8 +259,6 @@ public sealed class GameCardViewModel : ViewModelBase
         }
 
         var rest = Mods.Where(m => !m.IsSelected).ToList();
-        // The insert position was measured against the full list; count only unselected rows
-        // above it, because the selected ones are being pulled out.
         var restIndex = Math.Clamp(
             Mods.Take(Math.Clamp(insertIndex, 0, Mods.Count)).Count(m => !m.IsSelected),
             0, rest.Count);
@@ -306,13 +285,9 @@ public sealed class GameCardViewModel : ViewModelBase
         PersistOrder();
     }
 
-    // Written from the full current list, so new archives get ranked where they appear and
-    // vanished ones drop out: the manifest converges to disk.
     private void PersistOrder()
     {
         UpdateMoveFlags();
-        // The next rescan will read back exactly this order; matching the signature now keeps it
-        // from rebuilding the list (and disturbing the selection) over our own write.
         _modsSignature = string.Join("\n", Mods.Select(m => $"{m.Name}|{m.Enabled}|{m.Required}"));
         LoadOrderError = ModScanner.SaveLoadOrder(ExePath, Mods.Select(m => m.Name))
             ? ""

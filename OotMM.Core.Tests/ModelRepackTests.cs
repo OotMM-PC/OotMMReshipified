@@ -8,8 +8,6 @@ namespace OotMM.Core.Tests;
 
 public class ModelRepackTests
 {
-    /// <summary>Values produced by libultraship's own CRC64 for these paths. If the port drifts,
-    /// every rewritten reference points at nothing and models silently fail to resolve.</summary>
     [Theory]
     [InlineData("objects/object_link_child/gLinkHumanSkel", 6914884263858874222UL)]
     [InlineData("p01objs/object_link_child/gLinkHumanSkel", 13930404445129331195UL)]
@@ -19,8 +17,6 @@ public class ModelRepackTests
     public void Crc64_MatchesLibultraship(string path, ulong expected) =>
         Assert.Equal(expected, Crc64.OfPath(path));
 
-    /// <summary>The namespace prefix must be exactly as long as the directory it replaces, or
-    /// references cannot be patched in place inside binary resources.</summary>
     [Fact]
     public void NamespacePrefix_IsTheSameLengthAsTheDirectoryItReplaces() =>
         Assert.Equal("objects/".Length, (ModelRepack.PlayerPrefix(7) + "objs/").Length);
@@ -31,8 +27,6 @@ public class ModelRepackTests
     public void NamespacedPath_UnifiesAltAndCanonicalIntoOneNamespace(string input, string expected) =>
         Assert.Equal(expected, ModelRepack.NamespacedPath(input, ModelRepack.PlayerPrefix(3)));
 
-    /// <summary>Anything outside the player's model is dropped: keeping it would override the
-    /// asset for every player, not just the puppet wearing this model.</summary>
     [Theory]
     [InlineData("objects/object_horse/gHorseSkel")]
     [InlineData("scenes/dungeons/ydan/ydan_scene")]
@@ -50,8 +44,6 @@ public class ModelRepackTests
             const string tex = "objects/object_link_child/gLinkHumanEyesTex";
             var input = Path.Combine(dir, "model.o2r");
 
-            // The skeleton references the texture the way a real resource does: once as a path
-            // string, once as the CRC64 of that path.
             var body = new List<byte>();
             body.AddRange(Encoding.ASCII.GetBytes(tex));
             body.Add(0);
@@ -82,7 +74,7 @@ public class ModelRepackTests
             var result = ModelRepack.Repack([input], output, 5);
 
             Assert.True(result.Ok, result.Error);
-            Assert.Equal(2, result.Kept); // the horse entry is outside the model namespace
+            Assert.Equal(2, result.Kept);
             Assert.Equal(1, result.StringRefs);
             Assert.Equal(1, result.HashRefs);
 
@@ -111,7 +103,6 @@ public class ModelRepackTests
         }
     }
 
-    /// <summary>Two players wearing the same model must not collide in the resource cache.</summary>
     [Fact]
     public void Repack_GivesEachPlayerADistinctNamespace()
     {
@@ -196,8 +187,6 @@ public class ModelSyncTests
         Assert.Equal(payload, ModelSyncProtocol.ParseChunk(chunk)!.Data);
     }
 
-    /// <summary>Chunks assemble strictly in order, so a gap fails loudly instead of producing an
-    /// archive with a hole in it.</summary>
     [Fact]
     public void Download_RejectsOutOfOrderChunksAndAssemblesInOrder()
     {
@@ -217,7 +206,6 @@ public class ModelSyncTests
     {
         var half = ModelSyncPolicy.CapBytes(100) / 2;
         Assert.True(ModelSyncPolicy.WithinCap(half, 100));
-        // Two archives that each fit still exceed the cap together.
         Assert.False(ModelSyncPolicy.WithinCap(half * 2 + 1, 100));
     }
 
@@ -267,7 +255,6 @@ public class ModelPortTests
             var input = MakeArchive(dir,
                 (skel, body.ToArray()),
                 (tex, [1, 2, 3]),
-                // The child dir shares the object_link stem and must NOT be renamed by a boy port.
                 ("objects/object_link_child/gLinkChildSkel", [9]));
 
             var output = Path.Combine(dir, "port.o2r");
@@ -317,7 +304,7 @@ public class ModelPortTests
             using var ported = ZipFile.OpenRead(output);
             var entry = ported.Entries.Single();
             Assert.Equal("objects/ot_obj_link_boy/gLinkAdultTunicTex", entry.FullName);
-            Assert.Equal(2, entry.Length); // the alt variant won the collision
+            Assert.Equal(2, entry.Length);
         }
         finally
         {
@@ -325,8 +312,6 @@ public class ModelPortTests
         }
     }
 
-    /// <summary>A child-only or voice-only selection has nothing for the adult port; that is
-    /// success without an output, and any stale output is removed.</summary>
     [Fact]
     public void PortDirectory_TreatsNoMatchingEntriesAsSuccessAndRemovesStaleOutput()
     {

@@ -1,9 +1,5 @@
 namespace OotMM.Launcher.ViewModels;
 
-/// <summary>
-/// Appearance options (lens of truth tab). Changes apply immediately through
-/// callbacks owned by MainWindowViewModel, which also persists them.
-/// </summary>
 public sealed class OptionsTabViewModel : ViewModelBase
 {
     private readonly Action<int> _onThemeChanged;
@@ -26,8 +22,6 @@ public sealed class OptionsTabViewModel : ViewModelBase
         _onDevModeChanged = onDevModeChanged;
     }
 
-    /// <summary>Dev mode: unlocks the games' debug/cheat menus (next boot) plus
-    /// the launcher's force-unlock cheat and manual game switching.</summary>
     public bool DevMode
     {
         get => _devMode;
@@ -40,15 +34,12 @@ public sealed class OptionsTabViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Set by the owner while a game is running; the games read the
-    /// cheat gate at boot, so the change needs a restart to show up.</summary>
     public bool CheatGatePending
     {
         get => _cheatGatePending;
         set => Set(ref _cheatGatePending, value);
     }
 
-    /// <summary>Assigned by the owner in live sessions (restarts the active game).</summary>
     public Action? RestartGame { get; set; }
 
     public void OnRestartClicked()
@@ -57,8 +48,6 @@ public sealed class OptionsTabViewModel : ViewModelBase
         CheatGatePending = false;
     }
 
-    /// <summary>0 = follow the active game, 1 = OoT gold, 2 = MM violet —
-    /// same three modes as the original theme setting.</summary>
     public int ThemeIndex
     {
         get => _themeIndex;
@@ -71,8 +60,6 @@ public sealed class OptionsTabViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Live drag value; the window rescales only on CommitUiScale so the
-    /// slider never moves under a captured pointer.</summary>
     public double UiScale
     {
         get => _uiScale;

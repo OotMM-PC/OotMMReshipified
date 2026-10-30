@@ -79,7 +79,6 @@ public sealed class SessionPathsTests : IDisposable
             File.ReadAllText(Path.Combine(session.SessionDir, "session.id")),
             session.Seed, dirName));
 
-        // Progress written between launches must survive the resume path.
         File.WriteAllText(session.StatePath, """{"sessionValues":{"ootmm.activeSlot":"0"}}""");
         var resumed = MakeSession(MakeSeed(), v4: true);
         Assert.Null(SessionPaths.PrepareSession(resumed));
@@ -117,7 +116,6 @@ public sealed class SessionPathsTests : IDisposable
         Assert.Equal(Game.Mm, resumed.RecoveredTransition!.ToGame);
         Assert.Equal(3446u, resumed.RecoveredTransition.ToNativeId);
 
-        // A transition belonging to another seed must fail the resume, not boot wrong.
         File.WriteAllText(session.PendingTransitionPath, packet.Replace("SEEDID", "OTHER"));
         Assert.NotNull(SessionPaths.PrepareSession(MakeSession(seed, v4: true)));
     }

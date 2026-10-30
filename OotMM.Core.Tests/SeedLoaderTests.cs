@@ -12,8 +12,6 @@ public class SeedLoaderTests
 
     private static string ValidJson() => File.ReadAllText(FixturePath("valid.v2.ootmm.json"));
 
-    /// <summary>Re-serializes the valid fixture with one top-level field changed
-    /// or removed, for loader-rejection cases.</summary>
     private static string MutateValid(Action<JsonObject> mutate)
     {
         var root = JsonNode.Parse(ValidJson())!.AsObject();
@@ -59,7 +57,6 @@ public class SeedLoaderTests
         Assert.Equal(2, mq.SourcePlayer);
         Assert.True(mq.Major);
 
-        // Omitted owner/source default to the seed's own playerId, not 1.
         var postbox = seed.Placements[1];
         Assert.Null(postbox.Cloak);
         Assert.Equal(2, postbox.OwnerPlayer);

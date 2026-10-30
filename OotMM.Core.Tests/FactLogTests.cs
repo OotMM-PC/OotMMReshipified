@@ -12,7 +12,6 @@ public class FactLogTests
             """{"v":4,"seq":7,"p":2,"g":"oot","c":"OOT_ZELDAS_LETTER"}""",
             FactLog.EncodeFact(new Fact(2, Game.Oot, "OOT_ZELDAS_LETTER", 7)));
 
-        // Publish form: seq omitted entirely, not written as 0.
         Assert.Equal(
             """{"v":4,"p":1,"g":"mm","c":"MM_CHECK"}""",
             FactLog.EncodeFact(new Fact(1, Game.Mm, "MM_CHECK")));
@@ -111,7 +110,7 @@ public class ForeignPlacementTableTests
         Assert.NotNull(table.Find(1, Game.Oot, "MINE"));
         Assert.Null(table.Find(1, Game.Oot, "THEIRS"));
         Assert.NotNull(table.Find(1, Game.Oot, "EVERYONE"));
-        Assert.Null(table.Find(1, Game.Oot, "TRAP")); // trapsLink off
+        Assert.Null(table.Find(1, Game.Oot, "TRAP"));
 
         var linked = new ForeignPlacementTable(MakeSeed(2, [], trapsLink: true));
         linked.AddManifestWorld(1, world, localPlayer: 2);
@@ -143,7 +142,6 @@ public class ForeignPlacementTableTests
         Assert.True(oldFormat.CoversWorld(1));
         Assert.NotNull(oldFormat.Find(1, Game.Mm, "MM_CHECK"));
 
-        // World 3 addressed us nothing but is explicitly covered; world 0 never registers.
         var newFormat = new ForeignPlacementTable(local, placements, [3, 0]);
         Assert.True(newFormat.CoversWorld(3));
         Assert.False(newFormat.CoversWorld(0));

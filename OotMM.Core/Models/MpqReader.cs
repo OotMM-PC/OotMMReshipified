@@ -3,11 +3,6 @@ using System.IO.Compression;
 
 namespace OotMM.Core.Models;
 
-/// <summary>
-/// Reader for the MPQ subset the old OTR exporters produce: header at offset zero, a
-/// (listfile), zlib-only compression, no encryption or implosion. Anything outside that
-/// subset reads as an unreadable archive rather than a partial one.
-/// </summary>
 public static class MpqReader
 {
     private const uint FlagExists = 0x80000000;
@@ -62,7 +57,6 @@ public static class MpqReader
             var blockPos = BinaryPrimitives.ReadInt32LittleEndian(archive.AsSpan(20));
             var hashCount = BinaryPrimitives.ReadInt32LittleEndian(archive.AsSpan(24));
             var blockCount = BinaryPrimitives.ReadInt32LittleEndian(archive.AsSpan(28));
-            // The hash lookup masks with count-1, which only addresses a power-of-two table.
             if (hashCount <= 0 || (hashCount & (hashCount - 1)) != 0 || blockCount <= 0
                 || sectorSize <= 0)
             {
@@ -205,7 +199,7 @@ public static class MpqReader
             var expected = Math.Min(sectorSize, size - written);
             if (raw.Length == expected)
             {
-                raw.CopyTo(result.AsSpan(written)); // incompressible sector stored as-is
+                raw.CopyTo(result.AsSpan(written));
             }
             else if (Inflate(raw, expected) is { } sector)
             {
@@ -247,7 +241,6 @@ public static class MpqReader
         return result;
     }
 
-    // StormLib hashes the name bytes as-is (uppercased); slashes are not normalized.
     private static uint HashString(string name, int type)
     {
         var seed1 = 0x7FED7FEDu;

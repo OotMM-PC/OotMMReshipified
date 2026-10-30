@@ -2,11 +2,8 @@ using System.Text.Json;
 
 namespace OotMM.Core;
 
-/// <summary>A check-completion event as read from a game's outbox.</summary>
 public sealed record CheckCompletePacket(Game CheckGame, string CheckId, string ItemName);
 
-/// <summary>Minimal readers for the v3 anchor packets the coordinator consumes
-/// from game outboxes; the full packet family arrives with the relay modules.</summary>
 public static class AnchorPackets
 {
     public const string CheckCompleteType = "OOTMM_CHECK_COMPLETE";
@@ -113,7 +110,6 @@ public static class AnchorPackets
             ootAge = transition.OotAge,
         });
 
-    /// <summary>True when the packet's seed identity fields match the seed.</summary>
     public static bool MatchesSeedIdentity(string jsonText, Seed seed)
     {
         try

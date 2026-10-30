@@ -13,12 +13,8 @@ public partial class GameCardView : UserControl
 
     private PointerPressedEventArgs? _pressArgs;
     private Point _pressPoint;
-    // A plain press on an already-selected row must not collapse the selection yet: it may be
-    // the start of a block drag. The collapse happens on release, only if no drag began.
     private ModEntryViewModel? _pressedItem;
     private bool _collapseOnRelease;
-    // True while a drag from THIS card's list is in flight; the drop handlers accept nothing
-    // else, so a drag can never land in the other game's list.
     private bool _dragActive;
 
     public GameCardView()
@@ -33,7 +29,6 @@ public partial class GameCardView : UserControl
 
     private void OnListPointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        // A press on a checkbox or arrow is a click, never a drag handle.
         var onControl = e.Source is Visual source
                         && source.GetSelfAndVisualAncestors().OfType<Control>()
                             .TakeWhile(c => c != ModsList)
@@ -88,13 +83,12 @@ public partial class GameCardView : UserControl
 
         var pressArgs = _pressArgs;
         _pressArgs = null;
-        _collapseOnRelease = false; // it became a drag; the selection survives
+        _collapseOnRelease = false;
         if (DataContext is not GameCardViewModel vm || !vm.Mods.Any(m => m.IsSelected))
         {
             return;
         }
 
-        // The transfer needs content, but identity rides _dragActive, not the payload.
         var payload = new DataTransfer();
         payload.Add(DataTransferItem.CreateText("ootmm-mod-selection"));
         _dragActive = true;
@@ -123,7 +117,6 @@ public partial class GameCardView : UserControl
         }
     }
 
-    // Dropping on a row's upper half inserts before it, lower half after it.
     private int InsertionIndexAt(double y, int count)
     {
         for (var i = 0; i < count; i++)

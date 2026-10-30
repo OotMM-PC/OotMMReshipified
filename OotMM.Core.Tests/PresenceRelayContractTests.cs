@@ -4,9 +4,6 @@ using Xunit;
 
 namespace OotMM.Core.Tests;
 
-/// <summary>Presence lines must survive the relay's side-channel allowlist. Nothing else covers
-/// that contract end to end, and a violation only shows up as dropped frames in a live session.
-/// </summary>
 public class PresenceRelayContractTests
 {
     private static readonly Seed TestSeed = new()
@@ -95,7 +92,6 @@ public class PresenceRelayContractTests
         Assert.Equal("Jaco", RelayProtocol.ExtractStringField(line, "clientName"));
     }
 
-    /// <summary>A game reporting the wrong sender must not be able to get a frame dropped.</summary>
     [Fact]
     public void PresenceLine_OverridesTheSenderReportedByTheGame()
     {
@@ -109,9 +105,6 @@ public class PresenceRelayContractTests
         Assert.True(SideChannelPolicy.IsRoomPacketAllowed(line, TestClient));
     }
 
-    /// <summary>The bug this suite exists for: a pose carrying only the fields the game knows
-    /// about is dropped by the relay, so the stamping above is load-bearing rather than cosmetic.
-    /// </summary>
     [Theory]
     [InlineData("seedId")]
     [InlineData("teamId")]
@@ -124,8 +117,6 @@ public class PresenceRelayContractTests
         Assert.False(SideChannelPolicy.IsRoomPacketAllowed(stripped, TestClient));
     }
 
-    /// <summary>The game matches this frame by prefix so it can defer parsing off its render
-    /// path; moving the type key would silently disable presence.</summary>
     [Fact]
     public void RosterFrame_StartsWithItsTypeKey()
     {

@@ -1,8 +1,6 @@
 using OotMM.Core;
 using OotMM.Core.Relay;
 
-// OoTMM dedicated multiworld server: console host for the relay engine. Config
-// from server.properties next to the exe; /help lists admin commands.
 
 var exeDir = AppContext.BaseDirectory;
 var propsPath = Path.Combine(exeDir, "server.properties");
@@ -97,8 +95,6 @@ console.Start();
 
 return engine.Run(config.Port, CancellationToken.None);
 
-/// <summary>server.properties: created with defaults when missing; malformed
-/// values warn and keep their defaults.</summary>
 file sealed class ServerProperties
 {
     public RelayRules Rules { get; } = new();

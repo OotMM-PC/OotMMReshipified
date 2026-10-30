@@ -2,8 +2,6 @@ using System.Runtime.InteropServices;
 
 namespace OotMM.Launcher.Session;
 
-/// <summary>Win32 helpers for the embedded game window: discovery by process id,
-/// layout inside the host, and cross-process focus.</summary>
 public static class GameWindow
 {
     public static nint FindGameChild(nint host, int pid)
@@ -30,8 +28,6 @@ public static class GameWindow
 
     public static bool IsAlive(nint window) => window != 0 && IsWindow(window);
 
-    /// <summary>The host's true client size in pixels — the one source the game
-    /// child is laid out against, immune to UI-scale transforms.</summary>
     public static (int Width, int Height) ClientSize(nint window)
     {
         if (!IsAlive(window) || !GetClientRect(window, out var rect))
@@ -55,14 +51,13 @@ public static class GameWindow
     }
 
     public static bool OwnerIsForeground(nint window) =>
-        IsAlive(window) && GetForegroundWindow() == GetAncestor(window, 2 /* GA_ROOT */);
+        IsAlive(window) && GetForegroundWindow() == GetAncestor(window, 2);
 
     public static bool LeftButtonDown() => (GetAsyncKeyState(0x01) & 0x8000) != 0;
 
     public static void Layout(nint child, int width, int height) =>
         MoveWindow(child, 0, 0, Math.Max(width, 0), Math.Max(height, 0), true);
 
-    // Cross-process focus requires temporarily attaching the input queues.
     public static void Focus(nint child)
     {
         if (!IsAlive(child))
@@ -84,8 +79,6 @@ public static class GameWindow
         }
     }
 
-    /// <summary>Opens the game's own in-game menu by delivering the Esc toggle
-    /// its window procedure listens for.</summary>
     public static void PostEscape(nint child)
     {
         if (!IsAlive(child))
@@ -94,8 +87,8 @@ public static class GameWindow
         }
 
         Focus(child);
-        PostMessageW(child, 0x0100, 0x1B, 0x00010001);  // WM_KEYDOWN VK_ESCAPE
-        PostMessageW(child, 0x0101, 0x1B, unchecked((nint)0xC0010001)); // WM_KEYUP
+        PostMessageW(child, 0x0100, 0x1B, 0x00010001);
+        PostMessageW(child, 0x0101, 0x1B, unchecked((nint)0xC0010001));
     }
 
     private delegate bool EnumChildProc(nint hwnd, nint lparam);

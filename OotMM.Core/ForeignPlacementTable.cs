@@ -1,10 +1,7 @@
 namespace OotMM.Core;
 
-/// <summary>One check in some player's world whose item is addressed to the local player.</summary>
 public sealed record ForeignPlacement(ushort SourcePlayer, Game CheckGame, string CheckId, ItemRef Item);
 
-/// <summary>(sourcePlayer, checkGame, checkId) -> item addressed to the local
-/// player. Facts from worlds not in CoveredWorlds must defer, never skip.</summary>
 public sealed class ForeignPlacementTable
 {
     private readonly Dictionary<string, ItemRef> _entries = [];
@@ -52,7 +49,6 @@ public sealed class ForeignPlacementTable
         }
     }
 
-    /// <summary>Indexes the world's placements addressed to localPlayer and marks it covered.</summary>
     public void AddManifestWorld(ushort worldPlayer, Seed world, ushort localPlayer)
     {
         AddCoveredWorld(worldPlayer);

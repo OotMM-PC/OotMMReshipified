@@ -1,9 +1,5 @@
 namespace OotMM.Core;
 
-/// <summary>
-/// A loaded .ootmm.json seed manifest. Immutable after loading; construct only
-/// through SeedLoader.
-/// </summary>
 public sealed class Seed
 {
     public const string CurrentFormat = "ootmm.pc.seed.v2";
@@ -97,13 +93,10 @@ public sealed class Seed
         return Game.Oot;
     }
 
-    /// <summary>True when any placement targets a Master Quest dungeon layout,
-    /// which only exists in oot-mq.o2r (so setup also needs an MQ ROM).</summary>
     public bool NeedsMasterQuest() =>
         _needsMasterQuest ??= Placements.Any(p =>
             p.Check.Game == Game.Oot && p.Check.Id.StartsWith("OOT_MQ_", StringComparison.Ordinal));
 
-    /// <summary>Finds a placement by canonical id, display name, or alias.</summary>
     public ItemPlacement? FindPlacement(Game game, string checkId)
     {
         _placementIndex ??= BuildPlacementIndex();
@@ -115,7 +108,6 @@ public sealed class Seed
         var index = new Dictionary<string, ItemPlacement>();
         foreach (var placement in Placements)
         {
-            // First writer wins, matching the C++ index behavior.
             index.TryAdd(IndexKey(placement.Check.Game, placement.Check.Id), placement);
             if (placement.Check.Name.Length > 0)
             {

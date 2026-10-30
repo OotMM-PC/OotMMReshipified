@@ -4,8 +4,6 @@ using OotMM.Launcher.Session;
 
 namespace OotMM.Launcher.ViewModels;
 
-/// <summary>The in-session screen: game area plus the sidebar tabs. Runs in
-/// preview mode (sample data) or live mode (driven by a SessionCoordinator).</summary>
 public sealed class RuntimeViewModel : ViewModelBase
 {
     private readonly UiSettings _settings;
@@ -170,8 +168,6 @@ public sealed class RuntimeViewModel : ViewModelBase
 
     public string RunStatusText => IsRunning ? "running" : "not running";
 
-    /// <summary>Fires once the native game host exists; the owner boots the game
-    /// then so it embeds from its first frame.</summary>
     public event Action? GameHostAttached;
 
     public void NotifyGameHostCreated(nint handle)
@@ -185,8 +181,6 @@ public sealed class RuntimeViewModel : ViewModelBase
         GameHostAttached?.Invoke();
     }
 
-    /// <summary>End-of-session drain: while pending durable writes flush, the
-    /// sidebar exposes no relaunch/reset controls (a new child could be orphaned).</summary>
     public bool IsFinalizingSync
     {
         get => _isFinalizingSync;
@@ -231,8 +225,6 @@ public sealed class RuntimeViewModel : ViewModelBase
 
     public ViewModelBase CurrentTab => _tabs[_selectedTabIndex];
 
-    /// <summary>UI scale zooms the sidebar only; the config screen and the
-    /// embedded game are never transformed.</summary>
     public double SidebarScale
     {
         get => _sidebarScale;
@@ -269,7 +261,6 @@ public sealed class RuntimeViewModel : ViewModelBase
             }
         }
 
-        // Remote receipts change item counts without touching any check row.
         if (_coordinator.Multiworld is { } sync && sync.ReceiptRevision != _seenReceiptRevision)
         {
             _seenReceiptRevision = sync.ReceiptRevision;
@@ -299,7 +290,6 @@ public sealed class RuntimeViewModel : ViewModelBase
         if (_coordinator is not null)
         {
             _coordinator.AllowDebugMenus = devMode;
-            // The games read the cheat gate at boot; a live toggle needs a restart.
             Options.CheatGatePending = _coordinator.IsRunning;
         }
     }
@@ -369,7 +359,6 @@ public sealed class RuntimeViewModel : ViewModelBase
             }
         }
 
-        // Items of ours placed in other players' worlds complete the pools.
         var report = ProgressReport.Build(seed, checks, counts,
                                           _coordinator.Multiworld?.ForeignOwnedChecks());
         Progress.SetReport(report, seed.PlayerId, seed.PlayerCount,
@@ -388,7 +377,6 @@ public sealed class RuntimeViewModel : ViewModelBase
         foreach (var starting in seed.StartingItems)
         {
             input.Items[starting.Item.Id] = input.Items.GetValueOrDefault(starting.Item.Id) + starting.Count;
-            // The generator seeds license counts (but not renewables) from starting items.
             input.Licenses[starting.Item.Id] = input.Licenses.GetValueOrDefault(starting.Item.Id) + starting.Count;
         }
 
@@ -412,7 +400,6 @@ public sealed class RuntimeViewModel : ViewModelBase
             }
         }
 
-        // Multiworld receipts count as plain items (no renewable/license credit).
         if (_coordinator.Multiworld is { } sync)
         {
             foreach (var (itemId, count) in sync.RemoteItemCounts)

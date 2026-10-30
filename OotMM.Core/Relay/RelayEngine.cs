@@ -4,8 +4,6 @@ using System.Security.Cryptography;
 
 namespace OotMM.Core.Relay;
 
-/// <summary>Exclusive lease on a world_state directory; a relay and offline
-/// maintenance must never run over the same store concurrently.</summary>
 public sealed class StoreDirectoryLease : IDisposable
 {
     private readonly FileStream? _handle;
@@ -31,8 +29,6 @@ public sealed class StoreDirectoryLease : IDisposable
 
 public sealed record RoomProvisionReport(bool Success, string Room, string Message);
 
-/// <summary>The v4-only multiworld relay: rooms clients by seedId, persists every
-/// fact before acking, and replays the room log to joining clients.</summary>
 public sealed class RelayEngine
 {
     private readonly string _storeDir;
@@ -56,10 +52,8 @@ public sealed class RelayEngine
 
     public Action<string> Log { get; set; } = Console.WriteLine;
 
-    /// <summary>Port actually bound (pass port 0 to pick an ephemeral one).</summary>
     public int BoundPort { get; private set; }
 
-    /// <summary>Queues a console command; it executes on the relay thread between selects.</summary>
     public void SubmitCommand(string line)
     {
         lock (_commandLock)
@@ -68,7 +62,6 @@ public sealed class RelayEngine
         }
     }
 
-    /// <summary>Runs the relay until cancelled. Nonzero on setup failure.</summary>
     public int Run(int port, CancellationToken stop)
     {
         if (_storeDir.Length == 0)
@@ -143,7 +136,6 @@ public sealed class RelayEngine
                 RunCommand(command);
             }
 
-            // Session-rules refresh: immediately on a live change, otherwise every 5s.
             var currentMeta = SessionMetaLine();
             if (currentMeta != lastMeta || Environment.TickCount64 >= nextMetaBroadcast)
             {
@@ -211,8 +203,6 @@ public sealed class RelayEngine
         return 0;
     }
 
-    /// <summary>Offline room provisioning: registers the exact canonical manifest
-    /// for every player seed so joins can run with manifest-bootstrap disabled.</summary>
     public RoomProvisionReport ProvisionRoomManifests(IReadOnlyList<string> seedFiles)
     {
         using var lease = new StoreDirectoryLease(_storeDir);
@@ -341,8 +331,6 @@ public sealed class RelayEngine
         }
     }
 
-    /// <summary>Handles one frame. False stops parsing this client's buffer (a
-    /// refused pre-v4 session offer answers politely then closes).</summary>
     private bool HandleLine(ClientConn c, string line)
     {
         var type = RelayProtocol.ExtractStringField(line, "type");
@@ -363,7 +351,7 @@ public sealed class RelayEngine
 
         if (c.Room.Length == 0)
         {
-            return true; // no handshake yet — ignore
+            return true;
         }
 
         if (type == RelayProtocol.Ping)
@@ -373,7 +361,6 @@ public sealed class RelayEngine
             return true;
         }
 
-        // The relay never closes a session over a bad progress frame: log and drop.
         if (type == RelayProtocol.SeedManifest)
         {
             HandleManifestUpload(c, line);
@@ -423,7 +410,6 @@ public sealed class RelayEngine
         var teamId = RelayProtocol.ExtractStringField(line, "teamId");
         var progress = V4RoomStore.ProgressRoom(room, teamId);
 
-        // A surviving reset marker means an offline epoch reset is unfinished; fail closed.
         if (File.Exists(V4RoomStore.ResetMarkerPathFor(_storeDir, progress)))
         {
             Log($"[relay] refused v4 hello from '{clientName}': room {progress} has an epoch reset in progress");
@@ -450,7 +436,6 @@ public sealed class RelayEngine
                     + JsonText.EscapeString(room) + "}\n");
         c.QueueWire(SessionMetaLine());
 
-        // Other players' durable manifests let the launcher derive foreign placements.
         var manifestsForwarded = 0;
         for (var player = 1; player <= playerCount; player++)
         {
@@ -533,7 +518,6 @@ public sealed class RelayEngine
                 return false;
             }
 
-            // The provisioned file is canonical: exact bytes plus parsed identity.
             var parsed = SeedManifest.Parse(text);
             return text == rawLine && parsed is not null
                    && parsed.ManifestHash == requested.ManifestHash
@@ -562,7 +546,6 @@ public sealed class RelayEngine
             return;
         }
 
-        // Side channels stay live-only: the durable store holds fact lines and nothing else.
         var verified = new VerifiedClientIdentity(
             c.Room, c.SettingsHash, c.TeamId, (ushort)c.PlayerId, (ushort)c.PlayerCount);
         if (!SideChannelPolicy.IsRoomPacketAllowed(line, verified))
@@ -636,7 +619,6 @@ public sealed class RelayEngine
         var store = RoomStore(c.Progress);
         if (!store.Load(_storeDir, c.Progress))
         {
-            // No ack; the client republishes and relay dedup absorbs it.
             Log("[relay] v4 store reload failed; fact not acknowledged");
             return;
         }
@@ -659,7 +641,7 @@ public sealed class RelayEngine
         store.Lines.Add(factLine);
         store.SeqByKey[key] = assigned.Seq;
         c.QueueWire(FactLog.EncodeAck(assigned) + "\n");
-        BroadcastProgress(c.Progress, factLine + "\n", except: null); // sender included
+        BroadcastProgress(c.Progress, factLine + "\n", except: null);
     }
 
     private void Broadcast(string room, string wire, ClientConn? except, Func<ClientConn, bool>? accepts = null)
@@ -700,7 +682,6 @@ public sealed class RelayEngine
     private static string StatusError(string message) =>
         $"{{\"type\":\"{RelayProtocol.Status}\",\"level\":\"error\",\"message\":\"{message}\"}}\n";
 
-    // Broadcasts a fabricated console-command line to a room (never persisted).
     private void InjectRoomLine(string room, string line)
     {
         var sent = 0;
@@ -1012,7 +993,6 @@ public sealed class RelayEngine
             var bytes = System.Text.Encoding.UTF8.GetBytes(wire);
             if (bytes.Length > MaxClientOutboundBytes || OutboundBytes > MaxClientOutboundBytes - bytes.Length)
             {
-                // Dropping a frame could strand a check; close and let replay recover.
                 OutboundOverflow = true;
                 return false;
             }

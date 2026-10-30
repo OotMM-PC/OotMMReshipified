@@ -11,22 +11,14 @@ public sealed record ModelRequest(int PlayerId, int TargetPlayer, string Hash);
 
 public sealed record ModelChunk(int PlayerId, string Hash, long Seq, long Total, byte[] Data);
 
-/// <summary>
-/// Wire format for shipping a player's model archives around the session. Transfers ride the
-/// relay's ephemeral side channel, so every line carries the room identity its allowlist demands.
-/// </summary>
 public static class ModelSyncProtocol
 {
-    /// <summary>Raw bytes per chunk. Base64 inflates this by a third, and the result still has to
-    /// fit a relay frame alongside its envelope.</summary>
     public const int ChunkBytes = 48 * 1024;
 
-    /// <summary>Ceiling on archives per announced set; a count past this is a malformed line.</summary>
     public const int MaxSetArchives = 32;
 
     public static string HashBytes(byte[] data) => Convert.ToHexStringLower(SHA256.HashData(data));
 
-    // Receivers key caches and files by hash, so a non-hex "hash" is rejected as hostile.
     private static bool IsHexHash(string hash)
     {
         if (hash.Length == 0 || hash.Length > 64)
@@ -45,8 +37,6 @@ public static class ModelSyncProtocol
         return true;
     }
 
-    // Hand-serialized like every relay line: receivers scan fields raw and never unescape, so
-    // no value may need escapes beyond JsonText's minimal set (base64's '+' must pass through).
     private static StringBuilder OpenLine(string type, Seed seed, int sourcePlayer) =>
         new StringBuilder(256)
             .Append("{\"type\":\"").Append(type)
@@ -87,8 +77,6 @@ public static class ModelSyncProtocol
         var index = RelayProtocol.ExtractIntField(line, "index", -1);
         var count = RelayProtocol.ExtractIntField(line, "count", -1);
         var name = RelayProtocol.ExtractStringField(line, "name");
-        // count 0 announces an EMPTY set: "I share nothing for this game", so receivers
-        // can retire a set they installed from an earlier session.
         if (game is null || !IsHexHash(hash) || size <= 0 || player <= 0 || count < 0
             || (count == 0 ? index != 0 : index < 0 || index >= count)
             || count > MaxSetArchives || name.Length > 128)

@@ -2,8 +2,6 @@ using System.Text;
 
 namespace OotMM.Core;
 
-/// <summary>SimpleJson's exact string escaping, shared by every hand serializer
-/// that must stay byte-identical with the C++ writers.</summary>
 internal static class JsonText
 {
     internal static string EscapeString(string value)

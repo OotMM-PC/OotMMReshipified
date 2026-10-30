@@ -2,12 +2,9 @@ using System.Text;
 
 namespace OotMM.Core;
 
-/// <summary>Relay wire dialect (RelayServer/RelayClient in the C++ launcher):
-/// packet-type names, the lenient field extractors, and the v4 hello.</summary>
 public static class RelayProtocol
 {
     public const int MultiworldProtocolVersion = 4;
-    // Manifest and side-channel packets keep the historical v3 protocol tag on the wire.
     public const int AnchorProtocolVersion = 3;
     public const ushort DefaultPort = 42801;
 
@@ -25,14 +22,11 @@ public static class RelayProtocol
     public const string AdminUnlockCheck = "OOTMM_ADMIN_UNLOCK_CHECK";
     public const string WorldFlag = "OOTMM_WORLD_FLAG";
 
-    // v2/v3-era reliable packet types; a v4 client refuses to queue these as lossy traffic.
     public const string CheckComplete = "OOTMM_CHECK_COMPLETE";
     public const string GiveItem = "OOTMM_GIVE_ITEM";
     public const string DeliveryStored = "OOTMM_DELIVERY_STORED";
     public const string CheckClaim = "OOTMM_CHECK_CLAIM";
 
-    /// <summary>The launcher hello sent first on every (re)connect. Field order is
-    /// part of the wire contract with the C++ relay.</summary>
     public static string BuildHello(Seed seed, string saveId, string clientName, uint logicalSlot)
     {
         var text = new StringBuilder();
@@ -53,12 +47,9 @@ public static class RelayProtocol
         return text.ToString();
     }
 
-    /// <summary>Relay frames a client may accept before the relay reports readiness.</summary>
     public static bool FrameAllowedBeforeProtocolReady(string type) =>
         type == Pong || type == Ready || type == ProtocolError;
 
-    /// <summary>Raw string-field scan matching the relay's extractor: no unescaping,
-    /// value ends at the next quote.</summary>
     public static string ExtractStringField(string line, string key)
     {
         var needle = "\"" + key + "\"";
@@ -124,8 +115,6 @@ public static class RelayProtocol
         return int.TryParse(line[start..cursor], out var value) ? value : fallback;
     }
 
-    /// <summary>Reads a u64 that may be quoted or bare; overflow or malformed digits
-    /// return the fallback.</summary>
     public static ulong ExtractU64Field(string line, string key, ulong fallback = 0)
     {
         var needle = "\"" + key + "\"";

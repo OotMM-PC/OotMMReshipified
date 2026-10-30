@@ -4,8 +4,6 @@ namespace OotMM.Core;
 
 public sealed class SeedLoadException(string message) : Exception(message);
 
-/// <summary>Parser for .ootmm.json seeds; field names, defaults, gates and error
-/// messages mirror the C++ loader (Seed.cpp). Hints subtree skipped until used.</summary>
 public static class SeedLoader
 {
     public static Seed LoadFromFile(string path)
@@ -99,7 +97,6 @@ public static class SeedLoader
         }
     }
 
-    // --- Section parsers ------------------------------------------------------
 
     private static Seed.CosmeticsInfo ParseCosmetics(JsonElement root)
     {
@@ -299,7 +296,6 @@ public static class SeedLoader
 
         foreach (var property in worldFlags.EnumerateObject())
         {
-            // "all" means every member; "none" (or any other scalar) means empty.
             if (property.Value.ValueKind == JsonValueKind.String)
             {
                 flags[property.Name] = new Seed.WorldFlag(property.Value.ValueEquals("all"), []);
@@ -426,7 +422,6 @@ public static class SeedLoader
         return items;
     }
 
-    // --- Field helpers ---------------------------------------------------------
 
     private static ItemRef ParseItemRef(JsonElement entry, string gameKey, string idKey, string nameKey) =>
         new(RequiredGame(entry, gameKey), RequiredString(entry, idKey), OptionalString(entry, nameKey, ""));

@@ -3,7 +3,6 @@ using System.Text.Json;
 
 namespace OotMM.Core;
 
-/// <summary>Durable small-file primitives shared by the session layer.</summary>
 public static class DurableFile
 {
     private const int TransientAttempts = 5;
@@ -89,8 +88,6 @@ public static class DurableFile
         }
     }
 
-    /// <summary>Removes a durable file via rename-away-then-delete so a crash
-    /// can never leave the watched name half-present.</summary>
     public static bool Retire(string path)
     {
         try
@@ -119,19 +116,15 @@ public static class DurableFile
     }
 }
 
-/// <summary>A prepared play session: resolved identity, directory layout, and
-/// bridge-file paths for one seed.</summary>
 public sealed class Session
 {
     public required string SeedPath { get; init; }
     public required string OotExe { get; init; }
     public required string MmExe { get; init; }
     public required Seed Seed { get; init; }
-    // Settable live: the dev-mode toggle applies on the next game boot.
     public bool AllowDebugMenus { get; set; }
     public bool OpenFileSelect { get; set; }
 
-    /// <summary>Set before PrepareSession; keys the v4 identity namespace.</summary>
     public bool V4Planned { get; init; }
 
     public string SessionDir { get; internal set; } = "";
@@ -153,15 +146,10 @@ public sealed class Session
     public CrossGameTransition? RecoveredTransition { get; set; }
 }
 
-/// <summary>Session directory layout, seed/save identity tags, and boot-config
-/// orchestration, ported from SessionPaths.cpp. Names must match the C++
-/// launcher exactly so existing sessions resume instead of resetting.</summary>
 public static class SessionPaths
 {
     public const string V4NativeSaveSubdir = "ootmm-v4";
 
-    /// <summary>Filesystem-safe per-seed tag: sanitized settingsHash (fallback
-    /// seedId), max 32 chars.</summary>
     public static string SeedTag(Seed seed)
     {
         var source = seed.SettingsHash.Length > 0 ? seed.SettingsHash : seed.SeedId;
@@ -182,8 +170,6 @@ public static class SessionPaths
         return tag.ToString();
     }
 
-    /// <summary>Save-folder tag: SeedTag + _p&lt;player&gt; for multiworld,
-    /// + _e&lt;epoch&gt; past epoch 1 — matches the ports' ActiveSeedTag.</summary>
     public static string SaveTag(Seed seed)
     {
         var tag = SeedTag(seed);
@@ -284,8 +270,6 @@ public static class SessionPaths
         };
     }
 
-    /// <summary>Resolves the session directory and identity, creating or
-    /// resuming durable state. Returns an error message, or null on success.</summary>
     public static string? PrepareSession(Session session)
     {
         try
@@ -412,7 +396,6 @@ public static class SessionPaths
         session.PresenceOut = Path.Combine(sessionDir, "presence.out.json");
         session.PresenceIn = Path.Combine(sessionDir, "presence.in.json");
 
-        // Marker match => RESUME; mismatch/missing => fresh seed in this dir.
         var markerPath = Path.Combine(sessionDir, "session.id");
         var resume = false;
         if (File.Exists(markerPath))
@@ -422,7 +405,7 @@ public static class SessionPaths
             if (!resume && existing.TrimEnd('\r', '\n') == seedKey
                 && DurableFile.WriteAtomic(markerPath, SessionOwnership.BuildMarker(session.Seed, seedKey)))
             {
-                resume = true; // legacy tag-only marker upgraded in place
+                resume = true;
             }
         }
 
@@ -505,7 +488,6 @@ public static class SessionPaths
         }
         else if (ResolveSessionLogicalSlot(session) is { } slotError)
         {
-            // Keep the local slot binding; the warning surfaces via the caller's log.
             session.LogicalSlot = boundSlot;
         }
 

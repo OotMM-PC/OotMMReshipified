@@ -7,7 +7,6 @@ namespace OotMM.Launcher.Models;
 
 public sealed record OotmmAssetBuildResult(bool Ok, int Entries, IReadOnlyList<string> Log, string Error);
 
-/// <summary>Builds target-native OoTMM gameplay assets from each game's own archives.</summary>
 public static class OotmmAssetBuilder
 {
     public const string ArchiveName = "ootmm_assets.o2r";
@@ -327,12 +326,10 @@ public static class OotmmAssetBuilder
         WriteForeignMusic(output, source, nameSpace, log);
     }
 
-    // Kamaro's one instrument is byte-identical to OoT's Water Temple flute, so only the sequence travels.
     private const string KamaroDanceSource = "audio/sequences/KamaroDance_71";
     private const string KamaroDanceOutput = "custom/music/KamaroDance_fanfare";
     private const byte OotWaterTempleFont = 25;
 
-    // Both games' ocarina fanfares use soundfont 0 instrument 53, so the sequences travel untouched.
     private static readonly (string Source, string Output)[] OcarinaFanfares =
     [
         ("audio/sequences/SongOfSoaring(Ocarina)_47", "custom/music/SongOfSoaring_fanfare"),
@@ -346,8 +343,6 @@ public static class OotmmAssetBuilder
         ("audio/sequences/OathToOrder(Ocarina)_5F", "custom/music/OathToOrder_fanfare"),
     ];
 
-    // The six warp-song jingles use OoT's warp-song font, which has no byte-identical MM
-    // counterpart, so that font and its samples ship too and the game retargets the font index.
     private static readonly (string Source, string Output)[] OotOcarinaFanfares =
     [
         ("audio/sequences/052_Minuet_of_Forest", "custom/music/MinuetOfForest_fanfare"),
@@ -363,7 +358,6 @@ public static class OotmmAssetBuilder
     private const string OotWarpFontSource = "audio/fonts/18_Warp_Songs";
     private const string OotWarpFontOutput = "custom/fonts/OotWarpSongs";
     private const string OotSamplePrefix = "audio/samples/";
-    // Same length as the source prefix, so the font's length-prefixed strings rewrite in place.
     private const string OotSampleOutputPrefix = "custom/otsmpl/";
 
     private static void WriteOotOcarinaMusic(AssetWriter output, ArchiveSet source, List<string> log)
@@ -503,8 +497,6 @@ public static class OotmmAssetBuilder
         return true;
     }
 
-    // A link animation names its frame data inline under misc/, which no object folder covers;
-    // RewriteKnownPaths only rewrites objects/ paths, so these names stay un-namespaced.
     private static void CollectLinkAnimationData(byte[] data, HashSet<string> referenced)
     {
         ReadOnlySpan<byte> folder = "misc/link_animetion/"u8;
@@ -550,8 +542,6 @@ public static class OotmmAssetBuilder
         }
     }
 
-    // OoT stores icons under textures/icon_item_*, MM at icon_item_*_yar with no textures/
-    // prefix; some models live in an actor's overlay rather than an object.
     private static bool IsObjectResource(string path) =>
         path.StartsWith("objects/", StringComparison.Ordinal)
         || path.StartsWith("overlays/", StringComparison.Ordinal)
@@ -729,7 +719,6 @@ public static class OotmmAssetBuilder
         }
     }
 
-    // Index order matches the song-event song ids the seed assigns (0-19); Pad is extra.
     private static readonly string[] SongTagNames =
     [
         "Lullaby", "Epona", "Saria", "Storms", "Sun", "Time", "Minuet", "Bolero", "Serenade",
@@ -752,7 +741,7 @@ public static class OotmmAssetBuilder
             var fileName = char.ToLowerInvariant(name[0]) + name[1..];
             var art = PngArt.Load($"song_tags/{fileName}.png");
             var header = (byte[])template.Header.Clone();
-            WriteUInt32(header, 0x40, 8); // grayscale-alpha 8bpp: IA8, one byte per texel
+            WriteUInt32(header, 0x40, 8);
             WriteUInt32(header, 0x44, (uint)art.Width);
             WriteUInt32(header, 0x48, (uint)art.Height);
             WriteUInt32(header, 0x4c, (uint)(art.Width * art.Height));

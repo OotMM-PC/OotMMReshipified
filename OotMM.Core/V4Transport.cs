@@ -2,11 +2,8 @@ using System.Text;
 
 namespace OotMM.Core;
 
-/// <summary>One own-world journal entry as snapshotted by the session tick.</summary>
 public sealed record V4JournalCheck(Game Game, string CheckId, bool Collected);
 
-/// <summary>Ferry ordering: the session log is append-only in relay seq order,
-/// no gaps, no duplicates.</summary>
 public enum V4FerryAction
 {
     Append,
@@ -14,18 +11,13 @@ public enum V4FerryAction
     Gap,
 }
 
-/// <summary>Resume scan over an existing ferry log: catch-up cursor plus every
-/// own fact already logged (a fact in the log IS an ack).</summary>
 public sealed record V4FerryScan(ulong HighestSeq, IReadOnlySet<string> OwnKeys);
 
-/// <summary>Pure pieces of the v4 launcher transport (V4Transport.cpp): fact
-/// selection, ferry classification, resume scan, sidecar serialization.</summary>
 public static class V4Transport
 {
     public static string NaturalKey(ushort player, Game game, string checkId) =>
         $"{player}|{GameInfo.ToSeedTag(game)}|{checkId}";
 
-    /// <summary>Unacknowledged collected checks, retried per key and bounded per tick.</summary>
     public static List<Fact> SelectFactsToPublish(
         IReadOnlyList<V4JournalCheck> journal,
         ushort localPlayer,
@@ -81,7 +73,6 @@ public static class V4Transport
         var ownKeys = new HashSet<string>();
         var highestSeq = 0ul;
 
-        // Only newline-terminated lines count; a torn tail was never committed.
         var read = FilePacketBridge.ReadPacketLines(logPath, 0);
         foreach (var line in read.Packets)
         {
@@ -101,10 +92,6 @@ public static class V4Transport
         return new V4FerryScan(highestSeq, ownKeys);
     }
 
-    /// <summary>The game-side ForeignPlacementTable feed: every other-world
-    /// placement the v3 route derivation addresses to the local player.
-    /// Coverage is load-bearing — an empty-but-present list means "no manifest
-    /// arrived yet", so this is written at session start regardless.</summary>
     public static string BuildForeignPlacementsSidecar(
         Seed localSeed, IReadOnlyDictionary<ushort, Seed> otherWorlds)
     {

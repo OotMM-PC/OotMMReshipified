@@ -3,8 +3,6 @@ using System.Runtime.InteropServices;
 
 namespace OotMM.Launcher.Session;
 
-/// <summary>Child-process control for a game port. Boot parameters travel via
-/// environment variables, matching the contract in the ports' OoTMM patches.</summary>
 public sealed class GameProcess : IDisposable
 {
     private readonly Process? _process;

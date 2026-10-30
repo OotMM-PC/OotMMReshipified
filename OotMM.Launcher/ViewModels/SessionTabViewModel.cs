@@ -3,10 +3,6 @@ using OotMM.Launcher.Session;
 
 namespace OotMM.Launcher.ViewModels;
 
-/// <summary>
-/// Session controls: restart, game speed, dev-gated game switch, end session,
-/// and the (solo-only) seed reset. Preview mode shows the layout disabled.
-/// </summary>
 public sealed class SessionTabViewModel : ViewModelBase
 {
     private readonly SessionCoordinator? _coordinator;
@@ -15,7 +11,6 @@ public sealed class SessionTabViewModel : ViewModelBase
     private bool _resetArmed;
     private DateTime _resetArmedAt;
 
-    /// <summary>Preview mode: laid out but disabled.</summary>
     public SessionTabViewModel()
     {
         RestartGameCommand = new RelayCommand(() => { }, () => CoordinatorReady);
@@ -28,7 +23,6 @@ public sealed class SessionTabViewModel : ViewModelBase
         ResetSpeedCommand = new RelayCommand(() => { });
     }
 
-    /// <summary>Live mode: wired to the session coordinator.</summary>
     public SessionTabViewModel(SessionCoordinator coordinator, Action end, Action resetProgress)
     {
         CoordinatorReady = true;
@@ -73,7 +67,6 @@ public sealed class SessionTabViewModel : ViewModelBase
     public RelayCommand OpenGameMenuCommand { get; }
     public RelayCommand ResetSpeedCommand { get; }
 
-    // --- Game speed ---------------------------------------------------------
 
     public bool ShowSpeed => _coordinator?.TimerEnabled ?? false;
 
@@ -113,7 +106,6 @@ public sealed class SessionTabViewModel : ViewModelBase
         }
     }
 
-    /// <summary>Server rules can change the range/visibility live.</summary>
     public void NotifyRulesChanged()
     {
         Raise(nameof(ShowSpeed));
@@ -124,9 +116,7 @@ public sealed class SessionTabViewModel : ViewModelBase
         Raise(nameof(ShowSpeedReset));
     }
 
-    // --- Dev mode / reset ---------------------------------------------------
 
-    /// <summary>Switching games mid-session may leave logic: dev mode only.</summary>
     public bool DevMode
     {
         get => _devMode;
@@ -139,13 +129,10 @@ public sealed class SessionTabViewModel : ViewModelBase
         }
     }
 
-    // Only the OoT→MM direction takes an age choice; OoT always resumes its save's age.
     public bool ShowSwitchToMm => CoordinatorReady && DevMode && _coordinator?.ActiveGame == Game.Oot;
 
     public bool ShowSwitchToOot => CoordinatorReady && DevMode && _coordinator?.ActiveGame == Game.Mm;
 
-    // Multiworld never offers a local reset: the other worlds (and the relay)
-    // keep the progress, so a one-sided wipe just desyncs the session.
     public bool ShowReset =>
         !CoordinatorReady || _coordinator?.Session.Seed.IsMultiworld != true;
 

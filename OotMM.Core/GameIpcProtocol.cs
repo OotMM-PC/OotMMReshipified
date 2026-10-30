@@ -137,8 +137,6 @@ public static class GameIpcProtocol
             check = checkKey,
         });
 
-    /// <summary>The live roster pushed to the running game. The type must stay the first key:
-    /// the game matches this frame by prefix so it can defer parsing off its render path.</summary>
     public static string BuildRemotePlayerPoses(IReadOnlyList<string> poses)
     {
         var builder = new StringBuilder("{\"type\":\"");
@@ -156,8 +154,6 @@ public static class GameIpcProtocol
         return builder.Append("]}").ToString();
     }
 
-    /// <summary>A single PvP hit. Kept out of the roster because that frame is last-value:
-    /// superseding it must never drop an event the victim has to apply.</summary>
     public static string BuildPvpHit(string hitBody) =>
         "{\"type\":\"" + MessageType.PvpHit + "\",\"hit\":" + hitBody + "}";
 
@@ -171,8 +167,6 @@ public static class GameIpcProtocol
             check = checkKey,
         });
 
-    /// <summary>The full completed-check snapshot sent when a game connects, so a fresh
-    /// process starts from the launcher's durable record instead of an empty set.</summary>
     public static string BuildCompletedChecks(IEnumerable<string> checkKeys) =>
         JsonSerializer.Serialize(new
         {
@@ -227,7 +221,6 @@ public static class GameIpcProtocol
         }
     }
 
-    /// <summary>Splits an "oot:CHECK_ID" key into its game tag (returned) and check id.</summary>
     public static string SplitCheckKey(string checkKey, out string checkId)
     {
         var separator = checkKey.IndexOf(':');
@@ -241,7 +234,6 @@ public static class GameIpcProtocol
         return checkKey[..separator];
     }
 
-    /// <summary>Extracts the bare pose object from a game's localPlayerPose envelope.</summary>
     public static bool TryParseLocalPlayerPose(string json, out string pose) =>
         TryParseEnvelopeBody(json, MessageType.LocalPlayerPose, "pose", out pose);
 
@@ -276,8 +268,6 @@ public static class GameIpcProtocol
         }
     }
 
-    /// <summary>Stamps a bare presence body with what only the launcher knows: packet type,
-    /// display name, and the room identity the relay's allowlist demands on every line.</summary>
     public static string BuildRelayPresenceLine(
         string relayType, string body, Seed seed, string clientName)
     {
@@ -292,8 +282,6 @@ public static class GameIpcProtocol
             json["type"] = relayType;
             json["seedId"] = seed.SeedId;
             json["teamId"] = seed.TeamId;
-            // The relay authorises against the launcher's identity, so the launcher asserts the
-            // sender rather than trusting whatever the game reported.
             json["sourcePlayer"] = seed.PlayerId;
             if (clientName.Length > 0)
             {

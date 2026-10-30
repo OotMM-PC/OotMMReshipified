@@ -69,7 +69,7 @@ public class RelayProtocolTests
         Assert.Equal(ulong.MaxValue, RelayProtocol.ExtractU64Field(
             "{\"x\":\"18446744073709551615\"}", "x"));
         Assert.Equal(9ul, RelayProtocol.ExtractU64Field("{\"x\":\"18446744073709551616\"}", "x", 9));
-        Assert.Equal(9ul, RelayProtocol.ExtractU64Field("{\"x\":\"4}", "x", 9)); // unclosed quote
+        Assert.Equal(9ul, RelayProtocol.ExtractU64Field("{\"x\":\"4}", "x", 9));
         Assert.Equal(9ul, RelayProtocol.ExtractU64Field("{\"x\":\"\"}", "x", 9));
     }
 }

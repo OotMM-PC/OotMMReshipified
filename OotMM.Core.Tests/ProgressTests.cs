@@ -39,7 +39,6 @@ public class ProgressTests
             (Placement(Game.Oot, "HOOK", "OOT_HOOKSHOT", owner: 1, major: true), true),
             (Placement(Game.Mm, "SOUL", "MM_SOUL_BOSS_ODOLWA", owner: 1), false),
             (Placement(Game.Mm, "FAIRY", "MM_STRAY_FAIRY_WF", owner: 1), true),
-            // Owned by the other player: contributes to check counts, never to pools.
             (Placement(Game.Mm, "THEIRS", "MM_MASK_BUNNY", owner: 2), true),
         ];
 
@@ -78,7 +77,7 @@ public class ProgressTests
         Assert.True(woodfall.HasFairies);
         Assert.Equal(1, woodfall.FairiesHave);
 
-        Assert.DoesNotContain(report.DungeonRows, d => d.Name == "Fire Temple"); // empty pool hidden
+        Assert.DoesNotContain(report.DungeonRows, d => d.Name == "Fire Temple");
     }
 
     [Fact]
@@ -98,14 +97,14 @@ public class ProgressTests
         var hookshot = Assert.Single(report.KeyItems(Game.Oot));
         Assert.Equal("OOT_HOOKSHOT name", hookshot.Name);
         Assert.True(hookshot.Owned);
-        Assert.Empty(report.KeyItems(Game.Mm)); // other player's mask never pools locally
+        Assert.Empty(report.KeyItems(Game.Mm));
 
         Assert.Single(report.Souls(Game.Mm, SoulSub.Boss));
         Assert.Empty(report.Souls(Game.Oot, SoulSub.Boss));
 
         var bridge = Assert.Single(report.Goals);
         Assert.Equal("BRIDGE", bridge.Name);
-        Assert.Equal(2, bridge.Owned); // emerald + ruby collected
+        Assert.Equal(2, bridge.Owned);
         Assert.True(bridge.Active);
         Assert.True(bridge.Satisfied);
 

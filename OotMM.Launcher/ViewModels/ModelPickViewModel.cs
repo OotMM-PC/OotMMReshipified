@@ -1,10 +1,5 @@
 namespace OotMM.Launcher.ViewModels;
 
-/// <summary>
-/// One checkbox in the co-op player-model pickers. A "model" is a set of mod
-/// archives (child + adult + textures + voice); the checked set is announced to
-/// the other players in a multiworld session — none checked means vanilla Link.
-/// </summary>
 public sealed class ModelPickViewModel : ViewModelBase
 {
     private readonly Action _onChanged;

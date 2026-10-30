@@ -2,15 +2,12 @@ using System.Text.Json;
 
 namespace OotMM.Core;
 
-/// <summary>Core JSON convention: u64s cross the wire as decimal strings
-/// (double-safe); readers accept both forms.</summary>
 public static class Json64
 {
     public static ulong? ReadU64(JsonElement element)
     {
         if (element.ValueKind == JsonValueKind.Number)
         {
-            // Number form caps at 2^53-1 like the C++ double-backed parser.
             const double largestExactInteger = 9007199254740991.0;
             var number = element.GetDouble();
             if (double.IsNaN(number) || number < 0.0 || number > largestExactInteger

@@ -5,8 +5,6 @@ using Xunit;
 
 namespace OotMM.Core.Tests;
 
-/// <summary>Fixture: a synthetic archive in the OTR-exporter MPQ subset, covering a
-/// sectored-zlib file, a single-unit-zlib file, an uncompressed file, and a (listfile).</summary>
 public class MpqReaderTests
 {
     private const string FixtureBase64 =

@@ -5,20 +5,12 @@ using OotMM.Launcher.Models;
 
 namespace OotMM.Launcher.Session;
 
-/// <summary>One game's shareable archives in repack order: the LAST path wins collisions,
-/// mirroring how the archives mount on the owner's machine.</summary>
 public sealed record ModelShareSet(Game Game, IReadOnlyList<string> ArchivePaths);
 
-/// <summary>
-/// Ships every player's model archives around the session and installs each remote set as a
-/// namespaced zz_coop archive, so puppets can wear their own player's model. Transfers ride the
-/// relay side channel; installed archives mount at that game's next launch.
-/// </summary>
 public sealed class ModelSyncCoordinator
 {
     private const int ChunkLinesPerPump = 4;
     private const int MaxHashFailures = 3;
-    // Rides count-0 announces; never a real content hash, never requested or cached.
     private const string EmptySetHash =
         "0000000000000000000000000000000000000000000000000000000000000000";
     private static readonly TimeSpan AnnounceEvery = TimeSpan.FromSeconds(30);
@@ -84,24 +76,18 @@ public sealed class ModelSyncCoordinator
         _modsDirs = modsDirs;
         _fillArchives = fillArchives;
         _send = send;
-        // Sets learned in earlier sessions install NOW, before the games boot and lock their
-        // archives; a hard-killed launcher must not lose what a session already received.
         LoadPersistedSets();
         TryInstallAll();
     }
 
     public event Action<string>? Logged;
 
-    /// <summary>Builds the session's coordinator from the saved form. The MM share set carries
-    /// the ported OoT archives automatically, so other players see this player's ported human
-    /// form without selecting anything.</summary>
     public static ModelSyncCoordinator Create(
         Core.Session session, UiSettings settings, Func<string, bool> send)
     {
         var ootMods = ModsDir(session.OotExe);
         var mmMods = ModsDir(session.MmExe);
 
-        // Pick lists read top-priority-first; the repacker gives collisions to the LAST input.
         var ootShare = settings.PlayerModelOot.AsEnumerable().Reverse()
             .Select(name => Path.Combine(ootMods, name))
             .Where(File.Exists)
@@ -163,8 +149,6 @@ public sealed class ModelSyncCoordinator
 
     public void Tick(bool ready, ulong generation, Game? runningGame = null)
     {
-        // The running game holds its mounted zz_coop archive locked; its installs wait
-        // until it stops (a cross-game handoff, or InstallNow at session end).
         _runningGame = runningGame;
         BuildFillsOnce();
         if (!ready)
@@ -174,7 +158,6 @@ public sealed class ModelSyncCoordinator
 
         _own ??= BuildOwnArchives();
         var now = Now;
-        // Announces are ephemeral: they repeat so reconnects and late joiners still hear them.
         if (generation != _announcedGeneration || _lastAnnounceAt == TimeSpan.MinValue
             || now - _lastAnnounceAt >= AnnounceEvery)
         {
@@ -233,8 +216,6 @@ public sealed class ModelSyncCoordinator
         TryInstallAll();
     }
 
-    /// <summary>Feeds the active chunk stream into the relay queue; called at presence rate so
-    /// serving is paced by the queue's own backpressure rather than the slow session tick.</summary>
     public void PumpSend(bool ready)
     {
         if (!ready || _streams.Count == 0)
@@ -261,7 +242,7 @@ public sealed class ModelSyncCoordinator
                     _seed.PlayerId, stream.Hash, stream.Next, stream.Total, data.AsSpan(0, read).ToArray()));
                 if (!_send(line))
                 {
-                    return; // queue full: resume from the same chunk next pump
+                    return;
                 }
 
                 stream.Next++;
@@ -295,7 +276,7 @@ public sealed class ModelSyncCoordinator
 
         if (announce.Count == 0)
         {
-            PersistSets(); // an empty set is complete by existing; the install turns it into fill
+            PersistSets();
             return;
         }
 
@@ -326,7 +307,6 @@ public sealed class ModelSyncCoordinator
             return;
         }
 
-        // A repeat request means the receiver dropped its partial download: restart from zero.
         if (_streams.FirstOrDefault(s => s.Hash == request.Hash) is { } active)
         {
             active.Next = 0;
@@ -346,7 +326,6 @@ public sealed class ModelSyncCoordinator
 
         if (!_downloads.TryGetValue(chunk.Hash, out var download))
         {
-            // Chunks broadcast to the room, so another player's request can start ours for free.
             if (chunk.Seq != 0 || File.Exists(CachePath(chunk.Hash)) || !IsWanted(chunk.Hash))
             {
                 return;
@@ -396,8 +375,6 @@ public sealed class ModelSyncCoordinator
         TryInstallAll();
     }
 
-    /// <summary>Install pass for session teardown: the games are gone, so every pending
-    /// set can land and mount at the next launch.</summary>
     public void InstallNow()
     {
         _runningGame = null;
@@ -422,8 +399,6 @@ public sealed class ModelSyncCoordinator
                 continue;
             }
 
-            // The set composes OVER the vanilla base: an asset the sender lacks must resolve
-            // to namespaced vanilla, never fall through to THIS client's canonical mods.
             var bases = _fillArchives[game].Where(File.Exists).ToList();
             var signature = "set|" + string.Join("|", ordered.Select(a => a!.Hash))
                             + "|base|" + string.Join("|", bases.Select(path =>
@@ -466,7 +441,6 @@ public sealed class ModelSyncCoordinator
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                // Usually the running game holding the mounted archive; retry after it closes.
                 _installRetryAt[(player, game)] = Now + TimeSpan.FromSeconds(30);
                 if (_installBlockedLogged.Add(signature))
                 {
@@ -477,8 +451,6 @@ public sealed class ModelSyncCoordinator
         }
     }
 
-    // Every other player gets a vanilla-filled namespace up front, so a puppet with no synced
-    // model resolves to vanilla instead of falling through to the local player's own assets.
     private void BuildFillsOnce()
     {
         if (_fillsBuilt)
@@ -514,7 +486,6 @@ public sealed class ModelSyncCoordinator
                     if (File.Exists(output) && File.Exists(sidecar))
                     {
                         var existing = File.ReadAllText(sidecar);
-                        // A synced set from an earlier session outranks a fill; keep it.
                         if (!existing.StartsWith("fill|", StringComparison.Ordinal)
                             || existing == signature)
                         {
@@ -540,8 +511,6 @@ public sealed class ModelSyncCoordinator
         var own = new List<OwnArchive>();
         foreach (var share in _shares)
         {
-            // The announced count must match what actually hashed, or receivers
-            // would wait forever for an index that never got announced.
             var loaded = new List<(string Path, string Hash, long Size)>();
             foreach (var path in share.ArchivePaths.Where(File.Exists))
             {
@@ -565,7 +534,6 @@ public sealed class ModelSyncCoordinator
 
             if (loaded.Count == 0)
             {
-                // Announced so receivers retire any set of ours they installed before.
                 own.Add(new OwnArchive(
                     new ModelAnnounce(_seed.PlayerId, share.Game, "", EmptySetHash, 1, 0, 0), ""));
                 continue;

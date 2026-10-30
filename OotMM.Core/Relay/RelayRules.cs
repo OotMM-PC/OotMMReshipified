@@ -1,7 +1,5 @@
 namespace OotMM.Core.Relay;
 
-/// <summary>Server-side session rules, announced to every joiner via
-/// OOTMM_SESSION_META; players cannot override them.</summary>
 public sealed class RelayRules
 {
     public bool Pvp { get; set; }
@@ -13,8 +11,6 @@ public sealed class RelayRules
     public bool AllowManifestBootstrap { get; set; } = true;
 }
 
-/// <summary>Identity bound by the protocol-v4 hello, used to validate the
-/// ephemeral side channels that ride the same socket.</summary>
 public sealed record VerifiedClientIdentity(
     string Room,
     string SettingsHash,
@@ -22,8 +18,6 @@ public sealed record VerifiedClientIdentity(
     ushort PlayerId,
     ushort PlayerCount);
 
-/// <summary>Strict allowlist for the ephemeral side channels; progress traffic
-/// is v4 fact lines validated separately.</summary>
 public static class SideChannelPolicy
 {
     public static bool IsRoomPacketAllowed(string line, VerifiedClientIdentity client)
@@ -88,7 +82,6 @@ public static class SideChannelPolicy
     }
 }
 
-/// <summary>Ephemeral presence packet types that ride the relay socket.</summary>
 public static class PresencePackets
 {
     public const string PlayerState = "OOTMM_PLAYER_STATE";

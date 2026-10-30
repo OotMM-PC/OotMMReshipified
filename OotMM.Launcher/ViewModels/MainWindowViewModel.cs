@@ -5,8 +5,6 @@ using OotMM.Launcher.Session;
 
 namespace OotMM.Launcher.ViewModels;
 
-/// <summary>Owns the two top-level stages (config form, runtime screen), the
-/// live session coordinator, and app-wide appearance (accent, UI scale).</summary>
 public sealed class MainWindowViewModel : ViewModelBase
 {
     private readonly UiSettings _settings;
@@ -104,8 +102,6 @@ public sealed class MainWindowViewModel : ViewModelBase
 
         _runtime = RuntimeViewModel.CreateLive(_settings, _coordinator, SetTheme, SetUiScale, UiScale);
 
-        // Boot only once the native game host exists, so the game embeds into it
-        // from its first frame instead of opening a top-level window.
         var started = false;
         var coordinator = _coordinator;
         _runtime.GameHostAttached += () =>
@@ -116,7 +112,6 @@ public sealed class MainWindowViewModel : ViewModelBase
             }
 
             started = true;
-            // The host handle arrives mid-layout; boot outside the layout pass.
             Avalonia.Threading.Dispatcher.UIThread.Post(() =>
             {
                 if (coordinator == _coordinator && coordinator.Start() is { } startError)
@@ -143,8 +138,6 @@ public sealed class MainWindowViewModel : ViewModelBase
         CurrentViewModel = _runtime;
     }
 
-    /// <summary>Hosts the relay engine on a background thread; it outlives
-    /// sessions, so re-hosting is a no-op once started.</summary>
     private void StartHostedRelay(ushort port)
     {
         if (_relayStarted)

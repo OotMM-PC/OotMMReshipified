@@ -2,7 +2,6 @@ using System.Windows.Input;
 
 namespace OotMM.Launcher.ViewModels;
 
-/// <summary>Plain ICommand over a delegate, with optional can-execute gating.</summary>
 public sealed class RelayCommand : ICommand
 {
     private readonly Action _execute;
@@ -20,8 +19,6 @@ public sealed class RelayCommand : ICommand
 
     public void Execute(object? parameter) => _execute();
 
-    /// <summary>Call after any state change that affects CanExecute; Avalonia
-    /// re-queries and enables/disables bound buttons.</summary>
     public void RaiseCanExecuteChanged() =>
         CanExecuteChanged?.Invoke(this, EventArgs.Empty);
 }

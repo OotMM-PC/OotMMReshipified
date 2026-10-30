@@ -146,7 +146,6 @@ public class RelayEngineTests : IDisposable
         p1.Send(FactLog.EncodeCatchUp(0));
         Assert.NotNull(p1.ReceiveWhere(FactLog.DecodeLive));
 
-        // Publish (no seq) -> durable ack with the assigned seq + broadcast (sender included).
         p1.Send("{\"v\":4,\"p\":1,\"g\":\"oot\",\"c\":\"CHECK_A\"}");
         var ack = p1.ReceiveWhere(l => FactLog.DecodeAck(l) is not null);
         Assert.NotNull(ack);
@@ -154,7 +153,6 @@ public class RelayEngineTests : IDisposable
         var broadcast = p1.ReceiveWhere(l => FactLog.DecodeFact(l) is { Seq: not 0 });
         Assert.Equal("{\"v\":4,\"seq\":1,\"p\":1,\"g\":\"oot\",\"c\":\"CHECK_A\"}", broadcast);
 
-        // Second client: catch-up streams the stored fact, then goes live.
         using var p2 = new Wire(port);
         p2.Send(Hello(2, "p2"));
         Assert.NotNull(p2.ReceiveType(RelayProtocol.Ready));
@@ -163,19 +161,16 @@ public class RelayEngineTests : IDisposable
                      p2.ReceiveWhere(l => FactLog.DecodeFact(l) is { Seq: not 0 }));
         Assert.NotNull(p2.ReceiveWhere(FactLog.DecodeLive));
 
-        // Manifest upload registers durably and forwards to connected clients.
         p1.Send(SeedManifest.Build(MakeSeed(1)));
         var forwarded = p2.ReceiveType(RelayProtocol.SeedManifest);
         Assert.NotNull(forwarded);
         Assert.Equal(1, (int)SeedManifest.Parse(forwarded)!.Seed.PlayerId);
         Assert.True(File.Exists(Path.Combine(_store, "room_protocol-test_team_p1.manifest.json")));
 
-        // Duplicate publish re-acks idempotently with the existing seq.
         p1.Send("{\"v\":4,\"p\":1,\"g\":\"oot\",\"c\":\"CHECK_A\"}");
         var reAck = p1.ReceiveWhere(l => FactLog.DecodeAck(l) is not null);
         Assert.Equal(1ul, FactLog.DecodeAck(reAck!)!.Seq);
 
-        // Live publish broadcasts to every v4 room client.
         p1.Send("{\"v\":4,\"p\":1,\"g\":\"oot\",\"c\":\"CHECK_B\"}");
         Assert.Equal("{\"v\":4,\"seq\":2,\"p\":1,\"g\":\"oot\",\"c\":\"CHECK_B\"}",
                      p2.ReceiveWhere(l => FactLog.DecodeFact(l) is { Seq: 2 }));
@@ -246,7 +241,6 @@ public class RelayEngineTests : IDisposable
         p1.Send(Hello(1, "p1"));
         Assert.NotNull(p1.ReceiveType(RelayProtocol.Ready));
 
-        // A fact for another player is dropped: no ack ever arrives for it.
         p1.Send("{\"v\":4,\"p\":2,\"g\":\"oot\",\"c\":\"CHECK_A\"}");
         p1.Send("{\"v\":4,\"p\":1,\"g\":\"oot\",\"c\":\"CHECK_A\"}");
         var ack = p1.ReceiveWhere(l => FactLog.DecodeAck(l) is not null);
@@ -282,7 +276,7 @@ public class RelayEngineTests : IDisposable
 
         var pose = "{\"type\":\"OOTMM_PLAYER_STATE\",\"seedId\":\"protocol-test\",\"teamId\":\"team\","
                    + "\"sourcePlayer\":1,\"game\":\"oot\",\"sceneId\":5}";
-        p1.Send(pose.Replace("\"sourcePlayer\":1", "\"sourcePlayer\":2")); // spoofed: dropped
+        p1.Send(pose.Replace("\"sourcePlayer\":1", "\"sourcePlayer\":2"));
         p1.Send(pose);
         var received = p2.ReceiveType(PresencePackets.PlayerState);
         Assert.Equal(pose, received);
@@ -445,16 +439,13 @@ public class V4RoomStoreTests
         var dir = TempDir();
         var store = new V4RoomStore();
 
-        // Committed garbage is never repaired away.
         File.WriteAllText(V4RoomStore.PathFor(dir, "r"), "not json\n");
         Assert.False(store.Load(dir, "r"));
 
-        // Non-contiguous seq.
         File.WriteAllText(V4RoomStore.PathFor(dir, "r"),
             "{\"v\":4,\"seq\":2,\"p\":1,\"g\":\"oot\",\"c\":\"A\"}\n");
         Assert.False(new V4RoomStore().Load(dir, "r"));
 
-        // Duplicate natural key.
         File.WriteAllText(V4RoomStore.PathFor(dir, "r"),
             "{\"v\":4,\"seq\":1,\"p\":1,\"g\":\"oot\",\"c\":\"A\"}\n"
             + "{\"v\":4,\"seq\":2,\"p\":1,\"g\":\"oot\",\"c\":\"A\"}\n");

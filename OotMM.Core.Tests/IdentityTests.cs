@@ -24,7 +24,6 @@ public class IdentityTests
         Assert.Equal("team|seed", Identity.RewardNamespace("team", "seed"));
     }
 
-    // Real vector from a C++ play session (6Qk seed, player 2 delivery ledger).
     [Fact]
     public void BuildRewardIdentity_MatchesRealSessionValue()
     {

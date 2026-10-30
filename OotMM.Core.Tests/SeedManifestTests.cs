@@ -59,10 +59,8 @@ public class SeedManifestTests
         Assert.Equal(Identity.SeedManifestHash(seed), parsed.ManifestHash);
         Assert.Equal(2, parsed.Seed.Placements.Count);
         Assert.True(parsed.Seed.GetBoolSetting("trapsLink"));
-        // Placement source is the sender; owner comes from the packet.
         Assert.Equal(1, (int)parsed.Seed.Placements[1].SourcePlayer);
         Assert.Equal(2, (int)parsed.Seed.Placements[1].OwnerPlayer);
-        // A parsed manifest re-serializes byte-identically (the relay compares raw bytes).
         Assert.Equal(packet, SeedManifest.Build(parsed.Seed));
     }
 
@@ -73,7 +71,7 @@ public class SeedManifestTests
         Assert.Null(SeedManifest.Parse(packet.Replace("\"itemId\":\"OOT_BOW\"", "\"itemId\":\"OOT_SWORD\"")));
         Assert.Null(SeedManifest.Parse(packet.Replace("\"protocolVersion\":3", "\"protocolVersion\":4")));
         Assert.Null(SeedManifest.Parse(packet.Replace("\"sessionEpoch\":\"4\"", "\"sessionEpoch\":\"0\"")));
-        Assert.Null(SeedManifest.Parse(packet.Replace("CHECK_REMOTE_MM", "CHECK_A"))); // duplicate check
+        Assert.Null(SeedManifest.Parse(packet.Replace("CHECK_REMOTE_MM", "CHECK_A")));
         Assert.Null(SeedManifest.Parse(packet.Replace("\"ownerPlayer\":2", "\"ownerPlayer\":3")));
         Assert.Null(SeedManifest.Parse(packet.Replace("\"type\":\"OOTMM_SEED_MANIFEST\"", "\"type\":\"OTHER\"")));
         Assert.Null(SeedManifest.Parse("not json"));

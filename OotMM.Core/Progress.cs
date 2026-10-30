@@ -32,8 +32,6 @@ public sealed record GoalProgress(string Name, int Owned, int Threshold)
     public bool Satisfied => Owned >= Threshold;
 }
 
-/// <summary>Progress-tab model over the seed and collected state; every count
-/// derives from the local player's placement pool (ported from Progress.cpp).</summary>
 public sealed class ProgressReport
 {
     private static readonly (string Name, Game Game, string Token)[] Dungeons =
@@ -110,9 +108,6 @@ public sealed class ProgressReport
     private readonly List<ItemProgress>[] _soulsOot;
     private readonly List<ItemProgress>[] _soulsMm;
 
-    /// <summary>foreignChecks are the local player's items sitting in OTHER
-    /// players' worlds: they join the item pools so totals are complete, but
-    /// never the check counts (those are this world's checks).</summary>
     public static ProgressReport Build(
         Seed seed,
         IReadOnlyList<(ItemPlacement Placement, bool Collected)> checks,

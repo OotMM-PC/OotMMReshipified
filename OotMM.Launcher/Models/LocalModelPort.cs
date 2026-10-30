@@ -5,18 +5,10 @@ namespace OotMM.Launcher.Models;
 
 public sealed record ModelPortStatus(bool Active, int Entries, string Error = "");
 
-/// <summary>
-/// Carries the player's OoT model into MM. Adult Link in MM renders from ot_obj_link_boy paths,
-/// so porting the selected OoT archives there makes the custom model (and its ENV-color tunic
-/// support) follow the player across games with no game-side changes.
-/// </summary>
 public static class LocalModelPort
 {
-    // The zz_localmodel prefix is hidden from the mods UI and pinned last by the mount order,
-    // so it wins over anything else providing the same paths.
     public const string AdultArchive = "zz_localmodel_oot_adult.o2r";
     public const string ChildArchive = "zz_localmodel_oot_child.o2r";
-    // The game keys the child mapper on this entry existing in a mounted archive.
     private const string ChildMarkerEntry = "objects/ot_obj_link_child/ootmm_localmodel_marker";
     private const string PortFormat = "portv2|";
 
@@ -32,8 +24,6 @@ public static class LocalModelPort
 
         var output = Path.Combine(mmMods, AdultArchive);
         var sidecar = output + ".sources";
-        // The picker lists top-priority first, but the repacker gives collisions to the LAST
-        // input; reversing makes overlapping archives compose exactly as they mount in game.
         var sources = selectedOotModels
             .Select(name => Path.Combine(ootMods, name))
             .Where(File.Exists)
@@ -49,7 +39,6 @@ public static class LocalModelPort
                 return new ModelPortStatus(false, 0);
             }
 
-            // Versioning the signature forces regeneration whenever the port format changes.
             var signature = PortFormat + string.Join("\n", sources.Select(path =>
             {
                 var info = new FileInfo(path);
@@ -57,7 +46,7 @@ public static class LocalModelPort
             }));
             if (File.Exists(output) && File.Exists(sidecar) && File.ReadAllText(sidecar) == signature)
             {
-                return new ModelPortStatus(true, -1); // up to date; entry count not recounted
+                return new ModelPortStatus(true, -1);
             }
 
             var result = ModelRepack.PortDirectory(sources, output, "object_link_boy", "ot_obj_link_boy");
@@ -68,7 +57,6 @@ public static class LocalModelPort
 
             if (result.Kept == 0)
             {
-                // The selected set has no adult assets (child-only model); nothing to port.
                 File.Delete(sidecar);
                 return new ModelPortStatus(false, 0);
             }

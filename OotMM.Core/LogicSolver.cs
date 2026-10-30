@@ -2,9 +2,6 @@ using System.Text.Json;
 
 namespace OotMM.Core;
 
-/// <summary>Reverse-logic reachability solver over the seed's exported logic
-/// graph; a faithful port of LogicSolver.cpp (itself a port of the generator's
-/// Pathfinder). Item counts are fixed inputs — a tracker, not an assumer.</summary>
 public sealed class LogicSolver
 {
     private const uint OotTimeAll = 0x7;
@@ -42,7 +39,7 @@ public sealed class LogicSolver
     private sealed class Area
     {
         public bool Mm;
-        public int Time; // 0 still, 1 day, 2 night, 3 flow
+        public int Time;
         public bool AgeChange;
         public List<(int Area, int Expr)> Exits = [];
         public List<(int Location, int Expr)> Locations = [];
@@ -238,7 +235,7 @@ public sealed class LogicSolver
                 case "flagon": node.Op = Op.FlagOn; node.U1 = (uint)raw[1].GetDouble(); break;
                 case "flagoff": node.Op = Op.FlagOff; node.U1 = (uint)raw[1].GetDouble(); break;
                 default:
-                    return false; // unknown node type: refuse rather than mis-solve
+                    return false;
             }
 
             _nodes.Add(node);
@@ -351,7 +348,7 @@ public sealed class LogicSolver
                     return new EvalResult(false, false, default);
                 case Op.And:
                 {
-                    var r = default(Restrictions); // AND of negation masks == bitwise OR
+                    var r = default(Restrictions);
                     var restricted = false;
                     foreach (var kid in node.Kids)
                     {
@@ -480,7 +477,7 @@ public sealed class LogicSolver
             var reached = new[] { new AreaData?[_areas.Count], new AreaData?[_areas.Count] };
 
             var queue = new Queue<(int Age, int Area, AreaData Data, int FromArea)>();
-            var init = new AreaData(0, 1, 0, 0, 0); // day 1, 6 AM
+            var init = new AreaData(0, 1, 0, 0, 0);
             queue.Enqueue((0, _spawnArea, init, _spawnArea));
             queue.Enqueue((1, _spawnArea, init, _spawnArea));
 
@@ -506,12 +503,11 @@ public sealed class LogicSolver
                 {
                     if (newData.MmTime == 0 && newData.MmTime2 == 0)
                     {
-                        continue; // MM is unreachable without a time slice
+                        continue;
                     }
 
                     if (area.Stay.Count == 0)
                     {
-                        // Waiting expands time forward across all later slices.
                         uint mmTime, mmTime2;
                         if (newData.MmTime != 0)
                         {
@@ -539,7 +535,6 @@ public sealed class LogicSolver
                     }
                     else
                     {
-                        // Conditional waiting: stay exprs see the PREVIOUS area data.
                         age = entry.Age;
                         areaData = slot ?? default;
                         var waitMode = false;
@@ -567,7 +562,6 @@ public sealed class LogicSolver
                     }
                 }
 
-                // Age swap (time travel at will), before the covering check.
                 if (_timeTravelEvent >= 0 && events[_timeTravelEvent] && area.AgeChange
                     && entry.Area != entry.FromArea)
                 {
@@ -618,7 +612,6 @@ public sealed class LogicSolver
                         exitData.FlagsOff |= exit.R.FlagsOff;
                     }
 
-                    // OoT -> MM edge: the Song of Time resets to day 1, 6 AM.
                     if (!area.Mm && _areas[targetArea].Mm)
                     {
                         exitData.MmTime |= 1;

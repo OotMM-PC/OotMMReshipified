@@ -3,10 +3,6 @@ using OotMM.Core;
 
 namespace OotMM.Launcher.Session;
 
-/// <summary>
-/// Owns one live play session: process lifecycle, outbox pumping, cross-game
-/// handoff, and journal-driven tracker state. UI-thread only (DispatcherTimer).
-/// </summary>
 public sealed class SessionCoordinator : IDisposable
 {
     private const int HandoffGraceMs = 400;
@@ -52,12 +48,8 @@ public sealed class SessionCoordinator : IDisposable
         ActiveGame = session.RecoveredTransition?.ToGame ?? startingGame ?? session.Seed.ResolveStartingGame();
         _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
         _timer.Tick += (_, _) => Tick();
-        // Clicks over the embedded game never reach the UI framework, so a fast
-        // poll hands keyboard focus to the game when one lands there.
         _focusTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(25) };
         _focusTimer.Tick += (_, _) => PollGameFocus();
-        // Puppets replay joint tables verbatim, so poses must arrive at the game's logic rate;
-        // at the session tick's rate the animation visibly steps.
         _presenceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
         _presenceTimer.Tick += (_, _) => PumpPresence();
 
@@ -82,7 +74,7 @@ public sealed class SessionCoordinator : IDisposable
             };
             _multiworld.RulesChanged += () =>
             {
-                SpeedPercent = _speedPercent; // re-clamp into the server's allowed range
+                SpeedPercent = _speedPercent;
                 _ipcSettingsDirty = true;
                 StateChanged?.Invoke();
             };
@@ -102,8 +94,6 @@ public sealed class SessionCoordinator : IDisposable
 
     public bool IsRunning => _process?.Running == true;
 
-    /// <summary>Native host the game window embeds into; games launched while it
-    /// is 0 open their own top-level window instead.</summary>
     public nint GameHostHandle { get; set; }
 
     public void OpenInGameMenu() => GameWindow.PostEscape(_gameChild);
@@ -114,8 +104,6 @@ public sealed class SessionCoordinator : IDisposable
 
     public int TimerMax => Math.Max(0, _multiworld?.TimerMax ?? 250);
 
-    /// <summary>Game speed in percent (100 = vanilla), sent live over IPC and
-    /// clamped to the server's allowed range.</summary>
     public int SpeedPercent
     {
         get => _speedPercent;
@@ -146,11 +134,9 @@ public sealed class SessionCoordinator : IDisposable
     public bool AllowDebugMenus
     {
         get => _session.AllowDebugMenus;
-        set => _session.AllowDebugMenus = value; // applies on the next game boot
+        set => _session.AllowDebugMenus = value;
     }
 
-    /// <summary>Force-completes an open check through the running game's admin
-    /// inbox; the game grants the item exactly like a real collection.</summary>
     public bool ForceUnlock(string checkId)
     {
         if (_process is not { Running: true } || _pendingTransition is not null)
@@ -214,15 +200,12 @@ public sealed class SessionCoordinator : IDisposable
     public void RestartGame()
     {
         _process?.Terminate();
-        // The dead game's archives just unlocked: model sets learned mid-session mount now.
         _modelSync?.InstallNow();
         LogEvent($"Restarting {GameInfo.Title(ActiveGame)}…");
         if (StartActiveGame(null, null) is { } error)
             EndSession(error);
     }
 
-    /// <summary>Dev-mode game switch. <paramref name="ootAge"/> (0 adult, 1 child) rides the
-    /// boot config so MM's crossAge mapper arrives in the chosen age; OoT ignores it.</summary>
     public void SwitchGame(uint? ootAge = null)
     {
         _process?.Terminate();
@@ -250,13 +233,11 @@ public sealed class SessionCoordinator : IDisposable
         _process = null;
         _ipc?.Dispose();
         _ipc = null;
-        // The dead game's mods just unlocked; any install the session blocked lands now.
         _modelSync?.InstallNow();
         _multiworld?.Dispose();
         Ended?.Invoke(reason);
     }
 
-    /// <summary>Solo only, mirroring the C++ refusal for multiworld seeds.</summary>
     public bool ResetSeedProgress()
     {
         if (_session.Seed.IsMultiworld)
@@ -277,7 +258,6 @@ public sealed class SessionCoordinator : IDisposable
                 File.Delete($"{_session.StatePath}.slot{slot}");
             }
 
-            // A surviving applied/triforce ledger would suppress every re-grant onto the recreated saves.
             var stateName = Path.GetFileName(_session.StatePath);
             foreach (var sidecar in Directory.EnumerateFiles(_session.SessionDir))
             {
@@ -460,7 +440,6 @@ public sealed class SessionCoordinator : IDisposable
 
         if (_session.RecoveredTransition is { } recovered)
         {
-            // Retire the durable transition only once its destination is live.
             if (recovered.ToGame != ActiveGame || !DurableFile.Retire(_session.PendingTransitionPath))
             {
                 _process.Terminate();
@@ -549,8 +528,6 @@ public sealed class SessionCoordinator : IDisposable
         LayoutEmbeddedGame();
         PublishIpcSettingsIfDirty();
 
-        // Check bursts (drain, catch-up replay) coalesce into one refresh per tick;
-        // per-packet notifications made the sidebar recompute logic N times over.
         if (_stateDirty)
         {
             _stateDirty = false;
@@ -643,8 +620,6 @@ public sealed class SessionCoordinator : IDisposable
                     && CompletedChecks.Add(Identity.CheckKey(placement.Check.Game, placement.Check.Id)))
                 {
                     changed = true;
-                    // The first sync reconciles resumed progress and must not
-                    // flood the log; later syncs log fresh collections.
                     if (_initialSyncDone)
                     {
                         LogCheckCollected(Identity.CheckKey(placement.Check.Game, placement.Check.Id));
@@ -688,7 +663,6 @@ public sealed class SessionCoordinator : IDisposable
         }
         catch (Exception ex) when (ex is IOException or System.Text.Json.JsonException)
         {
-            // Mid-write journal reads retry next tick.
         }
         finally
         {
@@ -699,8 +673,6 @@ public sealed class SessionCoordinator : IDisposable
         }
     }
 
-    // The launcher is the durable owner of completed checks: every collection lands
-    // here, and a game's report is only acknowledged once this write succeeds.
     private bool SaveCompletedState()
     {
         var json = System.Text.Json.JsonSerializer.Serialize(new
@@ -719,7 +691,6 @@ public sealed class SessionCoordinator : IDisposable
 
         try
         {
-            // Skip re-parsing our own write on the next tick.
             _stateStamp = File.GetLastWriteTimeUtc(_session.StatePath);
         }
         catch (IOException)
@@ -742,8 +713,6 @@ public sealed class SessionCoordinator : IDisposable
         }
     }
 
-    /// <summary>Focus arriving at the launcher (alt-tab back) belongs to the game
-    /// when the cursor is over the game area.</summary>
     public void OnHostActivated()
     {
         if (GameWindow.IsAlive(_gameChild) && GameWindow.CursorOverWindow(GameHostHandle))
@@ -766,7 +735,6 @@ public sealed class SessionCoordinator : IDisposable
                         ActiveGame));
                     _ipc.Send(GameIpcProtocol.BuildInventorySnapshot(
                         _inventory.Revision, _inventory.Items));
-                    // A fresh process starts from the durable record, not an empty set.
                     _ipc.Send(GameIpcProtocol.BuildCompletedChecks(
                         CompletedChecks.Order(StringComparer.Ordinal)));
                     _ipcSettingsDirty = true;
@@ -780,7 +748,6 @@ public sealed class SessionCoordinator : IDisposable
                             return;
                         break;
                     }
-                    // Presence is the hottest message on the pipe, so it is matched first.
                     if (GameIpcProtocol.TryParseLocalPlayerPose(ipcEvent.Message, out var pose))
                     {
                         _multiworld?.SubmitLocalPose(pose);
@@ -1001,8 +968,6 @@ public sealed class SessionCoordinator : IDisposable
         }
     }
 
-    /// <summary>Carries presence in both directions at the game's logic rate: the game's own
-    /// pose out to the room, and the room's newest poses back down.</summary>
     private void PumpPresence()
     {
         if (_ended || _starting)
@@ -1022,9 +987,6 @@ public sealed class SessionCoordinator : IDisposable
         PublishRemotePresence();
     }
 
-    /// <summary>Pushes the live roster to the running game. Sent every tick even when empty:
-    /// the game treats an arriving roster as the signal that this is a multiplayer session, and
-    /// its absence as the signal to stop publishing poses.</summary>
     private void PublishRemotePresence()
     {
         if (_multiworld is null || _ipc?.IsConnected != true)
@@ -1105,7 +1067,6 @@ public sealed class SessionCoordinator : IDisposable
         var size = GameWindow.ClientSize(GameHostHandle);
         if (!GameWindow.IsAlive(_gameChild))
         {
-            // (Re)discover after a launch; size and focus it once found.
             _gameChild = GameWindow.FindGameChild(GameHostHandle, _process?.Pid ?? 0);
             if (_gameChild != 0)
             {
@@ -1184,8 +1145,6 @@ public sealed class SessionCoordinator : IDisposable
         }
         if (CompletedChecks.Add(checkKey))
         {
-            // The ack is the durability promise: an unpersisted check stays pending
-            // in the game and is re-reported on the next connection.
             if (!SaveCompletedState())
             {
                 CompletedChecks.Remove(checkKey);

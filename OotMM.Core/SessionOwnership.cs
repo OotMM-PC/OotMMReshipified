@@ -3,7 +3,6 @@ using System.Text.Json;
 
 namespace OotMM.Core;
 
-/// <summary>Evidence for resolving which logical save slot a session owns.</summary>
 public sealed record LogicalSlotEvidence(
     bool SessionOwnershipVerified,
     string? BaseState,
@@ -15,8 +14,6 @@ public sealed record LogicalSlotResolution(uint? LogicalSlot, bool ProvenNew, st
     public bool IsSafe => Error.Length == 0;
 }
 
-/// <summary>Session ownership marker (byte-exact validation) and logical-slot
-/// identity resolution, ported from BootConfig.cpp.</summary>
 public static class SessionOwnership
 {
     public static string BuildMarker(Seed seed, string sessionKey)
@@ -34,13 +31,9 @@ public static class SessionOwnership
             .ToString();
     }
 
-    /// <summary>Byte-exact compare: legacy or non-canonical markers must fail
-    /// and go through the explicit copy-safe migration instead.</summary>
     public static bool ValidateMarker(string text, Seed seed, string sessionKey) =>
         text == BuildMarker(seed, sessionKey);
 
-    /// <summary>Reads sessionValues["ootmm.activeSlot"] ("0".."2") from a
-    /// runtime journal; null with a reason otherwise.</summary>
     public static uint? ParseRuntimeLogicalSlot(string stateText, out string error)
     {
         error = "";

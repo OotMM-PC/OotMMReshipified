@@ -3,20 +3,14 @@ using System.Text;
 
 namespace OotMM.Core;
 
-/// <summary>PacketEndOffsets parallels Packets: the byte offset just past each
-/// packet's newline, so consumers can advance one durable packet at a time.</summary>
 public sealed record FilePacketReadResult(
     IReadOnlyList<string> Packets,
     IReadOnlyList<long> PacketEndOffsets,
     long NextOffset,
     bool Success);
 
-/// <summary>JSONL file transport shared with the C++ games; framing, torn-tail
-/// and cursor rules must match FilePacketBridge.cpp exactly.</summary>
 public static class FilePacketBridge
 {
-    /// <summary>Appends packets (sole writer per file); returns count written,
-    /// 0 on any failure with the file rolled back to its original length.</summary>
     public static int AppendPacketLines(string path, IReadOnlyList<string> packets)
     {
         if (string.IsNullOrEmpty(path) || packets.Count == 0)
@@ -71,8 +65,6 @@ public static class FilePacketBridge
         }
     }
 
-    /// <summary>Reads whole packets from a byte offset; an unterminated tail
-    /// stays unread with NextOffset at its first byte.</summary>
     public static FilePacketReadResult ReadPacketLines(string path, long offset)
     {
         var failed = new FilePacketReadResult([], [], offset, false);
@@ -119,7 +111,6 @@ public static class FilePacketBridge
                 return new FilePacketReadResult([], [], offset, true);
             }
 
-            // Split on bytes, not decoded text: offsets are byte offsets.
             var packets = new List<string>();
             var endOffsets = new List<long>();
             var cursor = 0;
@@ -154,8 +145,6 @@ public static class FilePacketBridge
         }
     }
 
-    /// <summary>Null means rewind to 0: cursor missing, malformed, or pointing
-    /// past the packet file.</summary>
     public static long? ReadPacketCursor(string cursorPath, string packetPath)
     {
         if (string.IsNullOrEmpty(cursorPath) || string.IsNullOrEmpty(packetPath))
@@ -181,7 +170,6 @@ public static class FilePacketBridge
         }
     }
 
-    /// <summary>Persists a read cursor atomically (tmp write, fsync, replace).</summary>
     public static bool WritePacketCursor(string cursorPath, long offset)
     {
         if (string.IsNullOrEmpty(cursorPath))

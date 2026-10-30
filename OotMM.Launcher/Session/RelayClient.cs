@@ -4,8 +4,6 @@ using OotMM.Core;
 
 namespace OotMM.Launcher.Session;
 
-/// <summary>Non-blocking TCP relay client: hello then manifest on every
-/// (re)connect, no room traffic before the relay reports readiness.</summary>
 public sealed class RelayClient : IDisposable
 {
     private const int MaxControlBytes = 256 * 1024;
@@ -58,8 +56,6 @@ public sealed class RelayClient : IDisposable
 
     public event Action<string>? StatusLogged;
 
-    /// <summary>Queues a line for ordered delivery once ready; refuses the
-    /// v2/v3-era reliable packet types (they must never ride a lossy queue).</summary>
     public bool QueueLine(string line)
     {
         if (line.Length == 0)
@@ -91,7 +87,6 @@ public sealed class RelayClient : IDisposable
         return true;
     }
 
-    /// <summary>Coalesced-by-key state updates; hard-bounded, freely droppable.</summary>
     public bool QueueEphemeralLine(string key, string line)
     {
         if (key.Length == 0 || line.Length == 0)
@@ -128,8 +123,6 @@ public sealed class RelayClient : IDisposable
         return true;
     }
 
-    /// <summary>Drives the connection and queues; appends complete inbound room
-    /// lines. Call once per coordinator tick.</summary>
     public void Pump(List<string> inbound)
     {
         var justConnected = false;
@@ -164,8 +157,6 @@ public sealed class RelayClient : IDisposable
             _pingPending = $"{{\"type\":\"{RelayProtocol.Ping}\",\"nonce\":\"{_pingNonce}\"}}\n";
         }
 
-        // A fresh connection sends only its handshake this tick, so the owner sees
-        // the new generation before stale traffic can leave.
         while (true)
         {
             if (_activeSendOffset >= _activeSend.Length && !ActivateNextLine(justConnected))
@@ -206,7 +197,6 @@ public sealed class RelayClient : IDisposable
             }
         }
 
-        // Drain complete records after every read so a room replay can't trip the cap.
         while (true)
         {
             int received;
@@ -271,7 +261,6 @@ public sealed class RelayClient : IDisposable
             var type = RelayProtocol.ExtractStringField(line, "type");
             if (!ProtocolReady && !RelayProtocol.FrameAllowedBeforeProtocolReady(type))
             {
-                // Rejected here so pre-READY traffic never authenticates retroactively.
                 ProtocolError = "relay sent room traffic before protocol readiness";
                 continue;
             }
@@ -475,7 +464,6 @@ public sealed class RelayClient : IDisposable
         _socket?.Close();
         _socket = null;
         _recvBuffer.Clear();
-        // A retained partial send would emit a malformed line after reconnect.
         ClearOutboundQueues();
         ProtocolReady = false;
         _nextConnectAttempt = Now + _reconnectDelay;

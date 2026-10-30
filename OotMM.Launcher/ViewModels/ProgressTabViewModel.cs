@@ -64,8 +64,6 @@ public sealed class DungeonRowViewModel(DungeonProgress d)
 
 public sealed record SoulGroupViewModel(string Title, IReadOnlyList<ProgressItemRow> Items);
 
-/// <summary>The compass tab: one category at a time (the prototype's structure),
-/// with a per-game selector for the item categories.</summary>
 public sealed class ProgressTabViewModel : ViewModelBase
 {
     private ProgressReport? _report;
@@ -106,7 +104,6 @@ public sealed class ProgressTabViewModel : ViewModelBase
     public bool ShowGameRadio => CategoryIndex >= 2;
     public bool ShowSongsMode => CategoryIndex == 3;
 
-    // --- Overview ------------------------------------------------------------
     public string ChecksText { get; private set; } = "";
     public string ItemsOwnedText { get; private set; } = "";
     public string OotChecksText { get; private set; } = "";
@@ -119,7 +116,6 @@ public sealed class ProgressTabViewModel : ViewModelBase
     public string GoalsNote =>
         "Goal progress counts the families the ports also gate on (stones / medallions / remains / skulls / stray fairies).";
 
-    // --- Dungeons / souls / item lists --------------------------------------
     public ObservableCollection<DungeonRowViewModel> Dungeons { get; } = [];
     public ObservableCollection<SoulGroupViewModel> SoulGroups { get; } = [];
     public ObservableCollection<ProgressItemRow> Items { get; } = [];

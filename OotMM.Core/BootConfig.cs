@@ -3,7 +3,6 @@ using System.Text.Json;
 
 namespace OotMM.Core;
 
-/// <summary>The boot.json handoff the launcher writes for each game process.</summary>
 public sealed class BootConfig
 {
     public string SaveId { get; set; } = "";
@@ -28,8 +27,6 @@ public sealed class BootConfig
     public MmRecoveryRequest? MmRecovery { get; set; }
     public ulong? ParentWindow { get; set; }
 
-    /// <summary>Byte-identical to the C++ writer: optional fields are omitted
-    /// when empty/default, parentWindow is a decimal string.</summary>
     public string Serialize()
     {
         var outText = new StringBuilder();
@@ -90,8 +87,6 @@ public sealed class BootConfig
         return outText.Append('}').ToString();
     }
 
-    /// <summary>Tolerant parse; null only for non-object input or an invalid
-    /// logicalSlot (anything outside 0-2 fails the whole parse).</summary>
     public static BootConfig? Parse(string jsonText)
     {
         JsonDocument doc;

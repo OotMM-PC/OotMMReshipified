@@ -2,7 +2,6 @@ using OotMM.Launcher.Models;
 
 namespace OotMM.Launcher.ViewModels;
 
-/// <summary>A single row in a game card's mods list, with priority controls.</summary>
 public sealed class ModEntryViewModel : ViewModelBase
 {
     private readonly Action _onToggled;
@@ -24,8 +23,6 @@ public sealed class ModEntryViewModel : ViewModelBase
 
     public string Name => Info.Name;
 
-    /// <summary>Required archives (OoTMM assets/music) render locked-on:
-    /// the checkbox is disabled because disabling them breaks the seed.</summary>
     public bool Required => Info.Required;
 
     public RelayCommand MoveUpCommand { get; }

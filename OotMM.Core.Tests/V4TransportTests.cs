@@ -40,7 +40,6 @@ public class V4TransportTests : IDisposable
         Assert.Equal(["A", "D"], first.Select(f => f.CheckId));
         Assert.All(first, f => Assert.Equal(0ul, f.Seq));
 
-        // Within the retry interval nothing re-publishes; after it, both retry.
         Assert.Empty(V4Transport.SelectFactsToPublish(
             journal, 2, acked, attempts, TimeSpan.FromSeconds(2), retry, 10));
         Assert.Equal(2, V4Transport.SelectFactsToPublish(
@@ -71,7 +70,7 @@ public class V4TransportTests : IDisposable
             + "{\"v\":4,\"seq\":99,\"p\":2,\"g\":\"oot\",\"c\":\"TORN");
 
         var scan = V4Transport.ScanFerryLog(logPath, localPlayer: 2);
-        Assert.Equal(2ul, scan.HighestSeq); // torn 99 never committed, seq-0 ignored
+        Assert.Equal(2ul, scan.HighestSeq);
         Assert.Equal([V4Transport.NaturalKey(2, Game.Mm, "MINE")], scan.OwnKeys);
 
         var missing = V4Transport.ScanFerryLog(Path.Combine(_dir, "absent.jsonl"), 2);
@@ -105,7 +104,6 @@ public class V4TransportTests : IDisposable
             Placements = placements,
         };
 
-        // Dictionary order deliberately scrambled; output must sort by player.
         var worlds = new Dictionary<ushort, Seed>
         {
             [3] = World(3, Placement("W3_MINE", "MM_MASK", owner: 2)),
@@ -125,7 +123,6 @@ public class V4TransportTests : IDisposable
             + """{"p":3,"g":"oot","c":"W3_MINE","itemGame":"mm","itemId":"MM_MASK","itemName":"MM_MASK name"}]}""",
             V4Transport.BuildForeignPlacementsSidecar(local, worlds));
 
-        // No manifests yet: coverage list present but empty.
         Assert.Equal(
             """{"v":4,"localPlayer":2,"trapsLink":true,"coveredWorlds":[],"placements":[]}""",
             V4Transport.BuildForeignPlacementsSidecar(local, new Dictionary<ushort, Seed>()));

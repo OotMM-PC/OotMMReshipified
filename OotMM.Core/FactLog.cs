@@ -3,11 +3,8 @@ using System.Text.Json;
 
 namespace OotMM.Core;
 
-/// <summary>One v4 check-completion fact; Seq is the relay log position (0 = publish form).</summary>
 public sealed record Fact(ushort SourcePlayer, Game Game, string CheckId, ulong Seq = 0);
 
-/// <summary>v4 fact-log wire codec (docs/multiworld-v4-design.md); decoders are
-/// tolerant and frame kinds never cross-decode.</summary>
 public static class FactLog
 {
     public static string EncodeFact(Fact fact)
@@ -115,7 +112,6 @@ public static class FactLog
                && live.ValueKind == JsonValueKind.True;
     }
 
-    /// <summary>Deterministic per-destination delivery key for a fact's grant.</summary>
     public static string DeliveryKeyFor(Fact fact, Game destination) =>
         $"v4:p{fact.SourcePlayer}:{GameInfo.ToSeedTag(fact.Game)}:{fact.CheckId}"
         + $":to:{GameInfo.ToSeedTag(destination)}";

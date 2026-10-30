@@ -1,7 +1,5 @@
 namespace OotMM.Core;
 
-/// <summary>The roster-meta line for the file-based presence transport;
-/// carries session rules and the live game-speed setting.</summary>
 public sealed record RosterMeta(
     bool ShowNames,
     bool Pvp,
@@ -13,7 +11,6 @@ public sealed record RosterMeta(
 
 public static class PresenceRoster
 {
-    /// <summary>Byte-compatible with WriteRosterFile's meta line in Presence.cpp.</summary>
     public static string BuildMetaLine(RosterMeta meta) =>
         $"{{\"type\":\"OOTMM_ROSTER_META\",\"showNames\":{(meta.ShowNames ? "true" : "false")}"
         + $",\"pvp\":{(meta.Pvp ? "true" : "false")}"

@@ -4,8 +4,6 @@ using System.Text;
 
 namespace OotMM.Core;
 
-/// <summary>128-bit reward identity (SHA-256 prefix); dedups item deliveries
-/// across the wire, so values must match the C++ side bit for bit.</summary>
 public readonly record struct RewardIdentity(ulong High, ulong Low) : IComparable<RewardIdentity>
 {
     public int CompareTo(RewardIdentity other) =>
@@ -26,8 +24,6 @@ public readonly record struct RewardIdentity(ulong High, ulong Low) : IComparabl
     }
 }
 
-/// <summary>Identity crypto ported from AnchorBridge.cpp; every string
-/// construction here is a hash input and must not change.</summary>
 public static class Identity
 {
     public static string Sha256Hex(string value) =>

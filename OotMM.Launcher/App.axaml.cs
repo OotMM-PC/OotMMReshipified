@@ -19,8 +19,6 @@ public class App : Application
         {
             var settings = UiSettings.Load();
             var window = new MainWindow();
-            // The file picker needs a live TopLevel for StorageProvider, so it is
-            // created against the window rather than injected earlier.
             var viewModel = new MainWindowViewModel(settings, new StorageFilePicker(window));
             window.DataContext = viewModel;
             desktop.MainWindow = window;
@@ -29,11 +27,6 @@ public class App : Application
         base.OnFrameworkInitializationCompleted();
     }
 
-    /// <summary>
-    /// Swaps the application-wide accent between OoT gold and MM violet. All accent
-    /// use sites bind with DynamicResource, so replacing the brushes restyles the
-    /// whole window in place — mirrors the old launcher's CurrentAccent behavior.
-    /// </summary>
     public static void ApplyAccent(bool violet)
     {
         var app = Current;
@@ -42,7 +35,6 @@ public class App : Application
             return;
         }
 
-        // Gold: warm triforce yellow. Violet: Majora twilight.
         var main = violet ? Color.Parse("#A97FE0") : Color.Parse("#E0B84C");
         var bright = violet ? Color.Parse("#C7A6F2") : Color.Parse("#F2D27C");
 

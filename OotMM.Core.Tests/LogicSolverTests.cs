@@ -3,8 +3,6 @@ using Xunit;
 
 namespace OotMM.Core.Tests;
 
-// Ported from OOTMMPC tests/ootmm_logic_solver_tests.cpp: pins age gating,
-// spawn starting locations, event propagation, and song-event resolution.
 public sealed class LogicSolverTests : IDisposable
 {
     private const string SeedJson = """
@@ -84,9 +82,9 @@ public sealed class LogicSolverTests : IDisposable
     {
         var reachable = _solver.Solve(new LogicSolver.Input());
 
-        Assert.Contains("Spawn Free Check", reachable);   // skipZelda-style spawn location
+        Assert.Contains("Spawn Free Check", reachable);
         Assert.Contains("Adult Check", reachable);
-        Assert.DoesNotContain("Child Only Check", reachable); // no time travel yet
+        Assert.DoesNotContain("Child Only Check", reachable);
         Assert.DoesNotContain("Tombstone Song Check", reachable);
     }
 
@@ -125,8 +123,6 @@ public sealed class LogicSolverTests : IDisposable
     [Fact]
     public void TrackerJoin_InLogicIsReachableMinusCollected()
     {
-        // The solver's location ids and the placements' checkNames are the same
-        // namespace; the collected sword opens the child side.
         var placements = new (string Name, string ItemId)[]
         {
             ("Spawn Free Check", "OOT_RUPEE_GREEN"),

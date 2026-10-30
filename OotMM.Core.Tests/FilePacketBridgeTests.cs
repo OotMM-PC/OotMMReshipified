@@ -99,9 +99,8 @@ public sealed class FilePacketBridgeTests : IDisposable
         var result = FilePacketBridge.ReadPacketLines(path, 0);
         Assert.True(result.Success);
         Assert.Equal(["{\"a\":1}"], result.Packets);
-        Assert.Equal(8, result.NextOffset); // first byte of "partial"
+        Assert.Equal(8, result.NextOffset);
 
-        // Once the writer finishes the line, the same offset yields the whole record.
         File.AppendAllText(path, " done\n");
         var finished = FilePacketBridge.ReadPacketLines(path, result.NextOffset);
         Assert.Equal(["partial done"], finished.Packets);
@@ -155,7 +154,7 @@ public sealed class FilePacketBridgeTests : IDisposable
     public void Read_OffsetsAreByteOffsets_NotCharOffsets()
     {
         var path = PathFor("utf8.jsonl");
-        var packet = """{"name":"Müller"}"""; // ü is 2 bytes in UTF-8
+        var packet = """{"name":"Müller"}""";
         FilePacketBridge.AppendPacketLines(path, [packet, "next"]);
 
         var result = FilePacketBridge.ReadPacketLines(path, 0);

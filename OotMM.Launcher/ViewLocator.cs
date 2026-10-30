@@ -4,12 +4,6 @@ using OotMM.Launcher.ViewModels;
 
 namespace OotMM.Launcher;
 
-/// <summary>
-/// Maps view models to views by naming convention:
-/// OotMM.Launcher.ViewModels.FooViewModel -> OotMM.Launcher.Views.FooView.
-/// Registered once in App.axaml, so any ContentControl bound to a view model
-/// renders the matching view without per-screen wiring.
-/// </summary>
 public class ViewLocator : IDataTemplate
 {
     public Control Build(object? data)
@@ -25,8 +19,6 @@ public class ViewLocator : IDataTemplate
         var type = Type.GetType(name);
         if (type is null)
         {
-            // A missing view is a programming error; surface it loudly in the UI
-            // instead of rendering an empty region that is easy to miss.
             return new TextBlock { Text = $"missing view: {name}" };
         }
 

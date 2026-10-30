@@ -3,11 +3,8 @@ using Avalonia.Platform.Storage;
 
 namespace OotMM.Launcher.Services;
 
-/// <summary>Abstracts the native open-file dialog so view models stay testable
-/// and never touch a window directly.</summary>
 public interface IFilePicker
 {
-    /// <returns>The picked file's local path, or null when the user cancels.</returns>
     Task<string?> PickFileAsync(string title, string filterName, params string[] patterns);
 }
 

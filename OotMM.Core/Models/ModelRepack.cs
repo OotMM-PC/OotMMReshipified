@@ -5,19 +5,10 @@ namespace OotMM.Core.Models;
 
 public sealed record RepackResult(bool Ok, int Kept, int StringRefs, int HashRefs, string Error = "");
 
-/// <summary>
-/// Rewrites a player model archive into a per-player asset namespace so a remote puppet can wear
-/// it without reskinning the local player. Entries move from <c>objects/</c> to <c>pNNobjs/</c>,
-/// which is the same length on purpose: references embedded in binary resources are patched in
-/// place, as either the path string or its CRC64.
-/// </summary>
 public static class ModelRepack
 {
-    /// <summary>The namespace a player's assets live under. Three characters, so the directory
-    /// prefix below is exactly as long as the one it replaces.</summary>
     public static string PlayerPrefix(int playerId) => $"p{playerId & 0xFF:x2}";
 
-    /// <summary>True when the file is a zip container.</summary>
     public static bool IsZipArchive(string path)
     {
         try
@@ -32,12 +23,9 @@ public static class ModelRepack
         }
     }
 
-    /// <summary>True when repacks can enumerate the file: a zip, or an old MPQ-format .otr.</summary>
     public static bool IsReadableArchive(string path) =>
         IsZipArchive(path) || MpqReader.LooksLikeMpq(path);
 
-    // Both container formats feed the repackers through this one shape; loads are deferred
-    // so filtered-out entries of a big zip are never decompressed.
     private static IEnumerable<(string Path, Func<byte[]> Load)> ReadArchiveEntries(string input)
     {
         if (IsZipArchive(input))
@@ -72,13 +60,8 @@ public static class ModelRepack
     }
 
     private const string CanonicalDir = "objects/";
-    // object_link* holds each game's native player assets; ot_obj_link* holds the
-    // OoT models the launcher ports into MM. Both follow a puppet across players.
     private static readonly string[] LinkDirs = ["objects/object_link", "objects/ot_obj_link"];
 
-    /// <summary>Where an entry lands in the player namespace, or null when it belongs to no
-    /// namespace and must be dropped: keeping it would override the asset globally. Alt-asset and
-    /// canonical entries unify, because alt sets reference each other by canonical path.</summary>
     public static string? NamespacedPath(string path, string prefix)
     {
         var normalized = path.Replace('\\', '/');
@@ -98,7 +81,6 @@ public static class ModelRepack
 
     private sealed class RewritePlan
     {
-        // Same-length string substitutions applied wherever they appear in resource data.
         public List<(byte[] From, byte[] To)> Tokens { get; } = [];
         public Dictionary<byte, List<(byte[] From, byte[] To)>> HashBuckets { get; } = [];
 
@@ -116,8 +98,6 @@ public static class ModelRepack
         {
             var oldHash = Crc64.OfPath(oldPath);
             var newHash = Crc64.OfPath(newPath);
-            // Binary display lists store a reference as two little-endian words, high first;
-            // other resources use a plain 64-bit value in either byte order.
             Add(WordSplit(oldHash), WordSplit(newHash));
             Add(BitConverter.GetBytes(oldHash), BitConverter.GetBytes(newHash));
             Add(BigEndian(oldHash), BigEndian(newHash));
@@ -200,21 +180,12 @@ public static class ModelRepack
         }
     }
 
-    /// <summary>Repacks a model set into one namespaced archive. All inputs are read first so
-    /// references between archives in the set (a skeleton pointing at a texture pack) resolve.
-    /// </summary>
     public static RepackResult Repack(IReadOnlyList<string> inputs, string output, int playerId) =>
         Build(inputs, output, playerId, linkObjectsOnly: false);
 
-    /// <summary>A namespace filled from the base game, so an asset a player's model does not
-    /// override resolves to vanilla instead of falling through to the local player's own
-    /// alternate assets.</summary>
     public static RepackResult RepackVanillaFill(IReadOnlyList<string> baseArchives, string output, int playerId) =>
         Build(baseArchives, output, playerId, linkObjectsOnly: true);
 
-    /// <summary>Ports one asset directory to a same-length name (e.g. OoT's object_link_boy to
-    /// MM's ot_obj_link_boy), rewriting entry paths, path strings, and CRC64 references alike.
-    /// Zero kept entries is success without output: the set simply has nothing to port.</summary>
     public static RepackResult PortDirectory(
         IReadOnlyList<string> inputs, string output, string fromDir, string toDir)
     {
@@ -243,8 +214,6 @@ public static class ModelRepack
                         continue;
                     }
 
-                    // alt/ is a load-time overlay the target game may have disabled; entries
-                    // flatten to canonical so the port always resolves. Alt (HD) wins collisions.
                     var canonicalSource = isAlt ? path["alt/".Length..] : path;
                     var target = canonicalSource.Replace(fromDir, toDir);
                     if (!isAlt && fromAlt.GetValueOrDefault(target))
@@ -315,8 +284,6 @@ public static class ModelRepack
                 foreach (var (rawPath, load) in ReadArchiveEntries(input))
                 {
                     var path = rawPath.Replace('\\', '/');
-                    // Base archives hold the whole game; only the canonical Link namespace is
-                    // wanted for a fill (no alt overlays).
                     if (linkObjectsOnly && !LinkDirs.Any(d => path.StartsWith(d, StringComparison.Ordinal)))
                     {
                         continue;
@@ -327,7 +294,6 @@ public static class ModelRepack
                         continue;
                     }
 
-                    // A later archive in the set overrides an earlier one, matching mount order.
                     entries[target] = load();
                     plan.AddPath(path, target);
                     if (path.StartsWith("alt/", StringComparison.Ordinal))

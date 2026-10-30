@@ -3,8 +3,6 @@ using Avalonia.Platform;
 
 namespace OotMM.Launcher.Views;
 
-/// <summary>Native child window the game render window is parented into
-/// (via OOTMM_PARENT_HWND).</summary>
 public sealed class GameHostControl : NativeControlHost
 {
     public nint Handle { get; private set; }

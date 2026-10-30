@@ -14,8 +14,6 @@ public enum TransportState
     ProtocolError,
 }
 
-/// <summary>Protocol-v4 transport for one session: relay facts ferry into
-/// log.v4.jsonl in seq order, the journal diff republishes until acked.</summary>
 public sealed class MultiworldSync : IDisposable
 {
     private readonly Core.Session _session;
@@ -44,8 +42,6 @@ public sealed class MultiworldSync : IDisposable
 
     private static TimeSpan Now => TimeSpan.FromMilliseconds(Environment.TickCount64);
 
-    // Live presence: each remote player's newest pose, and PvP hits aimed at us that the running
-    // game has not been handed yet.
     private readonly Dictionary<int, (string Line, TimeSpan At)> _remotePoses = new();
     private readonly List<string> _pendingHits = [];
     private readonly List<string> _pendingDeaths = [];
@@ -60,7 +56,6 @@ public sealed class MultiworldSync : IDisposable
         _logPath = Path.Combine(session.SessionDir, "log.v4.jsonl");
         _sidecarPath = Path.Combine(session.SessionDir, "foreignplacements.v4.json");
 
-        // An own fact already in the ferry log IS its ack.
         var scan = V4Transport.ScanFerryLog(_logPath, session.Seed.PlayerId);
         _highestFerriedSeq = scan.HighestSeq;
         _relaySeq = scan.HighestSeq;
@@ -75,20 +70,14 @@ public sealed class MultiworldSync : IDisposable
         _relay.StatusLogged += message => EventLogged?.Invoke($"Relay: {message}", true);
     }
 
-    /// <summary>True once the relay's catch-up stream reached its live marker.</summary>
     public bool Live { get; private set; }
 
-    /// <summary>The relay socket can carry room traffic right now.</summary>
     public bool Ready => _relay.Connected && _relay.ProtocolReady;
 
-    /// <summary>Bumped per reconnect; a new generation means queued lines were discarded.</summary>
     public ulong ConnectionGeneration => _relay.ConnectionGeneration;
 
-    /// <summary>Queues a model-sync line for ordered delivery; false when the queue is full,
-    /// so chunk streaming pauses instead of dropping mid-archive.</summary>
     public bool SendModelLine(string line) => _relay.QueueLine(line);
 
-    // Server session rules (OOTMM_SESSION_META); players cannot override them.
     public bool Pvp { get; private set; }
     public bool FriendlyFire { get; private set; }
     public bool DeathLink { get; private set; }
@@ -98,8 +87,6 @@ public sealed class MultiworldSync : IDisposable
 
     public event Action? RulesChanged;
 
-    /// <summary>The local player's items placed in other players' worlds, with
-    /// collection state from the ferry receipts.</summary>
     public List<(ItemPlacement Placement, bool Collected)> ForeignOwnedChecks()
     {
         var result = new List<(ItemPlacement, bool)>();
@@ -121,24 +108,16 @@ public sealed class MultiworldSync : IDisposable
     public TransportState State { get; private set; } = TransportState.Connecting;
     public int PendingChecks { get; private set; }
     public IReadOnlyDictionary<string, int> RemoteItemCounts => _remoteCounts;
-    /// <summary>Bumped whenever a remote receipt lands, so logic/progress recompute.</summary>
     public long ReceiptRevision { get; private set; }
     public string ResumeSummary =>
         $"ferry log resumes at seq {_highestFerriedSeq} ({_acked.Count} own fact(s) pre-acked)";
 
-    /// <summary>(message, isRemote) — remote lines render amber in the log tab.</summary>
     public event Action<string, bool>? EventLogged;
-    /// <summary>An own fact confirmed by the relay: mark the check collected locally.</summary>
     public event Action<Game, string>? OwnFactConfirmed;
-    /// <summary>A model-sync side-channel line (announce, request, or chunk) arrived.</summary>
     public event Action<string>? ModelLineReceived;
-    /// <summary>Remote receipts or transport state changed; refresh logic/progress.</summary>
     public event Action? SyncChanged;
-    /// <summary>A loopback relay target is not answering; the owner may host it.</summary>
     public event Action? AutoHostWanted;
 
-    /// <summary>Drains the socket at presence rate so poses arrive at animation rate. Durable
-    /// traffic defers to <see cref="Tick"/>, which is far too expensive to run this often.</summary>
     public void PumpPresence()
     {
         var inbound = new List<string>();
@@ -157,7 +136,6 @@ public sealed class MultiworldSync : IDisposable
 
                     break;
                 case PresencePackets.PvpHit:
-                    // Delivered to the game exactly once, so only hits aimed at us are kept.
                     if (RelayProtocol.ExtractIntField(line, "targetPlayer") == _session.Seed.PlayerId)
                     {
                         _pendingHits.Add(line);
@@ -194,8 +172,6 @@ public sealed class MultiworldSync : IDisposable
             AutoHostWanted?.Invoke();
         }
 
-        // One catch-up per connection generation: since=highestFerriedSeq streams
-        // exactly the ferry suffix.
         if (_relay.ProtocolReady && _relay.ConnectionGeneration != _catchUpGeneration)
         {
             _catchUpGeneration = _relay.ConnectionGeneration;
@@ -237,7 +213,6 @@ public sealed class MultiworldSync : IDisposable
 
                         break;
                     case V4FerryAction.Gap:
-                        // Never append out of order; re-sync from the ferry cursor (rate limited).
                         if (_lastGapCatchUp == TimeSpan.MinValue
                             || now - _lastGapCatchUp >= TimeSpan.FromSeconds(2))
                         {
@@ -340,7 +315,6 @@ public sealed class MultiworldSync : IDisposable
 
             if (type == RelayProtocol.WorldFlag)
             {
-                // og coop shared-world flags: the game dedups and applies the bit.
                 forActiveGame.Add(line);
                 continue;
             }
@@ -402,9 +376,6 @@ public sealed class MultiworldSync : IDisposable
         }
     }
 
-    /// <summary>Publishes the running game's pose to the room. Lossy by design: the ephemeral
-    /// queue keeps one slot, so a backed-up connection sends the newest pose, never a backlog.
-    /// </summary>
     public void SubmitLocalPose(string poseBody)
     {
         var line = GameIpcProtocol.BuildRelayPresenceLine(
@@ -415,8 +386,6 @@ public sealed class MultiworldSync : IDisposable
         }
     }
 
-    /// <summary>Relays an attack the game's puppet hurtboxes registered. Hits are events, so
-    /// they go through the reliable queue rather than the last-value slot.</summary>
     public void SubmitPvpHit(string hitBody)
     {
         var line = GameIpcProtocol.BuildRelayPresenceLine(
@@ -444,8 +413,6 @@ public sealed class MultiworldSync : IDisposable
         return deaths;
     }
 
-    /// <summary>The roster for the running game: every live remote pose, plus the hits aimed at
-    /// us since the last call. Hits are handed over once and then dropped.</summary>
     public (List<string> Poses, List<string> Hits) TakeRemotePresence()
     {
         var cutoff = Now - TimeSpan.FromSeconds(3);
@@ -514,7 +481,6 @@ public sealed class MultiworldSync : IDisposable
             return;
         }
 
-        // Only orders addressed to our player are forwarded to the game.
         var who = RelayProtocol.ExtractStringField(line, "who");
         var forMe = who == "all" && type != RelayProtocol.Teleport;
         if (!forMe && who.StartsWith("player-id=", StringComparison.Ordinal))
@@ -533,7 +499,6 @@ public sealed class MultiworldSync : IDisposable
 
         if (type == RelayProtocol.Teleport)
         {
-            // Username destinations need the presence roster (not yet ported).
             var dest = RelayProtocol.ExtractStringField(line, "dest");
             if (!dest.StartsWith("entrance=", StringComparison.Ordinal)
                 && !dest.StartsWith("player-id=", StringComparison.Ordinal))
@@ -572,7 +537,6 @@ public sealed class MultiworldSync : IDisposable
 
     private bool AddRemoteReceipt(ushort sourcePlayer, Game game, string checkId, bool quiet = false)
     {
-        // A foreign fact counts only when its placement's reward is addressed to us.
         if (_otherWorlds.GetValueOrDefault(sourcePlayer) is not { } world
             || world.FindPlacement(game, checkId) is not { } placement
             || !placement.IsFor(_session.Seed.PlayerId))
@@ -607,7 +571,6 @@ public sealed class MultiworldSync : IDisposable
             if (FactLog.DecodeFact(line) is { Seq: not 0 } fact
                 && fact.SourcePlayer != _session.Seed.PlayerId)
             {
-                // Historical receipts count for logic but must not flood the log.
                 changed |= AddRemoteReceipt(fact.SourcePlayer, fact.Game, fact.CheckId, quiet: true);
             }
         }

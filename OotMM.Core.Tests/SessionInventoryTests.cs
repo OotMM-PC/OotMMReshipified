@@ -105,17 +105,36 @@ public class SessionInventoryTests
         }
     }
 
-    private static Seed MakeSeed() =>
+    [Fact]
+    public void EmptyStartingInventory_IsPublishedAsTheFirstRevision()
+    {
+        var directory = CreateDirectory();
+        try
+        {
+            var inventory = new SessionInventory(
+                MakeSeed(startingItems: false), Path.Combine(directory, "debug-items.json"));
+
+            Assert.Empty(inventory.Items);
+            Assert.Equal(1ul, inventory.Revision);
+            Assert.False(inventory.Reconcile([], new Dictionary<string, int>()));
+            Assert.Equal(1ul, inventory.Revision);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    private static Seed MakeSeed(bool startingItems = true) =>
         new()
         {
             Format = Seed.CurrentFormat,
             GeneratorVersion = Seed.RequiredGeneratorVersion,
             SeedId = "inventory-test",
             PlayerId = 1,
-            StartingItems =
-            [
-                new StartingItem(new ItemRef(Game.Oot, "OOT_COIN_RED", "Red Coin"), 2),
-            ],
+            StartingItems = startingItems
+                ? [new StartingItem(new ItemRef(Game.Oot, "OOT_COIN_RED", "Red Coin"), 2)]
+                : [],
             Placements =
             [
                 new ItemPlacement(

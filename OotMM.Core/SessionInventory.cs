@@ -116,7 +116,7 @@ public sealed class SessionInventory
             }
         }
 
-        if (DictionariesEqual(_items, next))
+        if (Revision > 0 && DictionariesEqual(_items, next))
         {
             return false;
         }

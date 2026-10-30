@@ -44,7 +44,7 @@ public sealed class SessionInventory
 
         foreach (var placement in _seed.Placements)
         {
-            if (placement.OwnerPlayer == _seed.PlayerId
+            if (placement.IsFor(_seed.PlayerId)
                 && completed.Contains(Identity.CheckKey(placement.Check.Game, placement.Check.Id)))
             {
                 Add(nextBase, placement.Item.Id, 1);

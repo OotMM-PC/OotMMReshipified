@@ -127,8 +127,7 @@ public static class V4Transport
             foreach (var placement in world.Placements)
             {
                 var linkedTrap = trapsLink && ItemRules.IsTrapItemId(placement.Item.Id);
-                if (placement.OwnerPlayer != localSeed.PlayerId
-                    && placement.OwnerPlayer != 0 && !linkedTrap)
+                if (!placement.IsFor(localSeed.PlayerId) && !linkedTrap)
                 {
                     continue;
                 }

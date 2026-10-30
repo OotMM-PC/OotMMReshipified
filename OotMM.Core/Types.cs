@@ -20,7 +20,10 @@ public sealed record ItemPlacement(
     ItemRef? Cloak,
     ushort OwnerPlayer,
     ushort SourcePlayer,
-    bool Major);
+    bool Major)
+{
+    public bool IsFor(ushort player) => OwnerPlayer == 0 || OwnerPlayer == player;
+}
 
 public sealed record EntranceMapping(
     Game FromGame,

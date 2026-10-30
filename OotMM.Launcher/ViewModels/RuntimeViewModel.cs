@@ -100,7 +100,7 @@ public sealed class RuntimeViewModel : ViewModelBase
                 check.Name.Length > 0 ? check.Name : check.Id,
                 placement.Item.Name,
                 check.Id,
-                placement.OwnerPlayer == localPlayer,
+                placement.IsFor(localPlayer),
                 vm.Tracker.OnRowClicked) { InLogic = true };
             if (vm._checkRows.TryAdd(Identity.CheckKey(check.Game, check.Id), row))
             {
@@ -355,7 +355,7 @@ public sealed class RuntimeViewModel : ViewModelBase
 
         foreach (var (placement, collected) in checks)
         {
-            if (collected && placement.OwnerPlayer == seed.PlayerId)
+            if (collected && placement.IsFor(seed.PlayerId))
             {
                 counts[placement.Item.Id] = counts.GetValueOrDefault(placement.Item.Id) + 1;
             }
@@ -394,7 +394,7 @@ public sealed class RuntimeViewModel : ViewModelBase
 
         foreach (var (placement, row) in _placementRows)
         {
-            if (!row.Collected || placement.OwnerPlayer != seed.PlayerId)
+            if (!row.Collected || !placement.IsFor(seed.PlayerId))
             {
                 continue;
             }

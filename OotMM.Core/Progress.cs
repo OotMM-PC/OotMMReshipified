@@ -133,7 +133,7 @@ public sealed class ProgressReport
         var majorIds = new HashSet<string>();
         foreach (var (placement, _) in checks.Concat(foreignChecks))
         {
-            if (placement.OwnerPlayer != seed.PlayerId || placement.Item.Id.Length == 0)
+            if (!placement.IsFor(seed.PlayerId) || placement.Item.Id.Length == 0)
             {
                 continue;
             }

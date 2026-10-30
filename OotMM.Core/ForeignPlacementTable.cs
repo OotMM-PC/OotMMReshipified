@@ -59,7 +59,7 @@ public sealed class ForeignPlacementTable
         foreach (var placement in world.Placements)
         {
             var linkedTrap = TrapsLink && ItemRules.IsTrapItemId(placement.Item.Id);
-            if (placement.OwnerPlayer != localPlayer && placement.OwnerPlayer != 0 && !linkedTrap)
+            if (!placement.IsFor(localPlayer) && !linkedTrap)
             {
                 continue;
             }

@@ -107,7 +107,7 @@ public sealed class MultiworldSync : IDisposable
         {
             foreach (var placement in world.Placements)
             {
-                if (placement.OwnerPlayer == _session.Seed.PlayerId)
+                if (placement.IsFor(_session.Seed.PlayerId))
                 {
                     var key = "v4:" + V4Transport.NaturalKey(player, placement.Check.Game, placement.Check.Id);
                     result.Add((placement, _remoteReceipts.Contains(key)));
@@ -575,7 +575,7 @@ public sealed class MultiworldSync : IDisposable
         // A foreign fact counts only when its placement's reward is addressed to us.
         if (_otherWorlds.GetValueOrDefault(sourcePlayer) is not { } world
             || world.FindPlacement(game, checkId) is not { } placement
-            || placement.OwnerPlayer != _session.Seed.PlayerId)
+            || !placement.IsFor(_session.Seed.PlayerId))
         {
             return false;
         }

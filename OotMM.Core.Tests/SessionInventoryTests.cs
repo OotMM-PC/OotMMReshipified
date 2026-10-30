@@ -16,11 +16,15 @@ public class SessionInventoryTests
             Assert.Equal(2u, inventory.Items["OOT_COIN_RED"]);
 
             inventory.Reconcile(
-                [Identity.CheckKey(Game.Oot, "OOT_LOCAL"), Identity.CheckKey(Game.Mm, "MM_FOREIGN")],
+                [
+                    Identity.CheckKey(Game.Oot, "OOT_LOCAL"), Identity.CheckKey(Game.Mm, "MM_FOREIGN"),
+                    Identity.CheckKey(Game.Mm, "MM_LINKED_TRAP"),
+                ],
                 new Dictionary<string, int> { ["MM_SOUL_GOHT"] = 1 });
 
             Assert.Equal(3u, inventory.Items["OOT_COIN_RED"]);
             Assert.Equal(1u, inventory.Items["MM_SOUL_GOHT"]);
+            Assert.Equal(1u, inventory.Items["OOT_TRAP_ICE"]);
             Assert.DoesNotContain("MM_BUTTON_A", inventory.Items);
         }
         finally
@@ -122,6 +126,10 @@ public class SessionInventoryTests
                     new CheckRef(Game.Mm, "MM_FOREIGN", "Foreign", [], null, "", null),
                     new ItemRef(Game.Mm, "MM_BUTTON_A", "A Button"),
                     null, 2, 1, false),
+                new ItemPlacement(
+                    new CheckRef(Game.Mm, "MM_LINKED_TRAP", "Linked Trap", [], null, "", null),
+                    new ItemRef(Game.Oot, "OOT_TRAP_ICE", "Ice Trap"),
+                    null, 0, 1, false),
             ],
         };
 

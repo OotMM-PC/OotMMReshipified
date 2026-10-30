@@ -1085,7 +1085,7 @@ public sealed class SessionCoordinator : IDisposable
         {
             LogEvent($"{tag} {display}");
         }
-        else if (placement!.OwnerPlayer != _session.Seed.PlayerId)
+        else if (!placement!.IsFor(_session.Seed.PlayerId))
         {
             LogEvent($"{tag} {display}: {itemName} (sent to player {placement.OwnerPlayer})");
         }
@@ -1166,11 +1166,11 @@ public sealed class SessionCoordinator : IDisposable
         if (isNew || presentationRequested && !_resolvedCheckRewards.ContainsKey(checkKey))
         {
             ReconcileInventory();
-            IReadOnlyDictionary<string, uint> recipientInventory = placement.OwnerPlayer == _session.Seed.PlayerId
+            IReadOnlyDictionary<string, uint> recipientInventory = placement.IsFor(_session.Seed.PlayerId)
                 ? _inventory.Items
                 : EmptyItemCounts;
             var priorInventory = new Dictionary<string, uint>(recipientInventory, StringComparer.Ordinal);
-            if (!isNew && placement.OwnerPlayer == _session.Seed.PlayerId
+            if (!isNew && placement.IsFor(_session.Seed.PlayerId)
                 && priorInventory.TryGetValue(placement.Item.Id, out var count) && count > 0)
             {
                 priorInventory[placement.Item.Id] = count - 1;
@@ -1206,7 +1206,8 @@ public sealed class SessionCoordinator : IDisposable
             if (_resolvedCheckRewards.TryGetValue(checkKey, out var item))
             {
                 _ipc?.Send(GameIpcProtocol.BuildPresentItem(
-                    item, item.Game, _session.Seed.PlayerId, placement.OwnerPlayer,
+                    item, item.Game, _session.Seed.PlayerId,
+                    placement.IsFor(_session.Seed.PlayerId) ? _session.Seed.PlayerId : placement.OwnerPlayer,
                     debug: false, viewerPlayer: _session.Seed.PlayerId, checkKey: reportedCheckKey));
             }
         }

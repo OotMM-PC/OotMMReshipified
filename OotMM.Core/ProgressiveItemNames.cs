@@ -95,7 +95,7 @@ public static class ProgressiveItemNames
         }
 
         var copies = seed.Placements.Count(placement =>
-            placement.OwnerPlayer == seed.PlayerId
+            placement.IsFor(seed.PlayerId)
             && placement.Item.Id == item.Id);
         return copies >= 2 ? ["Short Hookshot", "Hookshot"] : ["Hookshot"];
     }

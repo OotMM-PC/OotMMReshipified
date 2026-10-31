@@ -47,6 +47,7 @@ public static class GameIpcProtocol
         public const string ModelMounted = "modelMounted";
         public const string CrossGameTransition = "crossGameTransition";
         public const string TransitionAccepted = "transitionAccepted";
+        public const string EndgameReached = "endgameReached";
     }
 
     public static string BuildWelcome(
@@ -242,6 +243,29 @@ public static class GameIpcProtocol
 
     public static bool TryParseDeathLink(string json, out string death) =>
         TryParseEnvelopeBody(json, MessageType.DeathLink, "death", out death);
+
+    public static bool TryParseEndgameReached(string json, out string boss)
+    {
+        boss = "";
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || ReadString(root, "type") != MessageType.EndgameReached
+                || !Endgame.BossItems.ContainsKey(ReadString(root, "boss")))
+            {
+                return false;
+            }
+
+            boss = ReadString(root, "boss");
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
 
     private static bool TryParseEnvelopeBody(
         string json, string expectedType, string bodyName, out string body)

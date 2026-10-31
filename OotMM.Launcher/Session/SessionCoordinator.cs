@@ -37,6 +37,7 @@ public sealed class SessionCoordinator : IDisposable
     private long _forceUnlockSeq;
     private ulong _lastNativeSaveRequest;
     private readonly Dictionary<string, ItemRef> _resolvedCheckRewards = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _endgameBosses = new(StringComparer.Ordinal);
 
     public SessionCoordinator(Core.Session session, MultiworldSync? multiworld = null,
                               ModelSyncCoordinator? modelSync = null, Game? startingGame = null)
@@ -300,6 +301,7 @@ public sealed class SessionCoordinator : IDisposable
 
         CompletedChecks.Clear();
         _resolvedCheckRewards.Clear();
+        _endgameBosses.Clear();
         ok &= _inventory.TryClearDebugAdjustments();
         ReconcileInventory();
         _stateStamp = DateTime.MinValue;
@@ -656,6 +658,20 @@ public sealed class SessionCoordinator : IDisposable
                 }
             }
 
+            if (doc.RootElement.TryGetProperty("endgameBosses", out var bosses)
+                && bosses.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                foreach (var entry in bosses.EnumerateArray())
+                {
+                    if (entry.ValueKind == System.Text.Json.JsonValueKind.String
+                        && Endgame.BossItems.ContainsKey(entry.GetString()!)
+                        && _endgameBosses.Add(entry.GetString()!))
+                    {
+                        changed = true;
+                    }
+                }
+            }
+
             if (changed)
             {
                 _stateDirty = true;
@@ -679,6 +695,7 @@ public sealed class SessionCoordinator : IDisposable
         {
             completedChecks = CompletedChecks.Order(StringComparer.Ordinal),
             resolvedCheckRewards = _resolvedCheckRewards,
+            endgameBosses = _endgameBosses.Order(StringComparer.Ordinal),
             sessionValues = _session.LogicalSlot is { } slot
                 ? new Dictionary<string, string> { ["ootmm.activeSlot"] = slot.ToString(System.Globalization.CultureInfo.InvariantCulture) }
                 : new Dictionary<string, string>(),
@@ -756,6 +773,11 @@ public sealed class SessionCoordinator : IDisposable
                     if (GameIpcProtocol.TryParsePvpHit(ipcEvent.Message, out var pvpHit))
                     {
                         _multiworld?.SubmitPvpHit(pvpHit);
+                        break;
+                    }
+                    if (GameIpcProtocol.TryParseEndgameReached(ipcEvent.Message, out var boss))
+                    {
+                        HandleEndgameReached(boss);
                         break;
                     }
                     if (GameIpcProtocol.TryParseDeathLink(ipcEvent.Message, out _))
@@ -885,7 +907,8 @@ public sealed class SessionCoordinator : IDisposable
     {
         if (_inventory.Reconcile(
                 CompletedChecks,
-                _multiworld?.RemoteItemCounts ?? new Dictionary<string, int>())
+                _multiworld?.RemoteItemCounts ?? new Dictionary<string, int>(),
+                _endgameBosses)
             && _ipc is not null)
         {
             _ipc.Send(GameIpcProtocol.BuildInventorySnapshot(
@@ -1105,6 +1128,22 @@ public sealed class SessionCoordinator : IDisposable
         }
         var placement = _session.Seed.FindPlacement(game, checkId);
         return placement?.SourcePlayer == _session.Seed.PlayerId ? placement : null;
+    }
+
+    private void HandleEndgameReached(string boss)
+    {
+        if (!_endgameBosses.Add(boss))
+        {
+            return;
+        }
+        if (!SaveCompletedState())
+        {
+            _endgameBosses.Remove(boss);
+            return;
+        }
+        LogEvent(boss == Endgame.Ganon ? "Ganon defeated." : "Majora defeated.");
+        ReconcileInventory();
+        _stateDirty = true;
     }
 
     private void HandleCheckCollected(string reportedCheckKey, bool presentationRequested = false)

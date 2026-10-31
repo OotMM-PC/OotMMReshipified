@@ -6,6 +6,18 @@ namespace OotMM.Core.Tests;
 
 public class GameIpcProtocolTests
 {
+    [Theory]
+    [InlineData("{\"type\":\"endgameReached\",\"boss\":\"ganon\"}", true, "ganon")]
+    [InlineData("{\"type\":\"endgameReached\",\"boss\":\"majora\"}", true, "majora")]
+    [InlineData("{\"type\":\"endgameReached\",\"boss\":\"twinrova\"}", false, "")]
+    [InlineData("{\"type\":\"endgameReached\"}", false, "")]
+    [InlineData("{\"type\":\"deathLink\",\"boss\":\"ganon\"}", false, "")]
+    public void EndgameReached_AcceptsOnlyGanonAndMajora(string json, bool valid, string boss)
+    {
+        Assert.Equal(valid, GameIpcProtocol.TryParseEndgameReached(json, out var parsed));
+        Assert.Equal(boss, parsed);
+    }
+
     [Fact]
     public void InventoryDebugSet_ParsesValidatedItemAndValue()
     {

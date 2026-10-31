@@ -34,6 +34,27 @@ public class SessionInventoryTests
     }
 
     [Fact]
+    public void EndgameBosses_AddOneTokenEachAndIgnoreUnknownBosses()
+    {
+        var directory = CreateDirectory();
+        try
+        {
+            var inventory = new SessionInventory(MakeSeed(), Path.Combine(directory, "debug-items.json"));
+
+            inventory.Reconcile([], new Dictionary<string, int>(), [Endgame.Ganon, Endgame.Ganon, "bongo"]);
+            Assert.Equal(1u, inventory.Items["OOT_TRIFORCE_FULL"]);
+            Assert.DoesNotContain("MM_MASK_MAJORA", inventory.Items);
+
+            inventory.Reconcile([], new Dictionary<string, int>(), [Endgame.Ganon, Endgame.Majora]);
+            Assert.Equal(1u, inventory.Items["MM_MASK_MAJORA"]);
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
     public void DebugEdit_AdjustsTheSameInventoryAndPersistsOnlyTheAdjustment()
     {
         var directory = CreateDirectory();

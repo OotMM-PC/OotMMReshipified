@@ -32,7 +32,8 @@ public sealed class SessionInventory
 
     public bool Reconcile(
         IEnumerable<string> completedChecks,
-        IReadOnlyDictionary<string, int> remoteItemCounts)
+        IReadOnlyDictionary<string, int> remoteItemCounts,
+        IEnumerable<string>? endgameBosses = null)
     {
         var completed = completedChecks.ToHashSet(StringComparer.Ordinal);
         var nextBase = new Dictionary<string, uint>(StringComparer.Ordinal);
@@ -56,6 +57,14 @@ public sealed class SessionInventory
             if (count > 0)
             {
                 Add(nextBase, itemId, (uint)count);
+            }
+        }
+
+        foreach (var boss in endgameBosses ?? [])
+        {
+            if (Endgame.BossItems.TryGetValue(boss, out var itemId))
+            {
+                nextBase[itemId] = 1;
             }
         }
 

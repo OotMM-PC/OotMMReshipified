@@ -7,6 +7,22 @@ public sealed record GameArchiveRefresh(string ArchivePath, string BackupPath);
 
 public static class GameSetup
 {
+    public static string? LocateBundled(bool isOot, string launcherDirectory)
+    {
+        var folder = isOot ? "SoH" : "2ship";
+        var exe = isOot ? "soh.exe" : "2ship.exe";
+        var parent = Path.GetDirectoryName(Path.TrimEndingDirectorySeparator(Path.GetFullPath(launcherDirectory)));
+        var candidates = new List<string>();
+        foreach (var root in new[] { parent, launcherDirectory })
+        {
+            if (string.IsNullOrEmpty(root))
+                continue;
+            candidates.Add(Path.Combine(root, folder, exe));
+            candidates.Add(Path.Combine(root, folder, "Release", exe));
+        }
+        return candidates.Select(Path.GetFullPath).FirstOrDefault(File.Exists);
+    }
+
     private const string SoulOverlay = "objects/object_gi_sutaru/gGiSkulltulaTokenSkullDL";
 
     public static IReadOnlyList<string> MissingArchives(string exePath, bool isOot, bool needMq)

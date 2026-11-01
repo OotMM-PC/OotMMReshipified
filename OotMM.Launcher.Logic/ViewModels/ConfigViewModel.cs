@@ -56,8 +56,8 @@ public sealed class ConfigViewModel : ViewModelBase
         MmCard.PortChildModel = settings.PortOotChildModel;
         _multiworldAddress = settings.MultiworldAddress;
         _playerName = settings.PlayerName;
-        OotCard.ExePath = settings.OotExePath;
-        MmCard.ExePath = settings.MmExePath;
+        OotCard.ExePath = ExistingOrBundled(settings.OotExePath, isOot: true);
+        MmCard.ExePath = ExistingOrBundled(settings.MmExePath, isOot: false);
 
         RefreshSeedPreview();
         _restoring = false;
@@ -148,6 +148,11 @@ public sealed class ConfigViewModel : ViewModelBase
     }
 
     public bool HasSeed => Seed is not null;
+
+    private static string ExistingOrBundled(string path, bool isOot) =>
+        !string.IsNullOrWhiteSpace(path) && File.Exists(path)
+            ? path
+            : GameSetup.LocateBundled(isOot, AppContext.BaseDirectory) ?? path;
 
     public string SeedTitle =>
         Seed is null ? ""

@@ -11,6 +11,23 @@ public sealed class GameSetupTests : IDisposable
     public GameSetupTests() => Directory.CreateDirectory(_directory);
 
     [Fact]
+    public void BundledGamesAreFoundBesideTheLauncherFolder()
+    {
+        var launcher = Directory.CreateDirectory(Path.Combine(_directory, "Launcher")).FullName;
+        Directory.CreateDirectory(Path.Combine(_directory, "SoH"));
+        Directory.CreateDirectory(Path.Combine(_directory, "2ship", "Release"));
+        File.WriteAllText(Path.Combine(_directory, "SoH", "soh.exe"), "");
+        File.WriteAllText(Path.Combine(_directory, "2ship", "Release", "2ship.exe"), "");
+
+        Assert.Equal(Path.Combine(_directory, "SoH", "soh.exe"), GameSetup.LocateBundled(true, launcher));
+        Assert.Equal(Path.Combine(_directory, "2ship", "Release", "2ship.exe"), GameSetup.LocateBundled(false, launcher));
+    }
+
+    [Fact]
+    public void MissingBundledGameIsNull() =>
+        Assert.Null(GameSetup.LocateBundled(true, Directory.CreateDirectory(Path.Combine(_directory, "Alone")).FullName));
+
+    [Fact]
     public void LegacyBaseArchiveRequiresReextractionForSoulOverlay()
     {
         var executable = CreateOotInstall(includeSoulOverlay: false);

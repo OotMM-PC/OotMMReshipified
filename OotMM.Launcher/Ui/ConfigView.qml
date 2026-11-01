@@ -105,6 +105,8 @@ Item {
 
                     PixelIcon {
                         name: "MajoraMask"
+                        smooth: true
+                        mipmap: true
                         Layout.preferredWidth: 52
                         Layout.preferredHeight: 52
                     }

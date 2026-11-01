@@ -341,6 +341,7 @@ public static class OotmmAssetBuilder
         ("audio/sequences/NewWaveBossaNova(Ocarina)_5D", "custom/music/NewWaveBossaNova_fanfare"),
         ("audio/sequences/ElegyOfEmptiness(Ocarina)_5E", "custom/music/ElegyOfEmptiness_fanfare"),
         ("audio/sequences/OathToOrder(Ocarina)_5F", "custom/music/OathToOrder_fanfare"),
+        ("audio/sequences/GetMask_37", "custom/music/GetMask_fanfare"),
     ];
 
     private static readonly (string Source, string Output)[] OotOcarinaFanfares =
@@ -353,12 +354,23 @@ public static class OotmmAssetBuilder
         ("audio/sequences/037_Prelude_of_Light", "custom/music/PreludeOfLight_fanfare"),
         ("audio/sequences/070_Zeldas_Lullaby", "custom/music/ZeldasLullaby_fanfare"),
         ("audio/sequences/068_Sarias_Song", "custom/music/SariasSong_fanfare"),
+        ("audio/sequences/050_Got_Spiritual_Stone", "custom/music/SpiritualStone_fanfare"),
+        ("audio/sequences/067_Got_Medallion", "custom/music/Medallion_fanfare"),
+        ("audio/sequences/061_Got_Fairy_Ocarina", "custom/music/FairyOcarina_fanfare"),
     ];
 
     private const string OotWarpFontSource = "audio/fonts/18_Warp_Songs";
     private const string OotWarpFontOutput = "custom/fonts/OotWarpSongs";
+    private const string OotOrchestraFontSource = "audio/fonts/03_Orchestra";
+    private const string OotOrchestraFontOutput = "custom/fonts/OotOrchestra";
+    private const string OotFairyFontSource = "audio/fonts/09_Fairy_Fountain";
+    private const string OotFairyFontOutput = "custom/fonts/OotFairyFountain";
+    private const string MmMaskFontSource = "audio/fonts/Soundfont_15";
+    private const string MmMaskFontOutput = "custom/fonts/MmGetMask";
     private const string OotSamplePrefix = "audio/samples/";
+    private const int SampleMediumOffset = 65;
     private const string OotSampleOutputPrefix = "custom/otsmpl/";
+    private const string MmSampleOutputPrefix = "custom/mmsmpl/";
 
     private static void WriteOotOcarinaMusic(AssetWriter output, ArchiveSet source, List<string> log)
     {
@@ -378,19 +390,27 @@ public static class OotmmAssetBuilder
 
         if (fanfares > 0)
         {
-            log.Add($"Copied {fanfares} OoT ocarina song fanfares.");
+            log.Add($"Copied {fanfares} OoT fanfares.");
         }
 
-        if (!source.TryRead(OotWarpFontSource, out var font))
+        WriteFontWithSamples(output, source, OotWarpFontSource, OotWarpFontOutput, OotSampleOutputPrefix, log);
+        WriteFontWithSamples(output, source, OotOrchestraFontSource, OotOrchestraFontOutput, OotSampleOutputPrefix, log);
+        WriteFontWithSamples(output, source, OotFairyFontSource, OotFairyFontOutput, OotSampleOutputPrefix, log);
+    }
+
+    private static void WriteFontWithSamples(AssetWriter output, ArchiveSet source, string fontSource,
+        string fontOutput, string sampleOutputPrefix, List<string> log)
+    {
+        if (!source.TryRead(fontSource, out var font))
         {
-            log.Add($"Skipped {OotWarpFontSource}: the oot archives do not carry that font.");
+            log.Add($"Skipped {fontSource}: the archives do not carry that font.");
             return;
         }
 
         var sampleNames = new SortedSet<string>(StringComparer.Ordinal);
-        if (!TryRetargetFontSamplePaths(font, sampleNames))
+        if (!TryRetargetFontSamplePaths(font, sampleOutputPrefix, sampleNames))
         {
-            log.Add($"Skipped {OotWarpFontSource}: its sample references are not the expected shape.");
+            log.Add($"Skipped {fontSource}: its sample references are not the expected shape.");
             return;
         }
 
@@ -398,20 +418,24 @@ public static class OotmmAssetBuilder
         {
             if (!source.TryRead(OotSamplePrefix + name, out var sample))
             {
-                log.Add($"Skipped {OotWarpFontSource}: sample {name} is missing.");
+                log.Add($"Skipped {fontSource}: sample {name} is missing.");
                 return;
             }
-            output.Emit(OotSampleOutputPrefix + name, sample);
+            if (sample.Length > SampleMediumOffset)
+            {
+                sample[SampleMediumOffset] = 0;
+            }
+            output.Emit(sampleOutputPrefix + name, sample);
         }
 
-        output.Emit(OotWarpFontOutput, font);
-        log.Add($"Copied the OoT warp-song font and {sampleNames.Count} samples.");
+        output.Emit(fontOutput, font);
+        log.Add($"Copied {fontSource} and {sampleNames.Count} samples.");
     }
 
-    private static bool TryRetargetFontSamplePaths(byte[] font, ICollection<string> names)
+    private static bool TryRetargetFontSamplePaths(byte[] font, string sampleOutputPrefix, ICollection<string> names)
     {
         var prefix = Encoding.ASCII.GetBytes(OotSamplePrefix);
-        var replacement = Encoding.ASCII.GetBytes(OotSampleOutputPrefix);
+        var replacement = Encoding.ASCII.GetBytes(sampleOutputPrefix);
         for (var i = 4; i + prefix.Length <= font.Length; i++)
         {
             if (!font.AsSpan(i, prefix.Length).SequenceEqual(prefix))
@@ -473,8 +497,10 @@ public static class OotmmAssetBuilder
 
         if (fanfares > 0)
         {
-            log.Add($"Copied {fanfares} MM ocarina song fanfares.");
+            log.Add($"Copied {fanfares} MM fanfares.");
         }
+
+        WriteFontWithSamples(output, source, MmMaskFontSource, MmMaskFontOutput, MmSampleOutputPrefix, log);
     }
 
     private static bool TryRetargetSequenceFont(byte[] sequence, byte font)

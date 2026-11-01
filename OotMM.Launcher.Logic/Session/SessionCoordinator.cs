@@ -1,4 +1,5 @@
 using OotMM.Core;
+using OotMM.Launcher.Models;
 using OotMM.Launcher.Services;
 
 namespace OotMM.Launcher.Session;
@@ -418,6 +419,7 @@ public sealed class SessionCoordinator : IDisposable
             DurableFile.WriteOffset(ActiveOutboxCursor, 0);
         }
 
+        GameAudioSync.PrepareLaunch(_session.OotExe, _session.MmExe, ActiveGame);
         _process?.Dispose();
         _ipc?.Dispose();
         _ipc = new GameIpcServer(ActiveGame);

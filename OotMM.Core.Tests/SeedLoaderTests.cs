@@ -215,6 +215,50 @@ public class SeedLoaderTests
     }
 
     [Fact]
+    public void StartingChecks_FollowGeneratorStartingItemRules()
+    {
+        var seed = SeedLoader.LoadFromJson(MutateValid(root =>
+        {
+            root["settings"]!["skipZelda"] = true;
+            root["settings"]!["shuffleWonderItemsOot"] = "overworld";
+            root["settings"]!["gerudoFortress"] = "open";
+            root["worldFlags"] = JsonNode.Parse("""{"mmPreActivatedOwls":["swamp","tower"]}""");
+        }));
+
+        Assert.True(seed.IsStartingCheck("OOT_ZELDAS_LETTER"));
+        Assert.True(seed.IsStartingCheck("OOT_ZELDAS_SONG"));
+        Assert.True(seed.IsStartingCheck("OOT_CASTLE_COURTYARD_WONDER_ITEM"));
+        Assert.True(seed.IsStartingCheck("OOT_GERUDO_MEMBER_CARD"));
+        Assert.True(seed.IsStartingCheck("MM_SOUTHERN_SWAMP_OWL_STATUE"));
+        Assert.True(seed.IsStartingCheck("MM_STONE_TOWER_OWL_STATUE"));
+        Assert.False(seed.IsStartingCheck("MM_CLOCK_TOWN_OWL_STATUE"));
+        Assert.False(seed.IsStartingCheck("OOT_MALON_EGG"));
+    }
+
+    [Fact]
+    public void SeedName_IsOptional()
+    {
+        Assert.Equal("", SeedLoader.LoadFromJson(ValidJson()).SeedName);
+        Assert.Equal("Juicy Gibdo",
+            SeedLoader.LoadFromJson(MutateValid(root => root["seedName"] = "Juicy Gibdo")).SeedName);
+    }
+
+    [Fact]
+    public void StartingChecks_EmptyWithoutStartingRules()
+    {
+        var seed = SeedLoader.LoadFromJson(MutateValid(root =>
+        {
+            root["settings"]!["skipZelda"] = false;
+            root["settings"]!["gerudoFortress"] = "single";
+            root["worldFlags"] = JsonNode.Parse("""{"mmPreActivatedOwls":"none"}""");
+        }));
+
+        Assert.False(seed.IsStartingCheck("OOT_ZELDAS_LETTER"));
+        Assert.False(seed.IsStartingCheck("OOT_GERUDO_MEMBER_CARD"));
+        Assert.False(seed.IsStartingCheck("MM_CLOCK_TOWN_OWL_STATUE"));
+    }
+
+    [Fact]
     public void MalformedJson_Rejected()
     {
         Assert.Throws<SeedLoadException>(() => SeedLoader.LoadFromJson("not json"));

@@ -79,9 +79,9 @@ Item {
                         Text {
                             Layout.alignment: Qt.AlignRight
                             Layout.maximumWidth: seedColumn.room
-                            text: view.vm.hasSeed ? view.vm.seedId : "No seed chosen"
+                            text: view.vm.hasSeed ? view.vm.seedTitle : "No seed chosen"
                             color: view.vm.hasSeed ? theme.success : theme.faint
-                            font.family: view.vm.hasSeed ? theme.mono : theme.font
+                            font.family: theme.font
                             font.pixelSize: 22
                             fontSizeMode: Text.HorizontalFit
                             minimumPixelSize: 15
@@ -89,7 +89,7 @@ Item {
                             horizontalAlignment: Text.AlignRight
 
                             ToolTip.visible: seedHover.hovered && view.vm.seedPath.length > 0
-                            ToolTip.text: view.vm.seedId + "\n" + view.vm.seedPath
+                            ToolTip.text: view.vm.seedTitle + "\nID " + view.vm.seedId + "\n" + view.vm.seedPath
 
                             HoverHandler {
                                 id: seedHover

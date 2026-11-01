@@ -138,6 +138,7 @@ public sealed class ConfigViewModel : ViewModelBase
         {
             _seed = value;
             Raise(nameof(SeedId));
+            Raise(nameof(SeedTitle));
             Raise(nameof(SeedDescription));
             Raise(nameof(SeedSummary));
             Raise(nameof(HasSeed));
@@ -148,12 +149,28 @@ public sealed class ConfigViewModel : ViewModelBase
 
     public bool HasSeed => Seed is not null;
 
+    public string SeedTitle =>
+        Seed is null ? ""
+        : Seed.SeedName.Length > 0 ? Seed.SeedName
+        : SeedFileTitle(_seedPath);
+
+    private static string SeedFileTitle(string path)
+    {
+        var name = Path.GetFileName(path);
+        foreach (var suffix in new[] { ".ootmm.json", ".json" })
+        {
+            if (name.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
+                return name[..^suffix.Length];
+        }
+        return name;
+    }
+
     public string SeedId => Seed?.SeedId ?? "";
 
     public string SeedDescription =>
         Seed is null ? ""
         : Seed.IsMultiworld ? $"{Seed.PlayerCount}-player multiworld · P{Seed.PlayerId}"
-        : $"Solo · {Seed.Placements.Count} checks";
+        : $"Solo · {Seed.PlayableCheckCount} checks";
 
     public string SeedError
     {
@@ -172,7 +189,7 @@ public sealed class ConfigViewModel : ViewModelBase
     public string SeedSummary =>
         Seed is null
             ? ""
-            : $"{Seed.Placements.Count} checks — begins in {GameInfo.Title(Seed.ResolveStartingGame())}"
+            : $"{Seed.PlayableCheckCount} checks — begins in {GameInfo.Title(Seed.ResolveStartingGame())}"
               + (Seed.IsMultiworld ? " — MULTIWORLD" : "");
 
 

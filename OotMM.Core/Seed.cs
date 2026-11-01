@@ -18,6 +18,7 @@ public sealed class Seed
     public required string Format { get; init; }
     public required string GeneratorVersion { get; init; }
     public required string SeedId { get; init; }
+    public string SeedName { get; init; } = "";
     public string SettingsHash { get; init; } = "";
     public ushort PlayerId { get; init; } = 1;
     public ushort PlayerCount { get; init; } = 1;
@@ -51,7 +52,22 @@ public sealed class Seed
     public IReadOnlyDictionary<string, SpecialCond> SpecialConds { get; init; } =
         new Dictionary<string, SpecialCond>();
 
+    private static readonly (string Owl, string CheckId)[] PreActivatedOwlChecks =
+    [
+        ("clocktown", "MM_CLOCK_TOWN_OWL_STATUE"),
+        ("milkroad", "MM_MILK_ROAD_OWL_STATUE"),
+        ("swamp", "MM_SOUTHERN_SWAMP_OWL_STATUE"),
+        ("woodfall", "MM_WOODFALL_OWL_STATUE"),
+        ("mountain", "MM_MOUNTAIN_VILLAGE_OWL_STATUE"),
+        ("snowhead", "MM_SNOWHEAD_OWL_STATUE"),
+        ("greatbay", "MM_GREAT_BAY_COAST_OWL_STATUE"),
+        ("zoracape", "MM_ZORA_CAPE_OWL_STATUE"),
+        ("canyon", "MM_IKANA_CANYON_OWL_STATUE"),
+        ("tower", "MM_STONE_TOWER_OWL_STATUE"),
+    ];
+
     private Dictionary<string, ItemPlacement>? _placementIndex;
+    private HashSet<string>? _startingChecks;
     private bool? _needsMasterQuest;
 
     public bool IsMultiworld => PlayerCount > 1 || GetStringSetting("mode", "single") != "single";
@@ -68,6 +84,36 @@ public sealed class Seed
     private static bool IsWarpDestination(IReadOnlyList<uint> destinations, Game sourceGame, Game game, uint nativeId) =>
         game is Game.Oot or Game.Mm && (nativeId & 0x80000000u) == 0
         && destinations.Contains(game != sourceGame ? nativeId | 0x80000000u : nativeId);
+
+    public int PlayableCheckCount => Placements.Count(p => !IsStartingCheck(p.Check.Id));
+
+    public bool IsStartingCheck(string checkId) => (_startingChecks ??= BuildStartingChecks()).Contains(checkId);
+
+    private HashSet<string> BuildStartingChecks()
+    {
+        var checks = new HashSet<string>(StringComparer.Ordinal);
+        if (GetBoolSetting("skipZelda"))
+        {
+            checks.Add("OOT_ZELDAS_LETTER");
+            checks.Add("OOT_ZELDAS_SONG");
+            if (GetStringSetting("shuffleWonderItemsOot", "none") is "all" or "overworld")
+                checks.Add("OOT_CASTLE_COURTYARD_WONDER_ITEM");
+        }
+
+        if (GetStringSetting("gerudoFortress") == "open")
+            checks.Add("OOT_GERUDO_MEMBER_CARD");
+
+        if (WorldFlags.TryGetValue("mmPreActivatedOwls", out var owls))
+        {
+            foreach (var (owl, checkId) in PreActivatedOwlChecks)
+            {
+                if (owls.All || owls.Members.Contains(owl))
+                    checks.Add(checkId);
+            }
+        }
+
+        return checks;
+    }
 
     public bool GetBoolSetting(string name, bool fallback = false) =>
         BoolSettings.TryGetValue(name, out var value) ? value : fallback;

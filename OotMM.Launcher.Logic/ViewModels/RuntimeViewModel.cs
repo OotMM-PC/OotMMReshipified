@@ -97,6 +97,8 @@ public sealed class RuntimeViewModel : ViewModelBase
         foreach (var placement in coordinator.Session.Seed.Placements)
         {
             var check = placement.Check;
+            if (coordinator.Session.Seed.IsStartingCheck(check.Id))
+                continue;
             var row = new CheckRowViewModel(
                 GameInfo.ToSeedTag(check.Game).ToUpperInvariant(),
                 check.Name.Length > 0 ? check.Name : check.Id,

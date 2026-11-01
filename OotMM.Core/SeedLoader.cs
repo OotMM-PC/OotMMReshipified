@@ -69,6 +69,7 @@ public static class SeedLoader
                 Format = format,
                 GeneratorVersion = generatorVersion,
                 SeedId = RequiredString(root, "seedId"),
+                SeedName = OptionalString(root, "seedName", ""),
                 SettingsHash = OptionalString(root, "settingsHash", ""),
                 PlayerId = playerId,
                 PlayerCount = OptionalU16(root, "playerCount", 1),

@@ -78,6 +78,7 @@ public static class GameIpcProtocol
                 speedSmooth = settings.SpeedSmooth,
                 transportState = settings.TransportState,
                 pendingChecks = settings.PendingChecks,
+                zTargetHold = settings.ZTargetHold,
             },
         });
 

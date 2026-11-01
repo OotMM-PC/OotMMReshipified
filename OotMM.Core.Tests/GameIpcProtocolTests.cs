@@ -161,6 +161,16 @@ public class GameIpcProtocolTests
         Assert.Equal(7, root.GetProperty("revision").GetInt64());
         Assert.Equal(175, root.GetProperty("settings").GetProperty("speedPercent").GetInt32());
         Assert.True(root.GetProperty("settings").GetProperty("speedSmooth").GetBoolean());
+        Assert.False(root.GetProperty("settings").GetProperty("zTargetHold").GetBoolean());
+    }
+
+    [Fact]
+    public void BuildSettingsSnapshot_CarriesZTargetHold()
+    {
+        var settings = new RosterMeta(true, false, false, 100, false, "healthy", 0, ZTargetHold: true);
+
+        using var document = JsonDocument.Parse(GameIpcProtocol.BuildSettingsSnapshot(1, settings));
+        Assert.True(document.RootElement.GetProperty("settings").GetProperty("zTargetHold").GetBoolean());
     }
 
     [Fact]

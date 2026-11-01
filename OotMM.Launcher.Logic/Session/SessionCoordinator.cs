@@ -33,6 +33,7 @@ public sealed class SessionCoordinator : IDisposable
     private CancellationTokenSource? _startupCancellation;
     private int _speedPercent = 100;
     private bool _speedSmooth;
+    private bool _zTargetHold;
     private bool _ipcSettingsDirty = true;
     private long _settingsRevision;
     private long _forceUnlockSeq;
@@ -125,6 +126,19 @@ public sealed class SessionCoordinator : IDisposable
             if (_speedSmooth != value)
             {
                 _speedSmooth = value;
+                _ipcSettingsDirty = true;
+            }
+        }
+    }
+
+    public bool ZTargetHold
+    {
+        get => _zTargetHold;
+        set
+        {
+            if (_zTargetHold != value)
+            {
+                _zTargetHold = value;
                 _ipcSettingsDirty = true;
             }
         }
@@ -1047,7 +1061,8 @@ public sealed class SessionCoordinator : IDisposable
             SpeedPercent: TimerEnabled ? _speedPercent : 100,
             SpeedSmooth: _speedSmooth,
             TransportState: transport,
-            PendingChecks: (uint)(_multiworld?.PendingChecks ?? 0));
+            PendingChecks: (uint)(_multiworld?.PendingChecks ?? 0),
+            ZTargetHold: _zTargetHold);
     }
 
     private void LogCheckCollected(string checkKey)

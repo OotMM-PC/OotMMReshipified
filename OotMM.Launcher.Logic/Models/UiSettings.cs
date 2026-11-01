@@ -29,6 +29,7 @@ public sealed class UiSettings
 
     public bool DevMode { get; set; }
     public bool SpeedMatchFramerate { get; set; }
+    public bool HoldToZTarget { get; set; }
 
     public double UiScale { get; set; } = 1.0;
     public bool ShowSidebar { get; set; } = true;

@@ -48,6 +48,21 @@ ColumnLayout {
 
     SectionLabel {
         Layout.topMargin: 10
+        text: "Controls"
+    }
+
+    GoldCheck {
+        Layout.fillWidth: true
+        text: "Hold to Z-target"
+        on: tab.vm ? tab.vm.holdToZTarget : false
+        ToolTip.visible: hovered
+        ToolTip.delay: 500
+        ToolTip.text: "Targeting stays locked only while Z is held. Applies to both games and every seed, straight away."
+        onFlipped: value => tab.vm.holdToZTarget = value
+    }
+
+    SectionLabel {
+        Layout.topMargin: 10
         text: "Advanced"
     }
 

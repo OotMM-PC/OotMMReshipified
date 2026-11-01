@@ -9,6 +9,7 @@ public sealed class OptionsTabViewModel : ViewModelBase
     private double _uiScale;
     private bool _devMode;
     private bool _cheatGatePending;
+    private bool _holdToZTarget;
 
     public OptionsTabViewModel(
         int themeIndex, double uiScale, Action<int> onThemeChanged, Action<double> onUiScaleChanged,
@@ -30,6 +31,20 @@ public sealed class OptionsTabViewModel : ViewModelBase
             if (Set(ref _devMode, value))
             {
                 _onDevModeChanged?.Invoke(value);
+            }
+        }
+    }
+
+    internal Action<bool>? HoldToZTargetChanged { get; set; }
+
+    public bool HoldToZTarget
+    {
+        get => _holdToZTarget;
+        set
+        {
+            if (Set(ref _holdToZTarget, value))
+            {
+                HoldToZTargetChanged?.Invoke(value);
             }
         }
     }

@@ -44,7 +44,11 @@ public sealed class RuntimeViewModel : ViewModelBase
         {
             setUiScale(scale);
             SidebarScale = scale;
-        }, settings.DevMode, ApplyDevMode);
+        }, settings.DevMode, ApplyDevMode)
+        {
+            HoldToZTarget = settings.HoldToZTarget,
+            HoldToZTargetChanged = ApplyHoldToZTarget,
+        };
         Progress = new ProgressTabViewModel();
         _tabs = [Tracker, Log, SessionTab, Options, Progress];
 
@@ -85,6 +89,7 @@ public sealed class RuntimeViewModel : ViewModelBase
             ActiveGame = coordinator.ActiveGame,
         };
         coordinator.AllowDebugMenus = settings.DevMode;
+        coordinator.ZTargetHold = settings.HoldToZTarget;
         vm.Tracker.ForceUnlockSender = coordinator.ForceUnlock;
         vm.Options.RestartGame = coordinator.RestartGame;
 
@@ -271,6 +276,16 @@ public sealed class RuntimeViewModel : ViewModelBase
             _solver is not null,
             _coordinator.Session.Seed.IsMultiworld);
         SessionTab.NotifyRulesChanged();
+    }
+
+    private void ApplyHoldToZTarget(bool hold)
+    {
+        _settings.HoldToZTarget = hold;
+        _settings.Save();
+        if (_coordinator is not null)
+        {
+            _coordinator.ZTargetHold = hold;
+        }
     }
 
     private void ApplyDevMode(bool devMode)

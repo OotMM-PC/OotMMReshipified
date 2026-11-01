@@ -54,7 +54,7 @@ public sealed class Seed
     private Dictionary<string, ItemPlacement>? _placementIndex;
     private bool? _needsMasterQuest;
 
-    public bool IsMultiworld => PlayerCount > 1;
+    public bool IsMultiworld => PlayerCount > 1 || GetStringSetting("mode", "single") != "single";
 
     public bool IsSpawnDestination(Game game, uint nativeId) =>
         IsWarpDestination(EntrancesSpawn, Game.Oot, game, nativeId);

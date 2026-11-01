@@ -19,6 +19,22 @@ public class SeedLoaderTests
         return root.ToJsonString();
     }
 
+    [Theory]
+    [InlineData("single", false)]
+    [InlineData("coop", true)]
+    [InlineData("multi", true)]
+    public void SinglePlayerSeed_IsNetworkedUnlessModeIsSingle(string mode, bool networked)
+    {
+        var seed = SeedLoader.LoadFromJson(MutateValid(root =>
+        {
+            root["playerId"] = 1;
+            root["playerCount"] = 1;
+            root["settings"]!["mode"] = mode;
+        }));
+
+        Assert.Equal(networked, seed.IsMultiworld);
+    }
+
     [Fact]
     public void ValidSeed_ParsesIdentityAndScalars()
     {

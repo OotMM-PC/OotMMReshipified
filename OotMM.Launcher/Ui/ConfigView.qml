@@ -37,7 +37,9 @@ Item {
                     }
 
                     ColumnLayout {
+                        id: titleColumn
                         Layout.fillWidth: true
+                        Layout.minimumWidth: implicitWidth
                         spacing: 2
 
                         Text {
@@ -58,7 +60,12 @@ Item {
                     }
 
                     ColumnLayout {
+                        id: seedColumn
+
+                        readonly property real room: Math.max(160, parent.width - titleColumn.implicitWidth - 52 - 52 - 3 * 18)
+
                         Layout.alignment: Qt.AlignRight | Qt.AlignVCenter
+                        Layout.maximumWidth: room
                         spacing: 1
 
                         Text {
@@ -71,13 +78,18 @@ Item {
 
                         Text {
                             Layout.alignment: Qt.AlignRight
+                            Layout.maximumWidth: seedColumn.room
                             text: view.vm.hasSeed ? view.vm.seedId : "No seed chosen"
                             color: view.vm.hasSeed ? theme.success : theme.faint
                             font.family: view.vm.hasSeed ? theme.mono : theme.font
                             font.pixelSize: 22
+                            fontSizeMode: Text.HorizontalFit
+                            minimumPixelSize: 15
+                            elide: Text.ElideMiddle
+                            horizontalAlignment: Text.AlignRight
 
                             ToolTip.visible: seedHover.hovered && view.vm.seedPath.length > 0
-                            ToolTip.text: view.vm.seedPath
+                            ToolTip.text: view.vm.seedId + "\n" + view.vm.seedPath
 
                             HoverHandler {
                                 id: seedHover
@@ -89,14 +101,17 @@ Item {
                             spacing: 6
 
                             Text {
+                                width: Math.min(implicitWidth, Math.max(40, seedColumn.room - changeSeed.implicitWidth - 6))
                                 visible: view.vm.hasSeed
                                 text: view.vm.seedDescription + "  ·"
+                                elide: Text.ElideRight
                                 color: theme.dim
                                 font.family: theme.font
                                 font.pixelSize: 13
                             }
 
                             LinkButton {
+                                id: changeSeed
                                 text: view.vm.hasSeed ? "change" : "choose a seed"
                                 onClicked: view.vm.browseSeed()
                             }
@@ -171,35 +186,50 @@ Item {
                 }
 
                 Chip {
-                    text: view.vm.hostRelay ? "Hosting :" + view.vm.relayPort
-                                            : "Joining " + (view.vm.multiworldAddress.length > 0 ? view.vm.multiworldAddress : "a relay")
-                    lit: true
+                    text: (view.vm.hostRelay ? "Hosting on port " + view.vm.relayPort
+                                             : "Joining " + (view.vm.multiworldAddress.length > 0 ? view.vm.multiworldAddress : "a relay")) + "  ✎"
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 500
+                    ToolTip.text: "Change whether this machine hosts the relay, and its port or address."
                     onClicked: relay.open()
                 }
 
                 Chip {
-                    text: view.vm.playerName.length > 0 ? view.vm.playerName : "Set player name"
+                    text: (view.vm.playerName.length > 0 ? view.vm.playerName : "Set player name") + "  ✎"
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 500
+                    ToolTip.text: "The name other players see for you."
                     onClicked: relay.open()
                 }
 
                 Chip {
+                    visible: view.vm.hostRelay
                     text: "PvP"
                     lit: view.vm.hostPvp
-                    enabled: view.vm.hostRelay
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 500
+                    ToolTip.text: "Server rule: players in different teams can attack and knock each other back."
                     onClicked: view.vm.hostPvp = !view.vm.hostPvp
                 }
 
                 Chip {
+                    visible: view.vm.hostRelay
                     text: "Friendly fire"
                     lit: view.vm.hostFriendlyFire
-                    enabled: !!(view.vm.hostRelay && view.vm.hostPvp)
+                    enabled: view.vm.hostPvp
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 500
+                    ToolTip.text: view.vm.hostPvp ? "Server rule: PvP also hits teammates." : "Turn on PvP first."
                     onClicked: view.vm.hostFriendlyFire = !view.vm.hostFriendlyFire
                 }
 
                 Chip {
+                    visible: view.vm.hostRelay
                     text: "Global death link"
                     lit: view.vm.hostDeathLink
-                    enabled: view.vm.hostRelay
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 500
+                    ToolTip.text: "Server rule: when any player dies, everyone dies. Teammates always share deaths."
                     onClicked: view.vm.hostDeathLink = !view.vm.hostDeathLink
                 }
 

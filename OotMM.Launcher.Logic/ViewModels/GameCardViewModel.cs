@@ -16,6 +16,7 @@ public sealed class GameCardViewModel : ViewModelBase
     private bool _portAdultModel = true;
     private bool _portChildModel;
     private string _modelPortStatus = "";
+    private ModEntryViewModel? _selectionAnchor;
 
     public GameCardViewModel(bool isOot, IFilePicker picker, Action onChanged)
     {
@@ -33,6 +34,74 @@ public sealed class GameCardViewModel : ViewModelBase
     public void MoveSelectedDown() => MoveSelectedByOne(+1);
 
     public void MoveSelectedBottom() => MoveSelectedToEdge(top: false);
+
+    public bool HasSelection => Mods.Any(m => m.IsSelected);
+
+    public ModEntryViewModel ModAt(int index) =>
+        index >= 0 && index < Mods.Count ? Mods[index] : ModEntryViewModel.Empty;
+
+    public void SelectMod(int index, bool toggle, bool extend)
+    {
+        if (index < 0 || index >= Mods.Count)
+        {
+            return;
+        }
+
+        var target = Mods[index];
+        var anchor = _selectionAnchor is not null ? Mods.IndexOf(_selectionAnchor) : -1;
+        if (extend && anchor >= 0)
+        {
+            var (from, to) = anchor <= index ? (anchor, index) : (index, anchor);
+            for (var i = 0; i < Mods.Count; i++)
+            {
+                var inRange = i >= from && i <= to;
+                Mods[i].IsSelected = toggle ? Mods[i].IsSelected || inRange : inRange;
+            }
+        }
+        else if (toggle)
+        {
+            target.IsSelected = !target.IsSelected;
+            _selectionAnchor = target;
+        }
+        else
+        {
+            foreach (var mod in Mods)
+            {
+                mod.IsSelected = ReferenceEquals(mod, target);
+            }
+
+            _selectionAnchor = target;
+        }
+
+        Raise(nameof(HasSelection));
+    }
+
+    public void ClearSelection()
+    {
+        foreach (var mod in Mods)
+        {
+            mod.IsSelected = false;
+        }
+
+        _selectionAnchor = null;
+        Raise(nameof(HasSelection));
+    }
+
+    public void SetModEnabled(int index, bool enabled)
+    {
+        if (index >= 0 && index < Mods.Count)
+        {
+            Mods[index].Enabled = enabled;
+        }
+    }
+
+    public void MoveModAt(int index, int delta)
+    {
+        if (index >= 0 && index < Mods.Count)
+        {
+            MoveMod(Mods[index], delta);
+        }
+    }
 
     public bool IsOot { get; }
 
@@ -176,24 +245,66 @@ public sealed class GameCardViewModel : ViewModelBase
         }
 
         _modsSignature = signature;
-        var selected = Mods.Where(m => m.IsSelected).Select(m => m.Name)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        Mods.Clear();
+        var existing = new Dictionary<string, ModEntryViewModel>(StringComparer.OrdinalIgnoreCase);
+        foreach (var mod in Mods)
+        {
+            existing.TryAdd(mod.Name, mod);
+        }
+
+        foreach (var duplicate in Mods.Where(m => !ReferenceEquals(existing[m.Name], m)).ToList())
+        {
+            Mods.Remove(duplicate);
+        }
+
+        var wanted = new List<ModEntryViewModel>();
         foreach (var info in scanned)
         {
-            ModEntryViewModel entry = null!;
-            entry = new ModEntryViewModel(info,
-                onToggled: () => OnModToggled(entry),
-                moveUp: () => MoveMod(entry, -1),
-                moveDown: () => MoveMod(entry, +1));
-            entry.IsSelected = selected.Contains(info.Name);
-            Mods.Add(entry);
+            if (existing.Remove(info.Name, out var entry))
+            {
+                entry.Refresh(info);
+            }
+            else
+            {
+                entry = CreateEntry(info);
+            }
+
+            wanted.Add(entry);
+        }
+
+        foreach (var gone in existing.Values)
+        {
+            Mods.Remove(gone);
+            if (ReferenceEquals(gone, _selectionAnchor))
+            {
+                _selectionAnchor = null;
+            }
+        }
+
+        for (var target = 0; target < wanted.Count; target++)
+        {
+            var current = Mods.IndexOf(wanted[target]);
+            if (current < 0)
+            {
+                Mods.Insert(target, wanted[target]);
+            }
+            else if (current != target)
+            {
+                Mods.Move(current, target);
+            }
         }
 
         UpdateMoveFlags();
+        Raise(nameof(HasSelection));
         Raise(nameof(HasMods));
         Raise(nameof(ModsSummary));
         Raise(nameof(EnabledModCount));
+    }
+
+    private ModEntryViewModel CreateEntry(ModInfo info)
+    {
+        ModEntryViewModel entry = null!;
+        entry = new ModEntryViewModel(info, onToggled: () => OnModToggled(entry));
+        return entry;
     }
 
     private void MoveMod(ModEntryViewModel entry, int delta)
@@ -309,10 +420,18 @@ public sealed class GameCardViewModel : ViewModelBase
 
     private void OnModToggled(ModEntryViewModel entry)
     {
-        LoadOrderError = ModScanner.SetEnabledOnDisk(entry.Info, entry.Enabled)
-            ? ""
-            : $"Could not rename {entry.Name} in the mods folder.";
-        RefreshMods();
+        if (ModScanner.SetEnabledOnDisk(entry.Info, entry.Enabled) is { } renamed)
+        {
+            entry.Refresh(renamed);
+            LoadOrderError = "";
+            _modsSignature = string.Join("\n", Mods.Select(m => $"{m.Name}|{m.Enabled}|{m.Required}"));
+        }
+        else
+        {
+            LoadOrderError = $"Could not rename {entry.Name} in the mods folder.";
+            entry.Refresh(entry.Info);
+        }
+
         Raise(nameof(ModsSummary));
         Raise(nameof(EnabledModCount));
         _onChanged();

@@ -12,6 +12,8 @@ public sealed class ModelPickViewModel : ViewModelBase
         _onChanged = onChanged;
     }
 
+    internal static ModelPickViewModel Empty { get; } = new("", false, () => { });
+
     public string Name { get; }
 
     public bool IsSelected

@@ -12,8 +12,8 @@ PanelPopup {
     GoldCheck {
         Layout.fillWidth: true
         text: "Host the relay server on this machine"
-        checked: popup.config ? popup.config.hostRelay : false
-        onToggled: popup.config.hostRelay = checked
+        on: popup.config ? popup.config.hostRelay : false
+        onFlipped: value => popup.config.hostRelay = value
     }
 
     GridLayout {

@@ -97,8 +97,7 @@ public sealed class RuntimeViewModel : ViewModelBase
                 check.Name.Length > 0 ? check.Name : check.Id,
                 placement.Item.Name,
                 check.Id,
-                placement.IsFor(localPlayer),
-                vm.Tracker.OnRowClicked) { InLogic = true };
+                placement.IsFor(localPlayer)) { InLogic = true };
             if (vm._checkRows.TryAdd(Identity.CheckKey(check.Game, check.Id), row))
             {
                 vm._placementRows.Add((placement, row));

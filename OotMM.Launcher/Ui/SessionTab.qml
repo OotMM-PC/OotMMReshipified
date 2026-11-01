@@ -23,6 +23,7 @@ ColumnLayout {
         Layout.fillWidth: true
         text: "Open the game's menu"
         enabled: !!(tab.vm && tab.vm.coordinatorReady)
+        tip: "Opens the running game's own settings menu (graphics, audio, input). Esc in the game does the same."
         onClicked: tab.vm.openGameMenu()
     }
 
@@ -30,41 +31,60 @@ ColumnLayout {
         Layout.fillWidth: true
         text: "Restart active game"
         enabled: !!(tab.vm && tab.vm.coordinatorReady)
+        tip: "Closes and relaunches the active game from its last save."
         onClicked: tab.vm.restartGame()
     }
 
     GoldButton {
+        id: toMm
         Layout.fillWidth: true
         visible: !!(tab.vm && tab.vm.showSwitchToMm)
-        text: "Switch to Majora's Mask"
+        text: "Switch to Majora's Mask…"
         tint: theme.mm
-        onClicked: tab.vm.switchGame()
+        labelColor: "#E08A7A"
+        tip: "Dev mode: forcing a game switch outside a cross-game load zone may break logic. Pick which age Link arrives as in MM."
+        onClicked: arrival.popup(toMm, 0, toMm.height)
+
+        Menu {
+            id: arrival
+
+            padding: 4
+
+            background: Rectangle {
+                implicitWidth: 228
+                color: theme.raised
+                radius: 6
+                border.width: 1
+                border.color: theme.alpha(theme.mm, 0.6)
+            }
+
+            GoldMenuItem {
+                text: "Arrive as child Link"
+                onTriggered: tab.vm.switchGameAsChild()
+            }
+
+            GoldMenuItem {
+                text: "Arrive as adult Link"
+                onTriggered: tab.vm.switchGameAsAdult()
+            }
+        }
     }
 
-    RowLayout {
+    GoldButton {
         Layout.fillWidth: true
         visible: !!(tab.vm && tab.vm.showSwitchToOot)
-        spacing: 6
-
-        GoldButton {
-            Layout.fillWidth: true
-            text: "To OoT as child"
-            tint: theme.gold
-            onClicked: tab.vm.switchGameAsChild()
-        }
-
-        GoldButton {
-            Layout.fillWidth: true
-            text: "To OoT as adult"
-            tint: theme.gold
-            onClicked: tab.vm.switchGameAsAdult()
-        }
+        text: "Switch to Ocarina of Time"
+        tint: theme.gold
+        labelColor: "#E08A7A"
+        tip: "Dev mode: forcing a game switch outside a cross-game load zone may break logic. OoT resumes at its save's age."
+        onClicked: tab.vm.switchGame()
     }
 
     GoldButton {
         Layout.fillWidth: true
         text: "End session"
         enabled: !!(tab.vm && tab.vm.coordinatorReady)
+        tip: "Saves are kept, so launching this seed again resumes where you left off."
         onClicked: tab.vm.endSession()
     }
 
@@ -121,8 +141,11 @@ ColumnLayout {
             GoldCheck {
                 Layout.fillWidth: true
                 text: "Keep render FPS fixed while changing game speed"
-                checked: tab.vm ? tab.vm.speedSmooth : false
-                onToggled: tab.vm.speedSmooth = checked
+                on: tab.vm ? tab.vm.speedSmooth : false
+                ToolTip.visible: hovered
+                ToolTip.delay: 500
+                ToolTip.text: "Always renders at the graphics FPS, interpolating slow game updates and skipping renders between fast ones."
+                onFlipped: value => tab.vm.speedSmooth = value
             }
         }
     }
@@ -134,6 +157,7 @@ ColumnLayout {
         text: tab.vm ? tab.vm.resetButtonText : ""
         danger: true
         enabled: !!(tab.vm && tab.vm.coordinatorReady)
+        tip: "Permanently deletes ALL progress for this seed: both games' saves, the shared ledger and the check log. This cannot be undone."
         onClicked: tab.vm.resetProgress()
     }
 

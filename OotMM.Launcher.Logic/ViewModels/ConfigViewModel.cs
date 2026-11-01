@@ -83,6 +83,21 @@ public sealed class ConfigViewModel : ViewModelBase
 
     public void PreviewRuntime() => _previewRuntime();
 
+    public ModelPickViewModel ModelPickAt(bool isOot, int index)
+    {
+        var picks = isOot ? OotModelPicks : MmModelPicks;
+        return index >= 0 && index < picks.Count ? picks[index] : ModelPickViewModel.Empty;
+    }
+
+    public void SetModelPick(bool isOot, int index, bool selected)
+    {
+        var picks = isOot ? OotModelPicks : MmModelPicks;
+        if (index >= 0 && index < picks.Count)
+        {
+            picks[index].IsSelected = selected;
+        }
+    }
+
     public ObservableCollection<string> ValidationErrors { get; } = [];
     public ObservableCollection<ModelPickViewModel> OotModelPicks { get; } = [];
     public ObservableCollection<ModelPickViewModel> MmModelPicks { get; } = [];

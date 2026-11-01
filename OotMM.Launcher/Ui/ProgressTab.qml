@@ -55,86 +55,97 @@ ColumnLayout {
         font.pixelSize: 12
     }
 
-    ColumnLayout {
+    Flickable {
+        id: overview
         Layout.fillWidth: true
+        Layout.fillHeight: true
         visible: !!(tab.vm && tab.vm.showOverview)
-        spacing: 4
+        clip: true
+        contentHeight: overviewColumn.implicitHeight
+        boundsBehavior: Flickable.StopAtBounds
+        ScrollBar.vertical: ScrollBar { }
 
-        SectionLabel {
-            text: "Checks"
-        }
+        ColumnLayout {
+            id: overviewColumn
+            width: overview.width - 10
+            spacing: 4
 
-        Text {
-            text: tab.vm ? tab.vm.checksText : ""
-            color: theme.text
-            font.family: theme.font
-            font.pixelSize: 13
-        }
+            SectionLabel {
+                text: "Checks"
+            }
 
-        Text {
-            text: tab.vm ? tab.vm.itemsOwnedText : ""
-            color: theme.text
-            font.family: theme.font
-            font.pixelSize: 13
-        }
-
-        Text {
-            text: tab.vm ? tab.vm.ootChecksText : ""
-            color: theme.goldBright
-            font.family: theme.font
-            font.pixelSize: 13
-        }
-
-        Text {
-            text: tab.vm ? tab.vm.mmChecksText : ""
-            color: theme.mmBright
-            font.family: theme.font
-            font.pixelSize: 13
-        }
-
-        Text {
-            visible: !!(tab.vm && tab.vm.showMultiworldText)
-            text: tab.vm ? tab.vm.multiworldText : ""
-            color: theme.dim
-            font.family: theme.font
-            font.pixelSize: 12
-        }
-
-        SectionLabel {
-            Layout.topMargin: 8
-            text: "Goals"
-        }
-
-        Repeater {
-            model: tab.vm ? tab.vm.goals : []
-
-            delegate: Text {
-                required property var modelData
-                Layout.fillWidth: true
-                wrapMode: Text.WordWrap
-                text: modelData.text
-                color: modelData.satisfied ? theme.success : modelData.open ? theme.text : theme.faint
+            Text {
+                text: tab.vm ? tab.vm.checksText : ""
+                color: theme.text
                 font.family: theme.font
                 font.pixelSize: 13
             }
-        }
 
-        Text {
-            visible: !!(tab.vm && !tab.vm.hasGoals)
-            text: "No goal data in this seed."
-            color: theme.faint
-            font.family: theme.font
-            font.pixelSize: 12
-        }
+            Text {
+                text: tab.vm ? tab.vm.itemsOwnedText : ""
+                color: theme.text
+                font.family: theme.font
+                font.pixelSize: 13
+            }
 
-        Text {
-            Layout.fillWidth: true
-            Layout.topMargin: 4
-            wrapMode: Text.WordWrap
-            text: tab.vm ? tab.vm.goalsNote : ""
-            color: theme.dim
-            font.family: theme.font
-            font.pixelSize: 11
+            Text {
+                text: tab.vm ? tab.vm.ootChecksText : ""
+                color: theme.goldBright
+                font.family: theme.font
+                font.pixelSize: 13
+            }
+
+            Text {
+                text: tab.vm ? tab.vm.mmChecksText : ""
+                color: theme.mmBright
+                font.family: theme.font
+                font.pixelSize: 13
+            }
+
+            Text {
+                visible: !!(tab.vm && tab.vm.showMultiworldText)
+                text: tab.vm ? tab.vm.multiworldText : ""
+                color: theme.dim
+                font.family: theme.font
+                font.pixelSize: 12
+            }
+
+            SectionLabel {
+                Layout.topMargin: 8
+                text: "Goals"
+            }
+
+            Repeater {
+                model: tab.vm ? tab.vm.goals : []
+
+                delegate: Text {
+                    required property var modelData
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                    text: modelData.text
+                    color: modelData.satisfied ? theme.success : modelData.open ? theme.error : theme.faint
+                    font.family: theme.font
+                    font.pixelSize: 13
+                }
+            }
+
+            Text {
+                visible: !!(tab.vm && !tab.vm.hasGoals)
+                text: "No goal data in this seed."
+                color: theme.faint
+                font.family: theme.font
+                font.pixelSize: 12
+            }
+
+            Text {
+                Layout.fillWidth: true
+                Layout.topMargin: 4
+                wrapMode: Text.WordWrap
+                text: tab.vm ? tab.vm.goalsNote : ""
+                color: theme.dim
+                font.family: theme.font
+                font.pixelSize: 11
+            }
         }
     }
 
@@ -220,7 +231,7 @@ ColumnLayout {
                 delegate: Text {
                     required property var modelData
                     text: modelData.mark + "  " + modelData.name
-                    color: modelData.owned ? theme.text : theme.faint
+                    color: modelData.owned ? theme.success : theme.faint
                     font.family: theme.font
                     font.pixelSize: 12
                 }
@@ -250,15 +261,11 @@ ColumnLayout {
             width: items.width - 10
             height: 22
             verticalAlignment: Text.AlignVCenter
+            elide: Text.ElideRight
             text: modelData.mark + "  " + modelData.name
-            color: modelData.owned ? theme.text : theme.faint
+            color: modelData.owned ? theme.success : theme.faint
             font.family: theme.font
             font.pixelSize: 13
         }
-    }
-
-    Item {
-        Layout.fillHeight: true
-        visible: !!(tab.vm && tab.vm.showOverview)
     }
 }

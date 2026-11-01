@@ -25,18 +25,27 @@ PanelPopup {
     ListView {
         id: list
         Layout.fillWidth: true
-        Layout.preferredHeight: Math.min(contentHeight, 260)
+        Layout.fillHeight: true
+        Layout.preferredHeight: contentHeight
+        Layout.minimumHeight: Math.min(contentHeight, 120)
+        visible: count > 0
         clip: true
+        boundsBehavior: Flickable.StopAtBounds
         model: popup.picks
-        ScrollBar.vertical: ScrollBar { }
+        ScrollBar.vertical: ScrollBar {
+            policy: list.contentHeight > list.height ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+        }
 
         delegate: GoldCheck {
-            required property var modelData
-            width: list.width - 12
+            required property int index
+            readonly property var pick: popup.config.modelPickAt(popup.isOot, index)
+            width: list.width - (list.contentHeight > list.height ? 12 : 0)
+            height: 28
+            wrap: false
             tint: popup.tint
-            text: modelData.name
-            checked: modelData.isSelected
-            onToggled: modelData.isSelected = checked
+            text: pick.name
+            on: pick.isSelected
+            onFlipped: value => popup.config.setModelPick(popup.isOot, index, value)
         }
     }
 
@@ -63,16 +72,19 @@ PanelPopup {
             Layout.fillWidth: true
             tint: popup.tint
             text: "Use my OoT model for adult Link"
-            checked: popup.card ? popup.card.portAdultModel : false
-            onToggled: popup.card.portAdultModel = checked
+            on: popup.card ? popup.card.portAdultModel : false
+            ToolTip.visible: hovered
+            ToolTip.delay: 500
+            ToolTip.text: "Adult Link in MM renders your selected OoT model. Unchecked, the vanilla adult is used."
+            onFlipped: value => popup.card.portAdultModel = value
         }
 
         GoldCheck {
             Layout.fillWidth: true
             tint: popup.tint
             text: "Use my OoT child model as MM's human Link"
-            checked: popup.card ? popup.card.portChildModel : false
-            onToggled: popup.card.portChildModel = checked
+            on: popup.card ? popup.card.portChildModel : false
+            onFlipped: value => popup.card.portChildModel = value
         }
 
         Text {

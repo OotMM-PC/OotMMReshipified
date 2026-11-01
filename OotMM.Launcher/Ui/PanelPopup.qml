@@ -14,7 +14,8 @@ Popup {
     padding: 18
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
     anchors.centerIn: Overlay.overlay
-    width: Math.min(520, parent ? parent.width - 48 : 520)
+    width: Math.min(560, parent ? parent.width - 48 : 560)
+    height: Math.min(implicitHeight, Overlay.overlay ? Overlay.overlay.height - 64 : implicitHeight)
 
     Overlay.modal: Rectangle {
         color: theme.alpha(theme.bgDeep, 0.72)
@@ -51,6 +52,7 @@ Popup {
         ColumnLayout {
             id: body
             Layout.fillWidth: true
+            Layout.fillHeight: true
             spacing: 8
         }
     }

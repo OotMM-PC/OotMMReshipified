@@ -54,8 +54,11 @@ ColumnLayout {
     GoldCheck {
         Layout.fillWidth: true
         text: "Enable dev mode (debug and cheat menus)"
-        checked: tab.vm ? tab.vm.devMode : false
-        onToggled: tab.vm.devMode = checked
+        on: tab.vm ? tab.vm.devMode : false
+        ToolTip.visible: hovered
+        ToolTip.delay: 500
+        ToolTip.text: "Both games hide their debug, cheat and enhancement menus by default so seeds stay fair. This unlocks them on the next game boot, along with the force-unlock cheat and manual game switching."
+        onFlipped: value => tab.vm.devMode = value
     }
 
     ColumnLayout {

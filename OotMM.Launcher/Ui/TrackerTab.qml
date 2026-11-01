@@ -59,10 +59,37 @@ ColumnLayout {
     }
 
     Field {
+        id: search
         Layout.fillWidth: true
-        placeholderText: "filter checks…"
+        rightPadding: clear.visible ? clear.width + 12 : 9
+        placeholderText: "Search checks (Ctrl+F)"
         text: tab.vm ? tab.vm.filterText : ""
         onTextEdited: tab.vm.filterText = text
+        Keys.onEscapePressed: tab.vm.filterText = ""
+
+        LinkButton {
+            id: clear
+            anchors.right: parent.right
+            anchors.rightMargin: 9
+            anchors.verticalCenter: parent.verticalCenter
+            visible: search.text.length > 0
+            text: "✕"
+            ToolTip.visible: hovered
+            ToolTip.delay: 500
+            ToolTip.text: "Clear the search"
+            onClicked: {
+                tab.vm.filterText = ""
+                search.forceActiveFocus()
+            }
+        }
+    }
+
+    Shortcut {
+        sequences: [StandardKey.Find]
+        onActivated: {
+            search.forceActiveFocus()
+            search.selectAll()
+        }
     }
 
     RowLayout {
@@ -78,14 +105,19 @@ ColumnLayout {
 
         GoldCheck {
             text: "Hide collected"
-            checked: tab.vm ? tab.vm.hideCollected : true
-            onToggled: tab.vm.hideCollected = checked
+            wrap: false
+            on: tab.vm ? tab.vm.hideCollected : true
+            onFlipped: value => tab.vm.hideCollected = value
         }
 
         GoldCheck {
             text: "In logic"
-            checked: tab.vm ? tab.vm.onlyInLogic : true
-            onToggled: tab.vm.onlyInLogic = checked
+            wrap: false
+            on: tab.vm ? tab.vm.onlyInLogic : true
+            ToolTip.visible: hovered
+            ToolTip.delay: 500
+            ToolTip.text: "Only checks reachable with your current items, per the seed's logic."
+            onFlipped: value => tab.vm.onlyInLogic = value
         }
     }
 
@@ -93,8 +125,11 @@ ColumnLayout {
         visible: !!(tab.vm && tab.vm.devMode)
         text: "Force-unlock mode"
         tint: theme.error
-        checked: tab.vm ? tab.vm.forceUnlockMode : false
-        onToggled: tab.vm.forceUnlockMode = checked
+        on: tab.vm ? tab.vm.forceUnlockMode : false
+        ToolTip.visible: hovered
+        ToolTip.delay: 500
+        ToolTip.text: "Cheat: click an open check to arm it, then click again to force-complete it. The running game grants its item through the normal pipeline."
+        onFlipped: value => tab.vm.forceUnlockMode = value
     }
 
     Text {
@@ -113,6 +148,39 @@ ColumnLayout {
         color: theme.alpha(theme.accent, 0.2)
     }
 
+    RowLayout {
+        Layout.fillWidth: true
+        visible: !!(tab.vm && tab.vm.hiddenMatches > 0)
+        spacing: 6
+
+        Text {
+            Layout.fillWidth: true
+            wrapMode: Text.WordWrap
+            text: tab.vm ? tab.vm.hiddenMatchesText : ""
+            color: theme.dim
+            font.family: theme.font
+            font.pixelSize: 12
+        }
+
+        LinkButton {
+            text: "Show them"
+            font.pixelSize: 12
+            onClicked: tab.vm.showAllMatches()
+        }
+    }
+
+    Text {
+        Layout.fillWidth: true
+        visible: list.count === 0
+        wrapMode: Text.WordWrap
+        text: tab.vm && tab.vm.filterText.length > 0 ? "No checks match \"" + tab.vm.filterText + "\"."
+                                                    : "No checks to show with these filters."
+        textFormat: Text.PlainText
+        color: theme.faint
+        font.family: theme.font
+        font.pixelSize: 12
+    }
+
     ListView {
         id: list
         Layout.fillWidth: true
@@ -123,14 +191,20 @@ ColumnLayout {
 
         delegate: Item {
             id: row
-            required property var modelData
+            required property int index
+            readonly property var check: tab.vm.checkAt(index)
+            readonly property bool clickable: !!(tab.vm && tab.vm.forceUnlockMode) && !row.check.collected && !row.check.isPending && row.check.checkId.length > 0
+            readonly property color nameColor: row.check.isArmed ? theme.error
+                                             : row.check.isPending ? theme.warning
+                                             : row.check.collected ? theme.success
+                                             : row.check.inLogic ? theme.text : theme.faint
             width: list.width - 10
             height: body.implicitHeight + 12
 
             Rectangle {
                 anchors.fill: parent
-                color: row.modelData.isArmed ? theme.alpha(theme.error, 0.15)
-                     : hover.hovered && tab.vm.forceUnlockMode ? theme.alpha(theme.accent, 0.08) : "transparent"
+                color: row.check.isArmed ? theme.alpha(theme.error, 0.15)
+                     : hover.hovered && row.clickable ? theme.alpha(theme.accent, 0.08) : "transparent"
             }
 
             Rectangle {
@@ -147,11 +221,22 @@ ColumnLayout {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 6
 
-                Text {
+                Rectangle {
                     Layout.alignment: Qt.AlignTop
-                    text: "•"
-                    color: theme.faint
-                    font.pixelSize: 13
+                    Layout.topMargin: 1
+                    implicitWidth: tag.implicitWidth + 10
+                    implicitHeight: tag.implicitHeight + 2
+                    radius: 4
+                    color: theme.alpha(row.check.gameTag === "MM" ? theme.mm : theme.gold, 0.16)
+
+                    Text {
+                        id: tag
+                        anchors.centerIn: parent
+                        text: row.check.gameTag
+                        color: row.check.gameTag === "MM" ? theme.mmBright : theme.goldBright
+                        font.family: theme.font
+                        font.pixelSize: 10
+                    }
                 }
 
                 ColumnLayout {
@@ -161,20 +246,19 @@ ColumnLayout {
                     Text {
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
-                        textFormat: Text.StyledText
-                        text: "<font color='" + (row.modelData.gameTag === "MM" ? theme.mmBright : theme.goldBright)
-                              + "'>[" + row.modelData.gameTag + "]</font> " + row.modelData.displayName
-                        color: row.modelData.collected ? theme.faint : theme.text
+                        textFormat: Text.PlainText
+                        text: row.check.displayName
+                        color: row.nameColor
                         font.family: theme.font
                         font.pixelSize: 13
-                        font.strikeout: row.modelData.collected
                     }
 
                     Text {
                         Layout.fillWidth: true
-                        visible: text.length > 0
+                        visible: row.check.collected && text.length > 0
                         wrapMode: Text.WordWrap
-                        text: row.modelData.itemText
+                        textFormat: Text.PlainText
+                        text: row.check.itemText
                         color: theme.dim
                         font.family: theme.font
                         font.pixelSize: 12
@@ -184,10 +268,12 @@ ColumnLayout {
 
             HoverHandler {
                 id: hover
+                cursorShape: row.clickable ? Qt.PointingHandCursor : Qt.ArrowCursor
             }
 
             TapHandler {
-                onTapped: row.modelData.click()
+                enabled: row.clickable || row.check.isArmed
+                onTapped: tab.vm.clickVisible(row.index)
             }
         }
     }

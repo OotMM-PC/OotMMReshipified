@@ -84,11 +84,11 @@ public static class ModScanner
             .ToList();
     }
 
-    public static bool SetEnabledOnDisk(ModInfo mod, bool enabled)
+    public static ModInfo? SetEnabledOnDisk(ModInfo mod, bool enabled)
     {
         if (mod.Required)
         {
-            return true;
+            return mod;
         }
 
         var basePath = mod.FullPath.EndsWith(DisabledSuffix, StringComparison.Ordinal)
@@ -97,17 +97,17 @@ public static class ModScanner
         var target = enabled ? basePath : basePath + DisabledSuffix;
         if (target == mod.FullPath)
         {
-            return true;
+            return mod with { EnabledOnDisk = enabled };
         }
 
         try
         {
             File.Move(mod.FullPath, target);
-            return true;
+            return mod with { FullPath = target, EnabledOnDisk = enabled };
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            return false;
+            return null;
         }
     }
 

@@ -5,31 +5,31 @@ namespace OotMM.Launcher.ViewModels;
 public sealed class ModEntryViewModel : ViewModelBase
 {
     private readonly Action _onToggled;
-    private readonly Action _moveUp;
-    private readonly Action _moveDown;
     private bool _enabled;
     private bool _isFirst;
     private bool _isLast;
     private bool _isSelected;
 
-    public ModEntryViewModel(ModInfo info, Action onToggled, Action moveUp, Action moveDown)
+    public ModEntryViewModel(ModInfo info, Action onToggled)
     {
         Info = info;
         _onToggled = onToggled;
         _enabled = info.EnabledOnDisk;
-        _moveUp = moveUp;
-        _moveDown = moveDown;
     }
 
-    public ModInfo Info { get; }
+    internal static ModEntryViewModel Empty { get; } = new(new ModInfo("", "", false, false), () => { });
+
+    public ModInfo Info { get; private set; }
 
     public string Name => Info.Name;
 
     public bool Required => Info.Required;
 
-    public void MoveUp() => _moveUp();
-
-    public void MoveDown() => _moveDown();
+    internal void Refresh(ModInfo info)
+    {
+        Info = info;
+        Set(ref _enabled, info.EnabledOnDisk, nameof(Enabled));
+    }
 
     public bool IsFirst
     {

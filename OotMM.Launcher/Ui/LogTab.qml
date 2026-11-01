@@ -26,7 +26,9 @@ ColumnLayout {
         clip: true
         model: tab.vm ? tab.vm.entries : []
         ScrollBar.vertical: ScrollBar { }
-        onCountChanged: Qt.callLater(positionViewAtEnd)
+        property bool follow: true
+        onContentYChanged: follow = atYEnd || contentHeight <= height
+        onCountChanged: if (follow) Qt.callLater(positionViewAtEnd)
 
         delegate: Item {
             id: row
@@ -53,7 +55,8 @@ ColumnLayout {
                     Layout.fillWidth: true
                     wrapMode: Text.WordWrap
                     text: row.modelData.message
-                    color: row.modelData.isRemote ? theme.mmBright : theme.text
+                    textFormat: Text.PlainText
+                    color: row.modelData.isRemote ? theme.warning : theme.text
                     font.family: theme.font
                     font.pixelSize: 13
                 }

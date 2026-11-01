@@ -6,6 +6,8 @@ Button {
 
     property color tint: theme.accent
     property bool danger: false
+    property color labelColor: danger ? theme.error : theme.text
+    property string tip: ""
 
     implicitHeight: 34
     leftPadding: 14
@@ -13,11 +15,14 @@ Button {
     font.family: theme.font
     font.pixelSize: 13
     hoverEnabled: true
+    ToolTip.visible: tip.length > 0 && hovered
+    ToolTip.delay: 500
+    ToolTip.text: tip
 
     contentItem: Text {
         text: control.text
         font: control.font
-        color: !control.enabled ? theme.faint : control.danger ? theme.error : theme.text
+        color: !control.enabled ? theme.faint : control.labelColor
         horizontalAlignment: Text.AlignLeft
         verticalAlignment: Text.AlignVCenter
         elide: Text.ElideRight

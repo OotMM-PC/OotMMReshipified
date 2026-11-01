@@ -4,24 +4,21 @@ namespace OotMM.Launcher.ViewModels;
 
 public sealed class CheckRowViewModel : ViewModelBase
 {
-    private readonly Action<CheckRowViewModel>? _clicked;
     private bool _collected;
     private bool _inLogic;
     private bool _isArmed;
     private bool _isPending;
 
     public CheckRowViewModel(string gameTag, string name, string itemText,
-                             string checkId = "", bool ownerIsLocal = true,
-                             Action<CheckRowViewModel>? clicked = null)
+                             string checkId = "", bool ownerIsLocal = true)
     {
         GameTag = gameTag;
         Name = name;
         ItemText = itemText + (ownerIsLocal || itemText.Length == 0 ? "" : " (another player's item)");
         CheckId = checkId;
-        _clicked = clicked;
     }
 
-    public void Click() => _clicked?.Invoke(this);
+    internal static CheckRowViewModel Empty { get; } = new("", "", "");
 
     public string GameTag { get; }
 
@@ -169,35 +166,58 @@ public sealed class TrackerTabViewModel : ViewModelBase
 
     public ObservableCollection<CheckRowViewModel> VisibleChecks { get; private set; } = [];
 
+    private int _hiddenMatches;
+
+    public int HiddenMatches => _hiddenMatches;
+
+    public string HiddenMatchesText =>
+        $"{_hiddenMatches} more match{(_hiddenMatches == 1 ? " is" : "es are")} hidden by the filters.";
+
+    public void ShowAllMatches()
+    {
+        _hideCollected = false;
+        _onlyInLogic = false;
+        Raise(nameof(HideCollected));
+        Raise(nameof(OnlyInLogic));
+        RaiseListChanged();
+    }
+
+    private static string Fold(string text) =>
+        new(text.Where(c => c is not ('\'' or '’' or '-' or '—' or '.' or ',')).Select(char.ToLowerInvariant).ToArray());
+
+    private static bool MatchesSearch(CheckRowViewModel row, string[] terms)
+    {
+        if (terms.Length == 0)
+        {
+            return true;
+        }
+
+        var haystack = Fold($"{row.GameTag} {(row.GameTag == "MM" ? "majora" : "ocarina")} {row.Name} {(row.Collected ? row.ItemText : "")}");
+        return terms.All(haystack.Contains);
+    }
+
     private List<CheckRowViewModel> FilterChecks()
     {
-        IEnumerable<CheckRowViewModel> rows = _allChecks;
-        if (_gameFilterIndex == 1)
+        var terms = _filterText.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(Fold).Where(t => t.Length > 0).ToArray();
+        var matches = _allChecks.Where(r =>
+            (_gameFilterIndex != 1 || r.GameTag == "OOT")
+            && (_gameFilterIndex != 2 || r.GameTag == "MM")
+            && MatchesSearch(r, terms)).ToList();
+
+        var rows = matches.Where(r =>
+            (!_hideCollected || !r.Collected)
+            && (!_onlyInLogic || r.InLogic || r.Collected)).ToList();
+
+        var hidden = terms.Length > 0 ? matches.Count - rows.Count : 0;
+        if (hidden != _hiddenMatches)
         {
-            rows = rows.Where(r => r.GameTag == "OOT");
-        }
-        else if (_gameFilterIndex == 2)
-        {
-            rows = rows.Where(r => r.GameTag == "MM");
+            _hiddenMatches = hidden;
+            Raise(nameof(HiddenMatches));
+            Raise(nameof(HiddenMatchesText));
         }
 
-        if (_hideCollected)
-        {
-            rows = rows.Where(r => !r.Collected);
-        }
-
-        if (_onlyInLogic)
-        {
-            rows = rows.Where(r => r.InLogic || r.Collected);
-        }
-
-        if (!string.IsNullOrWhiteSpace(_filterText))
-        {
-            rows = rows.Where(r =>
-                r.Name.Contains(_filterText, StringComparison.OrdinalIgnoreCase));
-        }
-
-        return rows.ToList();
+        return rows;
     }
 
     public double CollectedFraction =>
@@ -223,6 +243,17 @@ public sealed class TrackerTabViewModel : ViewModelBase
         _isMultiworld = isMultiworld;
         Raise(nameof(InLogicText));
         Raise(nameof(ShowStuckNote));
+    }
+
+    public CheckRowViewModel CheckAt(int index) =>
+        index >= 0 && index < VisibleChecks.Count ? VisibleChecks[index] : CheckRowViewModel.Empty;
+
+    public void ClickVisible(int index)
+    {
+        if (index >= 0 && index < VisibleChecks.Count)
+        {
+            OnRowClicked(VisibleChecks[index]);
+        }
     }
 
     public void OnRowClicked(CheckRowViewModel row)
@@ -282,7 +313,7 @@ public sealed class TrackerTabViewModel : ViewModelBase
     public void LoadSampleData()
     {
         CheckRowViewModel Row(string tag, string name, string item, bool collected, bool inLogic) =>
-            new(tag, name, item) { Collected = collected, InLogic = inLogic };
+            new(tag, name, item, checkId: name) { Collected = collected, InLogic = inLogic };
 
         SetChecks(
         [

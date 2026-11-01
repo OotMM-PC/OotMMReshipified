@@ -1,6 +1,5 @@
 using System.Collections.ObjectModel;
 using System.IO;
-using Avalonia.Threading;
 using OotMM.Core;
 using OotMM.Launcher.Models;
 using OotMM.Launcher.Services;
@@ -13,8 +12,8 @@ public sealed class ConfigViewModel : ViewModelBase
     private readonly UiSettings _settings;
     private readonly Action _previewRuntime;
     private readonly Action<Seed, string, string, string> _startSession;
-    private readonly DispatcherTimer _rescanTimer;
-    private readonly DispatcherTimer _setupTimer;
+    private readonly UiTimer _rescanTimer;
+    private readonly UiTimer _setupTimer;
     private readonly Queue<(string ExePath, bool IsOot, bool NeedMq)> _setupQueue = [];
 
     private string _seedPath = "";
@@ -61,18 +60,16 @@ public sealed class ConfigViewModel : ViewModelBase
         RefreshSeedPreview();
         _restoring = false;
 
-        _rescanTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(2) };
-        _rescanTimer.Tick += (_, _) =>
+        _rescanTimer = UiScheduler.CreateTimer(TimeSpan.FromSeconds(2), () =>
         {
             if (_isActive)
             {
                 RescanAll();
             }
-        };
+        });
         _rescanTimer.Start();
 
-        _setupTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
-        _setupTimer.Tick += (_, _) => TickSetup();
+        _setupTimer = UiScheduler.CreateTimer(TimeSpan.FromMilliseconds(250), TickSetup);
     }
 
     public GameCardViewModel OotCard { get; }

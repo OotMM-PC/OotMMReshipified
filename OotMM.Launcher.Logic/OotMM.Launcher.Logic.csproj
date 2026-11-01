@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <RootNamespace>OotMM.Launcher</RootNamespace>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <EmbeddedResource Include="Assets\Csmc\**\*.png" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <ProjectReference Include="..\OotMM.Core\OotMM.Core.csproj" />
+    </ItemGroup>
+
+</Project>

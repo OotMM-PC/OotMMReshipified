@@ -19,7 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\OotMM.Launcher\OotMM.Launcher.csproj" />
+    <ProjectReference Include="..\OotMM.Launcher.Logic\OotMM.Launcher.Logic.csproj" />
   </ItemGroup>
 
 </Project>

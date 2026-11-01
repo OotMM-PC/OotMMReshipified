@@ -13,6 +13,7 @@ public sealed class MainWindowViewModel : ViewModelBase
     private SessionCoordinator? _coordinator;
     private double _uiScale;
     private bool _relayStarted;
+    private bool _accentIsViolet;
 
     public MainWindowViewModel(UiSettings settings, IFilePicker picker)
     {
@@ -113,7 +114,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             }
 
             started = true;
-            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            UiScheduler.Post(() =>
             {
                 if (coordinator == _coordinator && coordinator.Start() is { } startError)
                 {
@@ -205,12 +206,17 @@ public sealed class MainWindowViewModel : ViewModelBase
 
     private void SetUiScale(double scale) => UiScale = scale;
 
+    public bool AccentIsViolet
+    {
+        get => _accentIsViolet;
+        private set => Set(ref _accentIsViolet, value);
+    }
+
     private void ApplyAccent()
     {
-        var violet = _settings.Theme == 2
-                     || (_settings.Theme == 0
-                         && CurrentViewModel is RuntimeViewModel runtime
-                         && runtime.ActiveGame == Game.Mm);
-        App.ApplyAccent(violet);
+        AccentIsViolet = _settings.Theme == 2
+                         || (_settings.Theme == 0
+                             && CurrentViewModel is RuntimeViewModel runtime
+                             && runtime.ActiveGame == Game.Mm);
     }
 }

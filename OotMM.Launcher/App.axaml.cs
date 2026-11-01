@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Media;
+using Avalonia.Threading;
 using OotMM.Launcher.Models;
 using OotMM.Launcher.Services;
 using OotMM.Launcher.ViewModels;
@@ -17,9 +18,20 @@ public class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
+            var pump = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(5) };
+            pump.Tick += (_, _) => UiScheduler.Pump();
+            pump.Start();
             var settings = UiSettings.Load();
             var window = new MainWindow();
             var viewModel = new MainWindowViewModel(settings, new StorageFilePicker(window));
+            ApplyAccent(viewModel.AccentIsViolet);
+            viewModel.PropertyChanged += (_, e) =>
+            {
+                if (e.PropertyName == nameof(MainWindowViewModel.AccentIsViolet))
+                {
+                    ApplyAccent(viewModel.AccentIsViolet);
+                }
+            };
             window.DataContext = viewModel;
             desktop.MainWindow = window;
         }

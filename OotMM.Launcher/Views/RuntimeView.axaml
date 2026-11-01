@@ -35,7 +35,7 @@
         </Border>
 
         <!-- Sidebar: exactly one of the three states renders. -->
-        <LayoutTransformControl Grid.Column="1" LayoutTransform="{Binding SidebarScaleTransform}">
+        <LayoutTransformControl Grid.Column="1" x:Name="SidebarScaleHost">
         <Panel>
 
             <!-- 1) End-of-session drain: no controls on purpose. Exposing

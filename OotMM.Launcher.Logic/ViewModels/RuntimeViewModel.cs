@@ -228,16 +228,8 @@ public sealed class RuntimeViewModel : ViewModelBase
     public double SidebarScale
     {
         get => _sidebarScale;
-        private set
-        {
-            if (Set(ref _sidebarScale, value))
-            {
-                Raise(nameof(SidebarScaleTransform));
-            }
-        }
+        private set => Set(ref _sidebarScale, value);
     }
-
-    public Avalonia.Media.ScaleTransform SidebarScaleTransform => new(SidebarScale, SidebarScale);
 
     private void RefreshFromCoordinator()
     {

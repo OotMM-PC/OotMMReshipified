@@ -3,11 +3,6 @@ using Avalonia.Platform.Storage;
 
 namespace OotMM.Launcher.Services;
 
-public interface IFilePicker
-{
-    Task<string?> PickFileAsync(string title, string filterName, params string[] patterns);
-}
-
 public sealed class StorageFilePicker(TopLevel topLevel) : IFilePicker
 {
     public async Task<string?> PickFileAsync(string title, string filterName, params string[] patterns)

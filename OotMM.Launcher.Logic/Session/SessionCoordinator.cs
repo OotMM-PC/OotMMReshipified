@@ -1,5 +1,5 @@
-using Avalonia.Threading;
 using OotMM.Core;
+using OotMM.Launcher.Services;
 
 namespace OotMM.Launcher.Session;
 
@@ -9,9 +9,9 @@ public sealed class SessionCoordinator : IDisposable
     private const uint FaroresWindCrossEntrance = 0xFFFD;
 
     private readonly Core.Session _session;
-    private readonly DispatcherTimer _timer;
-    private readonly DispatcherTimer _focusTimer;
-    private readonly DispatcherTimer _presenceTimer;
+    private readonly UiTimer _timer;
+    private readonly UiTimer _focusTimer;
+    private readonly UiTimer _presenceTimer;
     private readonly MultiworldSync? _multiworld;
     private readonly ModelSyncCoordinator? _modelSync;
     private readonly SessionInventory _inventory;
@@ -47,12 +47,9 @@ public sealed class SessionCoordinator : IDisposable
         _modelSync = modelSync;
         _inventory = new SessionInventory(session.Seed, session.DebugItemsPath);
         ActiveGame = session.RecoveredTransition?.ToGame ?? startingGame ?? session.Seed.ResolveStartingGame();
-        _timer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(250) };
-        _timer.Tick += (_, _) => Tick();
-        _focusTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(25) };
-        _focusTimer.Tick += (_, _) => PollGameFocus();
-        _presenceTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
-        _presenceTimer.Tick += (_, _) => PumpPresence();
+        _timer = UiScheduler.CreateTimer(TimeSpan.FromMilliseconds(250), Tick);
+        _focusTimer = UiScheduler.CreateTimer(TimeSpan.FromMilliseconds(25), PollGameFocus);
+        _presenceTimer = UiScheduler.CreateTimer(TimeSpan.FromMilliseconds(50), PumpPresence);
 
         if (_multiworld is not null)
         {
@@ -315,9 +312,9 @@ public sealed class SessionCoordinator : IDisposable
     {
         _ended = true;
         _startupCancellation?.Cancel();
-        _timer.Stop();
-        _focusTimer.Stop();
-        _presenceTimer.Stop();
+        _timer.Dispose();
+        _focusTimer.Dispose();
+        _presenceTimer.Dispose();
         _process?.Terminate();
         _process?.Dispose();
         _ipc?.Dispose();
@@ -1283,7 +1280,7 @@ public sealed class SessionCoordinator : IDisposable
             _focusTimer.Stop();
             _presenceTimer.Stop();
             var copyGame = ActiveGame;
-            Dispatcher.UIThread.Post(() => SaveSelectionReady?.Invoke(reopened, copyGame));
+            UiScheduler.Post(() => SaveSelectionReady?.Invoke(reopened, copyGame));
             return;
         }
         if (!SessionPaths.TryPrepareSelectedSession(_session, request, _lastNativeSaveRequest,
@@ -1306,7 +1303,7 @@ public sealed class SessionCoordinator : IDisposable
         _presenceTimer.Stop();
         _process?.Terminate();
         var game = ActiveGame;
-        Dispatcher.UIThread.Post(() => SaveSelectionReady?.Invoke(selected, game));
+        UiScheduler.Post(() => SaveSelectionReady?.Invoke(selected, game));
     }
 
     private void LogEvent(string message) => EventLogged?.Invoke(message);

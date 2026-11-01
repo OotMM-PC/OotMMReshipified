@@ -18,6 +18,7 @@ public sealed class MultiworldSync : IDisposable
 {
     private readonly Core.Session _session;
     private readonly RelayClient _relay;
+    private readonly PresenceLobby _lobby;
     private readonly string _logPath;
     private readonly string _sidecarPath;
     private readonly string _clientName;
@@ -62,6 +63,7 @@ public sealed class MultiworldSync : IDisposable
         _acked = [.. scan.OwnKeys];
 
         DurableFile.WriteAtomic(Path.Combine(session.SessionDir, "multiworld.v4"), "4\n");
+        _lobby = new PresenceLobby(session.Seed, session.SessionDir, message => EventLogged?.Invoke(message, true));
 
         _relay = new RelayClient(host, port,
             RelayProtocol.BuildHello(session.Seed, session.SaveId, clientName,
@@ -76,7 +78,11 @@ public sealed class MultiworldSync : IDisposable
 
     public ulong ConnectionGeneration => _relay.ConnectionGeneration;
 
-    public bool SendModelLine(string line) => _relay.QueueLine(line);
+    public bool SendModelLine(string line) =>
+        _lobby.Globalize(line, RelayProtocol.ExtractStringField(line, "type") == PresencePackets.ModRequest)
+            is not { } global || _relay.QueueLine(global);
+
+    public IEnumerable<int> RemoteSlots => _lobby.RemoteSlots;
 
     public bool Pvp { get; private set; }
     public bool FriendlyFire { get; private set; }
@@ -123,13 +129,26 @@ public sealed class MultiworldSync : IDisposable
         var inbound = new List<string>();
         _relay.Pump(inbound);
         var now = Now;
-        foreach (var line in inbound)
+        foreach (var received in inbound)
         {
-            switch (RelayProtocol.ExtractStringField(line, "type"))
+            var type = RelayProtocol.ExtractStringField(received, "type");
+            var line = received;
+            if (type is PresencePackets.PlayerState or PresencePackets.PvpHit or PresencePackets.DeathLink
+                or PresencePackets.ModAnnounce or PresencePackets.ModRequest or PresencePackets.ModChunk)
+            {
+                if (_lobby.Localize(received) is not { } local)
+                {
+                    continue;
+                }
+
+                line = local;
+            }
+
+            switch (type)
             {
                 case PresencePackets.PlayerState:
                     var source = RelayProtocol.ExtractIntField(line, "sourcePlayer", -1);
-                    if (source >= 0 && source != _session.Seed.PlayerId)
+                    if (source > 0)
                     {
                         _remotePoses[source] = (line, now);
                     }
@@ -143,8 +162,7 @@ public sealed class MultiworldSync : IDisposable
 
                     break;
                 case PresencePackets.DeathLink:
-                    if (_seenDeaths.Add(RelayProtocol.ExtractStringField(line, "teamId") + ":"
-                                        + RelayProtocol.ExtractIntField(line, "sourcePlayer") + ":"
+                    if (_seenDeaths.Add(RelayProtocol.ExtractStringField(line, PresenceLobby.LobbyField) + ":"
                                         + RelayProtocol.ExtractU64Field(line, "seq")))
                     {
                         _pendingDeaths.Add(line);
@@ -380,9 +398,9 @@ public sealed class MultiworldSync : IDisposable
     {
         var line = GameIpcProtocol.BuildRelayPresenceLine(
             PresencePackets.PlayerState, poseBody, _session.Seed, _clientName);
-        if (line.Length > 0)
+        if (line.Length > 0 && _lobby.Globalize(line, false) is { } global)
         {
-            _relay.QueueEphemeralLine("pose", line);
+            _relay.QueueEphemeralLine("pose", global);
         }
     }
 
@@ -390,9 +408,9 @@ public sealed class MultiworldSync : IDisposable
     {
         var line = GameIpcProtocol.BuildRelayPresenceLine(
             PresencePackets.PvpHit, hitBody, _session.Seed, "");
-        if (line.Length > 0)
+        if (line.Length > 0 && _lobby.Globalize(line, true) is { } global)
         {
-            _relay.QueueLine(line);
+            _relay.QueueLine(global);
         }
     }
 
@@ -400,9 +418,9 @@ public sealed class MultiworldSync : IDisposable
     {
         var line = GameIpcProtocol.BuildRelayPresenceLine(
             PresencePackets.DeathLink, $"{{\"seq\":{++_deathSeq}}}", _session.Seed, "");
-        if (line.Length > 0)
+        if (line.Length > 0 && _lobby.Globalize(line, false) is { } global)
         {
-            _relay.QueueLine(line);
+            _relay.QueueLine(global);
         }
     }
 

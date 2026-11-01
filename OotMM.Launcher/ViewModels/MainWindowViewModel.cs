@@ -86,7 +86,8 @@ public sealed class MainWindowViewModel : ViewModelBase
 
             multiworld = new MultiworldSync(session, host, port, _settings.PlayerName);
             multiworld.AutoHostWanted += () => StartHostedRelay(port);
-            modelSync = ModelSyncCoordinator.Create(session, _settings, multiworld.SendModelLine);
+            modelSync = ModelSyncCoordinator.Create(
+                session, _settings, multiworld.SendModelLine, () => multiworld.RemoteSlots);
         }
 
         _coordinator?.Dispose();

@@ -59,7 +59,8 @@ public sealed class ModelSyncCoordinator
     private readonly HashSet<string> _installBlockedLogged = [];
     private TimeSpan _lastAnnounceAt = TimeSpan.MinValue;
     private ulong _announcedGeneration;
-    private bool _fillsBuilt;
+    private readonly HashSet<int> _filledSlots = [];
+    private readonly Func<IEnumerable<int>> _remoteSlots;
     private Game? _runningGame;
 
     private static TimeSpan Now => TimeSpan.FromMilliseconds(Environment.TickCount64);
@@ -67,9 +68,12 @@ public sealed class ModelSyncCoordinator
     public ModelSyncCoordinator(
         Seed seed, string cacheDir, int maxMegabytes, IReadOnlyList<ModelShareSet> shares,
         IReadOnlyDictionary<Game, string> modsDirs,
-        IReadOnlyDictionary<Game, IReadOnlyList<string>> fillArchives, Func<string, bool> send)
+        IReadOnlyDictionary<Game, IReadOnlyList<string>> fillArchives, Func<string, bool> send,
+        Func<IEnumerable<int>>? remoteSlots = null)
     {
         _seed = seed;
+        _remoteSlots = remoteSlots
+                       ?? (() => Enumerable.Range(1, seed.PlayerCount).Where(player => player != seed.PlayerId));
         _cacheDir = cacheDir;
         _maxMegabytes = maxMegabytes;
         _shares = shares;
@@ -83,7 +87,7 @@ public sealed class ModelSyncCoordinator
     public event Action<string>? Logged;
 
     public static ModelSyncCoordinator Create(
-        Core.Session session, UiSettings settings, Func<string, bool> send)
+        Core.Session session, UiSettings settings, Func<string, bool> send, Func<IEnumerable<int>> remoteSlots)
     {
         var ootMods = ModsDir(session.OotExe);
         var mmMods = ModsDir(session.MmExe);
@@ -116,7 +120,8 @@ public sealed class ModelSyncCoordinator
                 [Game.Oot] = [Path.Combine(ootExeDir, "oot.o2r")],
                 [Game.Mm] = [Path.Combine(mmExeDir, "mm.o2r"), Path.Combine(mmMods, "ootmm_assets.o2r")],
             },
-            send);
+            send,
+            remoteSlots);
     }
 
     public void HandleLine(string line)
@@ -150,7 +155,7 @@ public sealed class ModelSyncCoordinator
     public void Tick(bool ready, ulong generation, Game? runningGame = null)
     {
         _runningGame = runningGame;
-        BuildFillsOnce();
+        BuildMissingFills();
         if (!ready)
         {
             return;
@@ -451,17 +456,11 @@ public sealed class ModelSyncCoordinator
         }
     }
 
-    private void BuildFillsOnce()
+    private void BuildMissingFills()
     {
-        if (_fillsBuilt)
+        foreach (var player in _remoteSlots().ToList())
         {
-            return;
-        }
-
-        _fillsBuilt = true;
-        for (var player = 1; player <= _seed.PlayerCount; player++)
-        {
-            if (player == _seed.PlayerId)
+            if (player == _seed.PlayerId || !_filledSlots.Add(player))
             {
                 continue;
             }

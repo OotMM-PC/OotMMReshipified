@@ -115,6 +115,38 @@ public static class RelayProtocol
         return int.TryParse(line[start..cursor], out var value) ? value : fallback;
     }
 
+    public static string ReplaceIntField(string line, string key, int value)
+    {
+        var needle = "\"" + key + "\"";
+        var cursor = line.IndexOf(needle, StringComparison.Ordinal);
+        if (cursor < 0)
+        {
+            return line;
+        }
+
+        cursor += needle.Length;
+        while (cursor < line.Length && line[cursor] is ' ' or '\t' or ':')
+        {
+            cursor++;
+        }
+
+        var start = cursor;
+        while (cursor < line.Length && line[cursor] is >= '0' and <= '9')
+        {
+            cursor++;
+        }
+
+        return cursor == start ? line : string.Concat(line.AsSpan(0, start), value.ToString(), line.AsSpan(cursor));
+    }
+
+    public static string AppendStringField(string line, string key, string value)
+    {
+        var end = line.LastIndexOf('}');
+        return end < 0
+            ? line
+            : line[..end] + ",\"" + key + "\":" + JsonText.EscapeString(value) + line[end..];
+    }
+
     public static ulong ExtractU64Field(string line, string key, ulong fallback = 0)
     {
         var needle = "\"" + key + "\"";

@@ -8,6 +8,7 @@ public sealed class SessionCoordinator : IDisposable
 {
     private const int HandoffGraceMs = 400;
     private const uint FaroresWindCrossEntrance = 0xFFFD;
+    private const uint DungeonRespawnEntrance = 0xFFFC;
 
     private readonly Core.Session _session;
     private readonly UiTimer _timer;
@@ -959,6 +960,9 @@ public sealed class SessionCoordinator : IDisposable
         && transition.ToEntrance == "Farore's Wind"
         && _session.Seed.GetBoolSetting("crossGameFw");
 
+    private static bool IsDungeonRespawnTarget(CrossGameTransition transition) =>
+        transition.ToNativeId == DungeonRespawnEntrance && transition.ToEntrance == "Dungeon Entrance";
+
     private bool AcceptTransition(CrossGameTransition transition, string durablePacket)
     {
         if (_pendingTransition is not null
@@ -967,7 +971,7 @@ public sealed class SessionCoordinator : IDisposable
             || transition.ToNativeId is null
             || !(IsShuffledCrossGameEntrance(transition) || IsOwlWarp(transition)
                 || IsWarpSongTarget(transition) || IsSpawnTarget(transition) || IsBossWarpTarget(transition)
-                || IsFaroresWindTarget(transition)))
+                || IsFaroresWindTarget(transition) || IsDungeonRespawnTarget(transition)))
         {
             return false;
         }

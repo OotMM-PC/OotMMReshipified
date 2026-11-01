@@ -976,6 +976,10 @@ public static class OotmmAssetBuilder
             new("Bush", FamilyMode.Tint, "objects/gameplay_field_keep/gFieldBushDL"),
             new("Grass", FamilyMode.Tint, "objects/object_kusa/object_kusa_DL_000140"),
             new("Rock", FamilyMode.Tint, "objects/gameplay_field_keep/gFieldKakeraDL"),
+            new("Wood02Bush", FamilyMode.TintPrimitive, "objects/object_wood02/object_wood02_DL_000090")
+            {
+                Primitive = 0x669870ff,
+            },
             new("Pot", FamilyMode.Pot, "objects/object_tsubo/object_tsubo_DL_0017C0")
             {
                 Side = "objects/object_tsubo/object_tsubo_Tex_000000",

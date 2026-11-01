@@ -22,17 +22,17 @@ public sealed class GameCardViewModel : ViewModelBase
         IsOot = isOot;
         _picker = picker;
         _onChanged = onChanged;
-        BrowseExeCommand = new RelayCommand(() => _ = BrowseExeAsync());
-        MoveSelectedTopCommand = new RelayCommand(() => MoveSelectedToEdge(top: true));
-        MoveSelectedUpCommand = new RelayCommand(() => MoveSelectedByOne(-1));
-        MoveSelectedDownCommand = new RelayCommand(() => MoveSelectedByOne(+1));
-        MoveSelectedBottomCommand = new RelayCommand(() => MoveSelectedToEdge(top: false));
     }
 
-    public RelayCommand MoveSelectedTopCommand { get; }
-    public RelayCommand MoveSelectedUpCommand { get; }
-    public RelayCommand MoveSelectedDownCommand { get; }
-    public RelayCommand MoveSelectedBottomCommand { get; }
+    public void BrowseExe() => _ = BrowseExeAsync();
+
+    public void MoveSelectedTop() => MoveSelectedToEdge(top: true);
+
+    public void MoveSelectedUp() => MoveSelectedByOne(-1);
+
+    public void MoveSelectedDown() => MoveSelectedByOne(+1);
+
+    public void MoveSelectedBottom() => MoveSelectedToEdge(top: false);
 
     public bool IsOot { get; }
 
@@ -42,14 +42,16 @@ public sealed class GameCardViewModel : ViewModelBase
 
     public string ExeHint => IsOot ? "path to soh.exe" : "path to 2ship.exe";
 
-    public RelayCommand BrowseExeCommand { get; }
-
     public ObservableCollection<ModEntryViewModel> Mods { get; } = [];
 
     public bool HasMods => Mods.Count > 0;
 
     public string ModsSummary =>
         Mods.Count == 0 ? "Mods" : $"Mods ({Mods.Count(m => m.Enabled)} of {Mods.Count} enabled)";
+
+    public int EnabledModCount => Mods.Count(m => m.Enabled && !m.Required);
+
+    public bool IsReady => ExeExists && MissingArchives.Count == 0;
 
     public string LoadOrderError
     {
@@ -127,6 +129,7 @@ public sealed class GameCardViewModel : ViewModelBase
             Raise();
             Raise(nameof(StatusText));
             Raise(nameof(StatusIsError));
+            Raise(nameof(IsReady));
         }
     }
 
@@ -190,6 +193,7 @@ public sealed class GameCardViewModel : ViewModelBase
         UpdateMoveFlags();
         Raise(nameof(HasMods));
         Raise(nameof(ModsSummary));
+        Raise(nameof(EnabledModCount));
     }
 
     private void MoveMod(ModEntryViewModel entry, int delta)
@@ -310,6 +314,7 @@ public sealed class GameCardViewModel : ViewModelBase
             : $"Could not rename {entry.Name} in the mods folder.";
         RefreshMods();
         Raise(nameof(ModsSummary));
+        Raise(nameof(EnabledModCount));
         _onChanged();
     }
 

@@ -14,6 +14,8 @@ public sealed class MainWindowViewModel : ViewModelBase
     private double _uiScale;
     private bool _relayStarted;
     private bool _accentIsViolet;
+    private RuntimeViewModel? _lastRuntime;
+    private bool _isRuntime;
 
     public MainWindowViewModel(UiSettings settings, IFilePicker picker)
     {
@@ -33,9 +35,27 @@ public sealed class MainWindowViewModel : ViewModelBase
         {
             if (Set(ref _currentViewModel, value))
             {
+                if (value is RuntimeViewModel runtime)
+                {
+                    Runtime = runtime;
+                }
+
+                IsRuntime = value is RuntimeViewModel;
                 ApplyAccent();
             }
         }
+    }
+
+    public RuntimeViewModel? Runtime
+    {
+        get => _lastRuntime;
+        private set => Set(ref _lastRuntime, value);
+    }
+
+    public bool IsRuntime
+    {
+        get => _isRuntime;
+        private set => Set(ref _isRuntime, value);
     }
 
     public double UiScale
@@ -149,7 +169,12 @@ public sealed class MainWindowViewModel : ViewModelBase
 
         _relayStarted = true;
         var storeDir = Path.Combine(AppContext.BaseDirectory, "world_state");
-        var rules = new OotMM.Core.Relay.RelayRules { Pvp = _settings.EnablePvp };
+        var rules = new OotMM.Core.Relay.RelayRules
+        {
+            Pvp = _settings.EnablePvp,
+            FriendlyFire = _settings.EnablePvp && _settings.EnableFriendlyFire,
+            DeathLink = _settings.EnableDeathLink,
+        };
         var engine = new OotMM.Core.Relay.RelayEngine(storeDir, rules);
         new Thread(() => engine.Run(port, CancellationToken.None)) { IsBackground = true }.Start();
     }

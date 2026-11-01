@@ -19,7 +19,7 @@ public sealed class DungeonRowViewModel(DungeonProgress d)
 {
     public string GameTag { get; } = d.Game == Game.Oot ? "OOT" : "MM";
     public string Name { get; } = d.Name;
-    public IReadOnlyList<DungeonChip> Chips { get; } = BuildChips(d);
+    public ObservableCollection<DungeonChip> Chips { get; } = new(BuildChips(d));
 
     private static List<DungeonChip> BuildChips(DungeonProgress d)
     {
@@ -62,7 +62,7 @@ public sealed class DungeonRowViewModel(DungeonProgress d)
     }
 }
 
-public sealed record SoulGroupViewModel(string Title, IReadOnlyList<ProgressItemRow> Items);
+public sealed record SoulGroupViewModel(string Title, ObservableCollection<ProgressItemRow> Items);
 
 public sealed class ProgressTabViewModel : ViewModelBase
 {
@@ -187,7 +187,8 @@ public sealed class ProgressTabViewModel : ViewModelBase
                     var list = report.Souls(game, sub);
                     SoulGroups.Add(new SoulGroupViewModel(
                         $"{sub} Souls  {list.Count(i => i.Owned)} / {list.Count}",
-                        list.Select(i => new ProgressItemRow(i.Name, i.Owned)).ToList()));
+                        new ObservableCollection<ProgressItemRow>(
+                            list.Select(i => new ProgressItemRow(i.Name, i.Owned)))));
                 }
 
                 break;

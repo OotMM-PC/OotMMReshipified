@@ -40,7 +40,7 @@ public sealed class OptionsTabViewModel : ViewModelBase
         set => Set(ref _cheatGatePending, value);
     }
 
-    public Action? RestartGame { get; set; }
+    internal Action? RestartGame { get; set; }
 
     public void OnRestartClicked()
     {

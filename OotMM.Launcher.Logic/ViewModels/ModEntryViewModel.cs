@@ -5,6 +5,8 @@ namespace OotMM.Launcher.ViewModels;
 public sealed class ModEntryViewModel : ViewModelBase
 {
     private readonly Action _onToggled;
+    private readonly Action _moveUp;
+    private readonly Action _moveDown;
     private bool _enabled;
     private bool _isFirst;
     private bool _isLast;
@@ -15,8 +17,8 @@ public sealed class ModEntryViewModel : ViewModelBase
         Info = info;
         _onToggled = onToggled;
         _enabled = info.EnabledOnDisk;
-        MoveUpCommand = new RelayCommand(moveUp);
-        MoveDownCommand = new RelayCommand(moveDown);
+        _moveUp = moveUp;
+        _moveDown = moveDown;
     }
 
     public ModInfo Info { get; }
@@ -25,8 +27,9 @@ public sealed class ModEntryViewModel : ViewModelBase
 
     public bool Required => Info.Required;
 
-    public RelayCommand MoveUpCommand { get; }
-    public RelayCommand MoveDownCommand { get; }
+    public void MoveUp() => _moveUp();
+
+    public void MoveDown() => _moveDown();
 
     public bool IsFirst
     {

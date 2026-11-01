@@ -17,6 +17,8 @@ public sealed class UiSettings
     public bool HostRelay { get; set; }
     public int RelayPort { get; set; } = 42801;
     public bool EnablePvp { get; set; }
+    public bool EnableFriendlyFire { get; set; }
+    public bool EnableDeathLink { get; set; }
     public List<string> PlayerModelOot { get; set; } = [];
     public List<string> PlayerModelMm { get; set; } = [];
     public bool PortOotAdultModel { get; set; } = true;

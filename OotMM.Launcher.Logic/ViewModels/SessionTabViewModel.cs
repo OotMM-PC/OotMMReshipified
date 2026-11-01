@@ -6,6 +6,7 @@ namespace OotMM.Launcher.ViewModels;
 public sealed class SessionTabViewModel : ViewModelBase
 {
     private readonly SessionCoordinator? _coordinator;
+    private readonly Action? _end;
     private readonly Action? _resetProgress;
     private bool _devMode;
     private bool _resetArmed;
@@ -13,30 +14,15 @@ public sealed class SessionTabViewModel : ViewModelBase
 
     public SessionTabViewModel()
     {
-        RestartGameCommand = new RelayCommand(() => { }, () => CoordinatorReady);
-        SwitchGameCommand = new RelayCommand(() => { }, () => CoordinatorReady);
-        SwitchGameAsChildCommand = new RelayCommand(() => { }, () => CoordinatorReady);
-        SwitchGameAsAdultCommand = new RelayCommand(() => { }, () => CoordinatorReady);
-        EndSessionCommand = new RelayCommand(() => { }, () => CoordinatorReady);
-        ResetProgressCommand = new RelayCommand(() => { }, () => CoordinatorReady);
-        OpenGameMenuCommand = new RelayCommand(() => { }, () => CoordinatorReady);
-        ResetSpeedCommand = new RelayCommand(() => { });
     }
 
     public SessionTabViewModel(SessionCoordinator coordinator, Action end, Action resetProgress)
     {
         CoordinatorReady = true;
         _coordinator = coordinator;
+        _end = end;
         _resetProgress = resetProgress;
-        RestartGameCommand = new RelayCommand(coordinator.RestartGame);
-        SwitchGameCommand = new RelayCommand(() => SwitchTo(null));
-        SwitchGameAsChildCommand = new RelayCommand(() => SwitchTo(1));
-        SwitchGameAsAdultCommand = new RelayCommand(() => SwitchTo(0));
-        EndSessionCommand = new RelayCommand(end);
         coordinator.StateChanged += RaiseSwitchVisibility;
-        ResetProgressCommand = new RelayCommand(OnResetClicked);
-        OpenGameMenuCommand = new RelayCommand(coordinator.OpenInGameMenu);
-        ResetSpeedCommand = new RelayCommand(() => SpeedPercent = 100);
     }
 
     public bool CoordinatorReady { get; }
@@ -46,11 +32,27 @@ public sealed class SessionTabViewModel : ViewModelBase
     public string UnavailableNote =>
         "Session controls come alive once a real session is running (start one from the config screen).";
 
-    public RelayCommand RestartGameCommand { get; }
-    public RelayCommand SwitchGameCommand { get; }
-    public RelayCommand SwitchGameAsChildCommand { get; }
-    public RelayCommand SwitchGameAsAdultCommand { get; }
-    public RelayCommand EndSessionCommand { get; }
+    public void RestartGame() => _coordinator?.RestartGame();
+
+    public void SwitchGame() => SwitchTo(null);
+
+    public void SwitchGameAsChild() => SwitchTo(1);
+
+    public void SwitchGameAsAdult() => SwitchTo(0);
+
+    public void EndSession() => _end?.Invoke();
+
+    public void ResetProgress()
+    {
+        if (CoordinatorReady)
+        {
+            OnResetClicked();
+        }
+    }
+
+    public void OpenGameMenu() => _coordinator?.OpenInGameMenu();
+
+    public void ResetSpeed() => SpeedPercent = 100;
 
     private void SwitchTo(uint? ootAge)
     {
@@ -63,9 +65,6 @@ public sealed class SessionTabViewModel : ViewModelBase
         Raise(nameof(ShowSwitchToMm));
         Raise(nameof(ShowSwitchToOot));
     }
-    public RelayCommand ResetProgressCommand { get; }
-    public RelayCommand OpenGameMenuCommand { get; }
-    public RelayCommand ResetSpeedCommand { get; }
 
 
     public bool ShowSpeed => _coordinator?.TimerEnabled ?? false;

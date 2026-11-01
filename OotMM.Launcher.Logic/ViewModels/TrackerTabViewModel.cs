@@ -1,3 +1,5 @@
+using System.Collections.ObjectModel;
+
 namespace OotMM.Launcher.ViewModels;
 
 public sealed class CheckRowViewModel : ViewModelBase
@@ -17,8 +19,9 @@ public sealed class CheckRowViewModel : ViewModelBase
         ItemText = itemText + (ownerIsLocal || itemText.Length == 0 ? "" : " (another player's item)");
         CheckId = checkId;
         _clicked = clicked;
-        ClickCommand = new RelayCommand(() => _clicked?.Invoke(this));
     }
+
+    public void Click() => _clicked?.Invoke(this);
 
     public string GameTag { get; }
 
@@ -27,8 +30,6 @@ public sealed class CheckRowViewModel : ViewModelBase
     public string CheckId { get; }
 
     public string ItemText { get; }
-
-    public RelayCommand ClickCommand { get; }
 
     public bool Collected
     {
@@ -92,7 +93,7 @@ public sealed class TrackerTabViewModel : ViewModelBase
     private bool _solverLoaded;
     private bool _isMultiworld;
 
-    public Func<string, bool>? ForceUnlockSender { get; set; }
+    internal Func<string, bool>? ForceUnlockSender { get; set; }
 
     public string FilterText
     {
@@ -166,38 +167,37 @@ public sealed class TrackerTabViewModel : ViewModelBase
         }
     }
 
-    public IReadOnlyList<CheckRowViewModel> VisibleChecks
+    public ObservableCollection<CheckRowViewModel> VisibleChecks { get; private set; } = [];
+
+    private List<CheckRowViewModel> FilterChecks()
     {
-        get
+        IEnumerable<CheckRowViewModel> rows = _allChecks;
+        if (_gameFilterIndex == 1)
         {
-            IEnumerable<CheckRowViewModel> rows = _allChecks;
-            if (_gameFilterIndex == 1)
-            {
-                rows = rows.Where(r => r.GameTag == "OOT");
-            }
-            else if (_gameFilterIndex == 2)
-            {
-                rows = rows.Where(r => r.GameTag == "MM");
-            }
-
-            if (_hideCollected)
-            {
-                rows = rows.Where(r => !r.Collected);
-            }
-
-            if (_onlyInLogic)
-            {
-                rows = rows.Where(r => r.InLogic || r.Collected);
-            }
-
-            if (!string.IsNullOrWhiteSpace(_filterText))
-            {
-                rows = rows.Where(r =>
-                    r.Name.Contains(_filterText, StringComparison.OrdinalIgnoreCase));
-            }
-
-            return rows.ToList();
+            rows = rows.Where(r => r.GameTag == "OOT");
         }
+        else if (_gameFilterIndex == 2)
+        {
+            rows = rows.Where(r => r.GameTag == "MM");
+        }
+
+        if (_hideCollected)
+        {
+            rows = rows.Where(r => !r.Collected);
+        }
+
+        if (_onlyInLogic)
+        {
+            rows = rows.Where(r => r.InLogic || r.Collected);
+        }
+
+        if (!string.IsNullOrWhiteSpace(_filterText))
+        {
+            rows = rows.Where(r =>
+                r.Name.Contains(_filterText, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return rows.ToList();
     }
 
     public double CollectedFraction =>
@@ -266,7 +266,13 @@ public sealed class TrackerTabViewModel : ViewModelBase
 
     private void RaiseListChanged()
     {
-        Raise(nameof(VisibleChecks));
+        var rows = FilterChecks();
+        if (!rows.SequenceEqual(VisibleChecks))
+        {
+            VisibleChecks = new ObservableCollection<CheckRowViewModel>(rows);
+            Raise(nameof(VisibleChecks));
+        }
+
         Raise(nameof(SummaryText));
         Raise(nameof(CollectedFraction));
     }

@@ -7,6 +7,7 @@ namespace OotMM.Launcher.ViewModels;
 public sealed class RuntimeViewModel : ViewModelBase
 {
     private readonly UiSettings _settings;
+    private readonly Action _backToConfig;
     private readonly ViewModelBase[] _tabs;
     private readonly Dictionary<string, CheckRowViewModel> _checkRows = [];
     private readonly List<(ItemPlacement Placement, CheckRowViewModel Row)> _placementRows = [];
@@ -47,9 +48,7 @@ public sealed class RuntimeViewModel : ViewModelBase
         Progress = new ProgressTabViewModel();
         _tabs = [Tracker, Log, SessionTab, Options, Progress];
 
-        BackToConfigCommand = new RelayCommand(backToConfig);
-        ExpandSidebarCommand = new RelayCommand(() => ShowSidebar = true);
-        CollapseSidebarCommand = new RelayCommand(() => ShowSidebar = false);
+        _backToConfig = backToConfig;
     }
 
     public static RuntimeViewModel CreatePreview(
@@ -133,9 +132,11 @@ public sealed class RuntimeViewModel : ViewModelBase
     public OptionsTabViewModel Options { get; }
     public ProgressTabViewModel Progress { get; }
 
-    public RelayCommand BackToConfigCommand { get; }
-    public RelayCommand ExpandSidebarCommand { get; }
-    public RelayCommand CollapseSidebarCommand { get; }
+    public void BackToConfig() => _backToConfig();
+
+    public void ExpandSidebar() => ShowSidebar = true;
+
+    public void CollapseSidebar() => ShowSidebar = false;
 
     public Game ActiveGame
     {
@@ -168,7 +169,7 @@ public sealed class RuntimeViewModel : ViewModelBase
 
     public string RunStatusText => IsRunning ? "running" : "not running";
 
-    public event Action? GameHostAttached;
+    internal event Action? GameHostAttached;
 
     public void NotifyGameHostCreated(nint handle)
     {

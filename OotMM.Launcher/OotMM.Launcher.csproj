@@ -1,31 +1,31 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <!-- WinExe so no console window opens behind the launcher on Windows;
-             behaves identically to Exe on Linux/macOS. -->
         <OutputType>WinExe</OutputType>
         <TargetFramework>net10.0</TargetFramework>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
-        <!-- Compiled bindings: every binding is type-checked at build time, so a renamed
-             view-model property is a compile error instead of a silently dead control. -->
-        <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
-        <!-- NativeControlHost (the embedded game window) requires the supported-OS manifest. -->
-        <ApplicationManifest>app.manifest</ApplicationManifest>
+        <QtExportAs>metadata</QtExportAs>
     </PropertyGroup>
 
     <ItemGroup>
-        <AvaloniaResource Include="Assets\**" />
+        <QtResource Include="Assets\Icons\*.png" />
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="Avalonia" Version="12.1.0" />
-        <PackageReference Include="Avalonia.Desktop" Version="12.1.0" />
-        <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.0" />
+        <PackageReference Include="QtGroup.Qt.Bridge.CSharp.win-x64" Version="0.5.*" />
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\OotMM.Launcher.Logic\OotMM.Launcher.Logic.csproj" />
+        <ProjectReference Include="..\OotMM.Launcher.Logic\OotMM.Launcher.Logic.csproj" />
     </ItemGroup>
+
+    <Target Name="PublishQtRuntime" AfterTargets="Publish">
+        <ItemGroup>
+            <_QtRuntimeFile Include="$(TargetDir)**\*"
+                            Exclude="$(TargetDir)**\*.pdb;$(TargetDir)qtdeploy.txt;$(TargetDir)launcher.ui.json;$(TargetDir)world_state\**" />
+        </ItemGroup>
+        <Copy SourceFiles="@(_QtRuntimeFile)" DestinationFolder="$(PublishDir)%(RecursiveDir)" SkipUnchangedFiles="true" />
+    </Target>
 
 </Project>

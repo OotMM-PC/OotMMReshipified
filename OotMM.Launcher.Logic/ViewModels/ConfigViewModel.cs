@@ -10,6 +10,7 @@ namespace OotMM.Launcher.ViewModels;
 public sealed class ConfigViewModel : ViewModelBase
 {
     private readonly UiSettings _settings;
+    private readonly IFilePicker _picker;
     private readonly Action _previewRuntime;
     private readonly Action<Seed, string, string, string> _startSession;
     private readonly UiTimer _rescanTimer;
@@ -22,6 +23,8 @@ public sealed class ConfigViewModel : ViewModelBase
     private bool _hostRelay;
     private int _relayPort;
     private bool _hostPvp;
+    private bool _hostFriendlyFire;
+    private bool _hostDeathLink;
     private string _multiworldAddress = "";
     private string _playerName = "";
     private string _statusMessage = "";
@@ -38,18 +41,17 @@ public sealed class ConfigViewModel : ViewModelBase
         _previewRuntime = previewRuntime;
         _startSession = startSession;
 
+        _picker = picker;
         OotCard = new GameCardViewModel(isOot: true, picker, FormChanged);
         MmCard = new GameCardViewModel(isOot: false, picker, FormChanged);
-
-        BrowseSeedCommand = new RelayCommand(() => _ = BrowseSeedAsync(picker));
-        LaunchCommand = new RelayCommand(OnLaunchClicked);
-        PreviewRuntimeCommand = new RelayCommand(_previewRuntime);
 
         _restoring = true;
         _seedPath = settings.SeedPath;
         _hostRelay = settings.HostRelay;
         _relayPort = settings.RelayPort;
         _hostPvp = settings.EnablePvp;
+        _hostFriendlyFire = settings.EnablePvp && settings.EnableFriendlyFire;
+        _hostDeathLink = settings.EnableDeathLink;
         MmCard.PortAdultModel = settings.PortOotAdultModel;
         MmCard.PortChildModel = settings.PortOotChildModel;
         _multiworldAddress = settings.MultiworldAddress;
@@ -75,9 +77,11 @@ public sealed class ConfigViewModel : ViewModelBase
     public GameCardViewModel OotCard { get; }
     public GameCardViewModel MmCard { get; }
 
-    public RelayCommand BrowseSeedCommand { get; }
-    public RelayCommand LaunchCommand { get; }
-    public RelayCommand PreviewRuntimeCommand { get; }
+    public void BrowseSeed() => _ = BrowseSeedAsync(_picker);
+
+    public void Launch() => OnLaunchClicked();
+
+    public void PreviewRuntime() => _previewRuntime();
 
     public ObservableCollection<string> ValidationErrors { get; } = [];
     public ObservableCollection<ModelPickViewModel> OotModelPicks { get; } = [];
@@ -112,13 +116,14 @@ public sealed class ConfigViewModel : ViewModelBase
         }
     }
 
-    public Seed? Seed
+    private Seed? Seed
     {
         get => _seed;
-        private set
+        set
         {
             _seed = value;
-            Raise();
+            Raise(nameof(SeedId));
+            Raise(nameof(SeedDescription));
             Raise(nameof(SeedSummary));
             Raise(nameof(HasSeed));
             Raise(nameof(ShowMultiworld));
@@ -127,6 +132,13 @@ public sealed class ConfigViewModel : ViewModelBase
     }
 
     public bool HasSeed => Seed is not null;
+
+    public string SeedId => Seed?.SeedId ?? "";
+
+    public string SeedDescription =>
+        Seed is null ? ""
+        : Seed.IsMultiworld ? $"{Seed.PlayerCount}-player multiworld · P{Seed.PlayerId}"
+        : $"Solo · {Seed.Placements.Count} checks";
 
     public string SeedError
     {
@@ -186,6 +198,35 @@ public sealed class ConfigViewModel : ViewModelBase
         {
             if (Set(ref _hostPvp, value))
             {
+                if (!value)
+                {
+                    HostFriendlyFire = false;
+                }
+
+                FormChanged();
+            }
+        }
+    }
+
+    public bool HostFriendlyFire
+    {
+        get => _hostFriendlyFire;
+        set
+        {
+            if (Set(ref _hostFriendlyFire, value && _hostPvp))
+            {
+                FormChanged();
+            }
+        }
+    }
+
+    public bool HostDeathLink
+    {
+        get => _hostDeathLink;
+        set
+        {
+            if (Set(ref _hostDeathLink, value))
+            {
                 FormChanged();
             }
         }
@@ -229,8 +270,8 @@ public sealed class ConfigViewModel : ViewModelBase
         || OotmmAssetBuilder.NeedsBuild(MmCard.ExePath, isOot: false);
 
     public string LaunchButtonText => IsSetupInProgress
-        ? "SETUP IN PROGRESS..."
-        : SetupNeeded ? "SETUP" : "START ADVENTURE";
+        ? "Setting up…"
+        : SetupNeeded ? "Run setup" : "Launch";
 
     public bool ShowSetupHint => SetupNeeded;
 
@@ -647,6 +688,8 @@ public sealed class ConfigViewModel : ViewModelBase
         _settings.HostRelay = HostRelay;
         _settings.RelayPort = RelayPort;
         _settings.EnablePvp = HostPvp;
+        _settings.EnableFriendlyFire = HostFriendlyFire;
+        _settings.EnableDeathLink = HostDeathLink;
         _settings.PortOotAdultModel = MmCard.PortAdultModel;
         _settings.PortOotChildModel = MmCard.PortChildModel;
         _settings.MultiworldAddress = MultiworldAddress;

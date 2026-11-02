@@ -258,6 +258,198 @@ public class ModelSyncCoordinatorTests
         }
     }
 
+    private static byte[] Noise(int size, int seed)
+    {
+        var data = new byte[size];
+        new Random(seed).NextBytes(data);
+        return data;
+    }
+
+    private static void Deliver(List<string> outbox, params ModelSyncCoordinator[] targets)
+    {
+        var lines = outbox.ToList();
+        outbox.Clear();
+        foreach (var line in lines)
+        {
+            foreach (var target in targets)
+            {
+                target.HandleLine(line);
+            }
+        }
+    }
+
+    [Fact]
+    public void ReceiverJoiningMidStreamDoesNotCostAnEarlierReceiverItsProgress()
+    {
+        var dir = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            var model = Path.Combine(dir, "model.o2r");
+            MakeArchive(model, ("objects/object_link_child/gLinkHumanSkel", Noise(5 * 48 * 1024, 1)));
+            var aOut = new List<string>();
+            var bOut = new List<string>();
+            var cOut = new List<string>();
+            var a = MakeCoordinator(MakeSeed(1), Path.Combine(dir, "a"),
+                [new ModelShareSet(Game.Mm, [model])], [], aOut);
+            var b = MakeCoordinator(MakeSeed(2), Path.Combine(dir, "b"), [], [], bOut);
+            var c = MakeCoordinator(MakeSeed(3), Path.Combine(dir, "c"), [], [], cOut);
+            var bInstalled = Path.Combine(dir, "b", "mm", "mods", "zz_coop_p01.o2r");
+            var cInstalled = Path.Combine(dir, "c", "mm", "mods", "zz_coop_p01.o2r");
+
+            a.Tick(true, 1);
+            Deliver(aOut, b);
+            b.Tick(true, 1);
+            Deliver(bOut, a);
+            a.PumpSend(true);
+            Deliver(aOut, b);
+            Assert.False(File.Exists(bInstalled));
+
+            a.Tick(true, 2);
+            Deliver(aOut, c);
+            c.Tick(true, 1);
+            Deliver(cOut, a);
+            for (var pump = 0; pump < 3; pump++)
+            {
+                a.PumpSend(true);
+                Deliver(aOut, b, c);
+            }
+
+            Assert.StartsWith("set|", File.ReadAllText(bInstalled + ".sources"));
+            Assert.StartsWith("set|", File.ReadAllText(cInstalled + ".sources"));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void AChangedSetNeverInstallsMixedWithThePreviousOne()
+    {
+        var dir = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            var first = Path.Combine(dir, "first.o2r");
+            var second = Path.Combine(dir, "second.o2r");
+            MakeArchive(first, ("objects/object_link_child/gLinkHumanSkel", [1]));
+            MakeArchive(second, ("objects/object_link_child/gLinkHumanHeadDL", [2]));
+            var aOut = new List<string>();
+            var swappedOut = new List<string>();
+            var bOut = new List<string>();
+            var a = MakeCoordinator(MakeSeed(1), Path.Combine(dir, "a"),
+                [new ModelShareSet(Game.Mm, [first, second])], [], aOut);
+            var swapped = MakeCoordinator(MakeSeed(1), Path.Combine(dir, "a2"),
+                [new ModelShareSet(Game.Mm, [second, first])], [], swappedOut);
+            var b = MakeCoordinator(MakeSeed(2), Path.Combine(dir, "b"), [], [], bOut);
+            var sidecar = Path.Combine(dir, "b", "mm", "mods", "zz_coop_p01.o2r.sources");
+
+            for (var round = 0; round < 6 && !File.Exists(sidecar); round++)
+            {
+                a.Tick(true, 1);
+                Deliver(aOut, b);
+                b.Tick(true, 1);
+                Deliver(bOut, a);
+                a.PumpSend(true);
+                Deliver(aOut, b);
+            }
+
+            var original = File.ReadAllText(sidecar);
+            Assert.StartsWith("set|", original);
+
+            swapped.Tick(true, 1);
+            var announces = swappedOut.Where(line => line.Contains("\"game\":\"mm\"")).ToList();
+            Assert.Equal(2, announces.Count);
+
+            b.HandleLine(announces[0]);
+            b.Tick(true, 1);
+            Assert.Equal(original, File.ReadAllText(sidecar));
+
+            b.HandleLine(announces[1]);
+            b.Tick(true, 1);
+            var parts = File.ReadAllText(sidecar).Split('|');
+            var before = original.Split('|');
+            Assert.Equal((before[2], before[1]), (parts[1], parts[2]));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SetFinishingDuringAGameLaunchMountsLiveInsteadOfMissingTheBoot()
+    {
+        var dir = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            var model = Path.Combine(dir, "model.o2r");
+            MakeArchive(model, ("objects/object_link_child/gLinkHumanSkel", Noise(5 * 48 * 1024, 2)));
+            var aOut = new List<string>();
+            var bOut = new List<string>();
+            var a = MakeCoordinator(MakeSeed(1), Path.Combine(dir, "a"),
+                [new ModelShareSet(Game.Mm, [model])], [], aOut);
+            var b = MakeCoordinator(MakeSeed(2), Path.Combine(dir, "b"), [], [], bOut);
+            var mounted = new List<string>();
+            b.LiveArchiveReady += (_, path, _) => mounted.Add(path);
+
+            a.Tick(true, 1);
+            Deliver(aOut, b);
+            b.Tick(true, 1);
+            Deliver(bOut, a);
+            a.PumpSend(true);
+            Deliver(aOut, b);
+            Assert.Empty(mounted);
+
+            b.NoteGameLaunching(Game.Mm);
+            a.PumpSend(true);
+            Deliver(aOut, b);
+
+            Assert.Single(mounted);
+            Assert.False(File.Exists(Path.Combine(dir, "b", "mm", "mods", "zz_coop_p01.o2r.sources")));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void SetInstalledBeforeLaunchIsNotMountedAgain()
+    {
+        var dir = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            var model = Path.Combine(dir, "model.o2r");
+            MakeArchive(model, ("objects/object_link_child/gLinkHumanSkel", [1]));
+            var aOut = new List<string>();
+            var bOut = new List<string>();
+            var a = MakeCoordinator(MakeSeed(1), Path.Combine(dir, "a"),
+                [new ModelShareSet(Game.Mm, [model])], [], aOut);
+            var b = MakeCoordinator(MakeSeed(2), Path.Combine(dir, "b"), [], [], bOut);
+            var sidecar = Path.Combine(dir, "b", "mm", "mods", "zz_coop_p01.o2r.sources");
+            for (var round = 0; round < 6 && !File.Exists(sidecar); round++)
+            {
+                a.Tick(true, 1);
+                Deliver(aOut, b);
+                b.Tick(true, 1);
+                Deliver(bOut, a);
+                a.PumpSend(true);
+                Deliver(aOut, b);
+            }
+
+            Assert.True(File.Exists(sidecar));
+            var mounted = new List<string>();
+            b.LiveArchiveReady += (_, path, _) => mounted.Add(path);
+            b.NoteGameLaunching(Game.Mm);
+            b.Tick(true, 1, Game.Mm);
+            Assert.Empty(mounted);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
     private static void Drain(List<string> outbox, ModelSyncCoordinator target)
     {
         var lines = outbox.ToList();

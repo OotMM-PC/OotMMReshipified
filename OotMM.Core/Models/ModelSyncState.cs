@@ -12,26 +12,25 @@ public sealed class ModelDownload(string hash, long total)
 {
     public string Hash { get; } = hash;
     public long Total { get; } = total;
-    public List<byte[]> Chunks { get; } = [];
-    public long NextSeq => Chunks.Count;
+    public Dictionary<long, byte[]> Chunks { get; } = [];
     public bool Complete => Chunks.Count == Total;
 
     public bool Accept(ModelChunk chunk)
     {
-        if (chunk.Seq != NextSeq || chunk.Total != Total)
+        if (chunk.Total != Total || chunk.Seq < 0 || chunk.Seq >= Total || Chunks.ContainsKey(chunk.Seq))
         {
             return false;
         }
 
-        Chunks.Add(chunk.Data);
+        Chunks[chunk.Seq] = chunk.Data;
         return true;
     }
 
     public byte[] Assemble()
     {
-        var result = new byte[Chunks.Sum(c => c.Length)];
+        var result = new byte[Chunks.Values.Sum(c => c.Length)];
         var offset = 0;
-        foreach (var chunk in Chunks)
+        foreach (var (_, chunk) in Chunks.OrderBy(pair => pair.Key))
         {
             chunk.CopyTo(result, offset);
             offset += chunk.Length;

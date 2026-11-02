@@ -5,7 +5,7 @@ using OotMM.Core.Relay;
 namespace OotMM.Core.Models;
 
 public sealed record ModelAnnounce(
-    int PlayerId, Game Game, string Name, string Hash, long Size, int Index = 0, int Count = 1);
+    int PlayerId, Game Game, string Name, string Hash, long Size, int Index = 0, int Count = 1, string SetId = "");
 
 public sealed record ModelRequest(int PlayerId, int TargetPlayer, string Hash);
 
@@ -18,6 +18,9 @@ public static class ModelSyncProtocol
     public const int MaxSetArchives = 32;
 
     public static string HashBytes(byte[] data) => Convert.ToHexStringLower(SHA256.HashData(data));
+
+    public static string SetId(IEnumerable<string> hashes) =>
+        HashBytes(System.Text.Encoding.ASCII.GetBytes(string.Join('|', hashes)));
 
     private static bool IsHexHash(string hash)
     {
@@ -52,6 +55,7 @@ public static class ModelSyncProtocol
             .Append(",\"size\":").Append(announce.Size)
             .Append(",\"index\":").Append(announce.Index)
             .Append(",\"count\":").Append(announce.Count)
+            .Append(",\"setId\":").Append(JsonText.EscapeString(announce.SetId))
             .Append('}').ToString();
 
     public static string BuildRequest(Seed seed, ModelRequest request) =>
@@ -77,14 +81,15 @@ public static class ModelSyncProtocol
         var index = RelayProtocol.ExtractIntField(line, "index", -1);
         var count = RelayProtocol.ExtractIntField(line, "count", -1);
         var name = RelayProtocol.ExtractStringField(line, "name");
+        var setId = RelayProtocol.ExtractStringField(line, "setId");
         if (game is null || !IsHexHash(hash) || size <= 0 || player <= 0 || count < 0
             || (count == 0 ? index != 0 : index < 0 || index >= count)
-            || count > MaxSetArchives || name.Length > 128)
+            || count > MaxSetArchives || name.Length > 128 || (setId.Length > 0 && !IsHexHash(setId)))
         {
             return null;
         }
 
-        return new ModelAnnounce(player, game.Value, name, hash, size, index, count);
+        return new ModelAnnounce(player, game.Value, name, hash, size, index, count, setId);
     }
 
     public static ModelRequest? ParseRequest(string line)

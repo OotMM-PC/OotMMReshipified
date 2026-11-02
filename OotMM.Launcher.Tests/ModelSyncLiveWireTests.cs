@@ -17,11 +17,13 @@ public class ModelSyncLiveWireTests : IDisposable
     private Thread? _thread;
     private MultiworldSync? _ms1;
     private MultiworldSync? _ms2;
+    private MultiworldSync? _ms3;
 
     public void Dispose()
     {
         _ms1?.Dispose();
         _ms2?.Dispose();
+        _ms3?.Dispose();
         _stop.Cancel();
         _thread?.Join(TimeSpan.FromSeconds(5));
         try
@@ -33,7 +35,7 @@ public class ModelSyncLiveWireTests : IDisposable
         }
     }
 
-    private static Seed MakeSeed(ushort playerId) => new()
+    private static Seed MakeSeed(ushort playerId, ushort playerCount) => new()
     {
         Format = Seed.CurrentFormat,
         GeneratorVersion = Seed.RequiredGeneratorVersion,
@@ -41,7 +43,7 @@ public class ModelSyncLiveWireTests : IDisposable
         SettingsHash = "settings",
         TeamId = "team",
         PlayerId = playerId,
-        PlayerCount = 2,
+        PlayerCount = playerCount,
         SessionEpoch = 4,
         Placements =
         [
@@ -65,7 +67,7 @@ public class ModelSyncLiveWireTests : IDisposable
         return _engine.BoundPort;
     }
 
-    private Core.Session MakeSession(ushort playerId)
+    private Core.Session MakeSession(ushort playerId, ushort playerCount = 2)
     {
         var side = Directory.CreateDirectory(Path.Combine(_root, $"side{playerId}")).FullName;
         var seedPath = Path.Combine(side, "seed.json");
@@ -75,7 +77,7 @@ public class ModelSyncLiveWireTests : IDisposable
             SeedPath = seedPath,
             OotExe = Path.Combine(side, "oot", "soh.exe"),
             MmExe = Path.Combine(side, "mm", "2ship.exe"),
-            Seed = MakeSeed(playerId),
+            Seed = MakeSeed(playerId, playerCount),
             V4Planned = true,
         };
         Assert.Null(SessionPaths.PrepareSession(session));
@@ -140,6 +142,72 @@ public class ModelSyncLiveWireTests : IDisposable
         Assert.StartsWith("set|", File.ReadAllText(sidecar));
         using var ported = ZipFile.OpenRead(installed);
         Assert.Equal("p01objs/object_link_child/gLinkHumanSkel", ported.Entries.Single().FullName);
+    }
+
+    [Fact]
+    public void ThirdPlayerJoiningMidTransferDoesNotStallTheOthers()
+    {
+        var port = StartEngine();
+        var session1 = MakeSession(1, 3);
+        var session2 = MakeSession(2, 3);
+        var session3 = MakeSession(3, 3);
+        var mm1Mods = Directory.CreateDirectory(
+            Path.Combine(Path.GetDirectoryName(session1.MmExe)!, "mods")).FullName;
+        var sidecar2 = Path.Combine(Path.GetDirectoryName(session2.MmExe)!, "mods", "zz_coop_p01.o2r.sources");
+        var sidecar3 = Path.Combine(Path.GetDirectoryName(session3.MmExe)!, "mods", "zz_coop_p01.o2r.sources");
+
+        var model = Path.Combine(mm1Mods, "model.o2r");
+        using (var file = File.Create(model))
+        using (var zip = new ZipArchive(file, ZipArchiveMode.Create))
+        {
+            using var s = zip.CreateEntry("objects/object_link_child/gLinkHumanSkel", CompressionLevel.NoCompression).Open();
+            var payload = new byte[3 * 1024 * 1024];
+            new Random(7).NextBytes(payload);
+            s.Write(payload);
+        }
+
+        _ms1 = new MultiworldSync(session1, "127.0.0.1", (ushort)port, "P1");
+        _ms2 = new MultiworldSync(session2, "127.0.0.1", (ushort)port, "P2");
+        var mc1 = MakeCoordinator(session1, [new ModelShareSet(Game.Mm, [model])], _ms1);
+        var mc2 = MakeCoordinator(session2, [], _ms2);
+        ModelSyncCoordinator? mc3 = null;
+        var log = new List<string>();
+        mc1.Logged += log.Add;
+        mc2.Logged += log.Add;
+
+        var none = new HashSet<string>();
+        var deadline = DateTime.UtcNow.AddSeconds(45);
+        var finished = () => File.Exists(sidecar2) && File.Exists(sidecar3);
+        for (var loop = 0; DateTime.UtcNow < deadline && !finished(); loop++)
+        {
+            _ms1.Tick(none, session1.OotInbox);
+            mc1.Tick(_ms1.Ready, _ms1.ConnectionGeneration);
+            if (loop % 5 == 0)
+            {
+                mc1.PumpSend(_ms1.Ready);
+            }
+
+            _ms2.Tick(none, session2.OotInbox);
+            mc2.Tick(_ms2.Ready, _ms2.ConnectionGeneration);
+            if (mc3 is null && log.Any(line => line.StartsWith("Sending", StringComparison.Ordinal)))
+            {
+                _ms3 = new MultiworldSync(session3, "127.0.0.1", (ushort)port, "P3");
+                mc3 = MakeCoordinator(session3, [], _ms3);
+                mc3.Logged += log.Add;
+            }
+
+            if (_ms3 is not null && mc3 is not null)
+            {
+                _ms3.Tick(none, session3.OotInbox);
+                mc3.Tick(_ms3.Ready, _ms3.ConnectionGeneration);
+            }
+
+            Thread.Sleep(20);
+        }
+
+        Assert.True(finished(), "both receivers never installed; log: " + string.Join(" | ", log));
+        Assert.StartsWith("set|", File.ReadAllText(sidecar2));
+        Assert.StartsWith("set|", File.ReadAllText(sidecar3));
     }
 
     private static ModelSyncCoordinator MakeCoordinator(

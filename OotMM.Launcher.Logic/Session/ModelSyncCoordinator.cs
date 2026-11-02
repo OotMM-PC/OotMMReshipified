@@ -15,7 +15,7 @@ public sealed class ModelSyncCoordinator
         "0000000000000000000000000000000000000000000000000000000000000000";
     private static readonly TimeSpan AnnounceEvery = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan RequestSpacing = TimeSpan.FromSeconds(10);
-    private static readonly TimeSpan DownloadStall = TimeSpan.FromSeconds(20);
+    private static readonly TimeSpan DownloadStall = TimeSpan.FromSeconds(10);
 
     private sealed class OwnArchive(ModelAnnounce announce, string path)
     {
@@ -23,9 +23,10 @@ public sealed class ModelSyncCoordinator
         public string Path { get; } = path;
     }
 
-    private sealed class RemoteSet(int count)
+    private sealed class RemoteSet(int count, string setId)
     {
         public int Count { get; } = count;
+        public string SetId { get; } = setId;
         public Dictionary<int, ModelAnnounce> ByIndex { get; } = [];
         public bool Refused { get; set; }
         public string FailedSignature { get; set; } = "";
@@ -37,6 +38,7 @@ public sealed class ModelSyncCoordinator
         public string Path { get; } = path;
         public long Total { get; } = total;
         public long Next { get; set; }
+        public long Remaining { get; set; } = total;
     }
 
     private readonly Seed _seed;
@@ -58,6 +60,7 @@ public sealed class ModelSyncCoordinator
     private readonly Dictionary<(int Player, Game Game), TimeSpan> _installRetryAt = [];
     private readonly HashSet<string> _installBlockedLogged = [];
     private readonly Dictionary<(int Player, Game Game), string> _liveMounted = [];
+    private readonly Dictionary<string, string> _mountedAtLaunch = [];
     private readonly HashSet<Game> _liveGames = [];
     private int _liveSerial;
     private TimeSpan _lastAnnounceAt = TimeSpan.MinValue;
@@ -161,9 +164,47 @@ public sealed class ModelSyncCoordinator
         }
     }
 
+    public void NoteGameLaunching(Game game)
+    {
+        _runningGame = null;
+        DeleteLiveArchives(game);
+        SetRunningGame(game);
+    }
+
+    private void SetRunningGame(Game? game)
+    {
+        if (game == _runningGame)
+        {
+            return;
+        }
+
+        _runningGame = game;
+        _mountedAtLaunch.Clear();
+        if (game is not { } running || !Directory.Exists(_modsDirs[running]))
+        {
+            return;
+        }
+
+        foreach (var sidecar in Directory.GetFiles(_modsDirs[running], "zz_coop_*.o2r.sources"))
+        {
+            var archive = sidecar[..^".sources".Length];
+            try
+            {
+                if (File.Exists(archive))
+                {
+                    _mountedAtLaunch[archive] = File.ReadAllText(sidecar);
+                }
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                Logged?.Invoke($"Could not read {Path.GetFileName(sidecar)}: {ex.Message}");
+            }
+        }
+    }
+
     public void Tick(bool ready, ulong generation, Game? runningGame = null)
     {
-        _runningGame = runningGame;
+        SetRunningGame(runningGame);
         BuildMissingFills();
         if (!ready)
         {
@@ -183,12 +224,10 @@ public sealed class ModelSyncCoordinator
             }
         }
 
-        foreach (var stalled in _downloads.Keys
-                     .Where(hash => now - _downloadProgressAt.GetValueOrDefault(hash) > DownloadStall)
-                     .ToList())
+        foreach (var abandoned in _downloads.Keys.Where(hash => !IsWanted(hash)).ToList())
         {
-            _downloads.Remove(stalled);
-            _downloadProgressAt.Remove(stalled);
+            _downloads.Remove(abandoned);
+            _downloadProgressAt.Remove(abandoned);
         }
 
         foreach (var (key, set) in _remoteSets)
@@ -210,7 +249,9 @@ public sealed class ModelSyncCoordinator
 
             foreach (var announce in set.ByIndex.Values)
             {
-                if (File.Exists(CachePath(announce.Hash)) || _downloads.ContainsKey(announce.Hash)
+                if (File.Exists(CachePath(announce.Hash))
+                    || (_downloads.ContainsKey(announce.Hash)
+                        && now - _downloadProgressAt.GetValueOrDefault(announce.Hash) <= DownloadStall)
                     || _hashFailures.GetValueOrDefault(announce.Hash) >= MaxHashFailures)
                 {
                     continue;
@@ -259,8 +300,9 @@ public sealed class ModelSyncCoordinator
                     return;
                 }
 
-                stream.Next++;
-                if (stream.Next >= stream.Total)
+                stream.Next = (stream.Next + 1) % stream.Total;
+                stream.Remaining--;
+                if (stream.Remaining <= 0)
                 {
                     _streams.RemoveAt(0);
                     return;
@@ -282,9 +324,9 @@ public sealed class ModelSyncCoordinator
         }
 
         var key = (announce.PlayerId, announce.Game);
-        if (!_remoteSets.TryGetValue(key, out var set) || set.Count != announce.Count)
+        if (!_remoteSets.TryGetValue(key, out var set) || set.Count != announce.Count || set.SetId != announce.SetId)
         {
-            set = new RemoteSet(announce.Count);
+            set = new RemoteSet(announce.Count, announce.SetId);
             _remoteSets[key] = set;
         }
 
@@ -323,7 +365,7 @@ public sealed class ModelSyncCoordinator
 
         if (_streams.FirstOrDefault(s => s.Hash == request.Hash) is { } active)
         {
-            active.Next = 0;
+            active.Remaining = active.Total;
             return;
         }
 
@@ -340,7 +382,7 @@ public sealed class ModelSyncCoordinator
 
         if (!_downloads.TryGetValue(chunk.Hash, out var download))
         {
-            if (chunk.Seq != 0 || File.Exists(CachePath(chunk.Hash)) || !IsWanted(chunk.Hash))
+            if (File.Exists(CachePath(chunk.Hash)) || !IsWanted(chunk.Hash))
             {
                 return;
             }
@@ -391,7 +433,7 @@ public sealed class ModelSyncCoordinator
 
     public void InstallNow()
     {
-        _runningGame = null;
+        SetRunningGame(null);
         _installRetryAt.Clear();
         TryInstallAll();
     }
@@ -425,26 +467,36 @@ public sealed class ModelSyncCoordinator
                                 var info = new FileInfo(path);
                                 return $"{Path.GetFileName(path)},{info.Length},{info.LastWriteTimeUtc.Ticks}";
                             }));
-            if (_installed.GetValueOrDefault((player, game)) == signature
-                || set.FailedSignature == signature
+            var output = OutputPath(game, player);
+            var sidecar = output + ".sources";
+            if (set.FailedSignature == signature
                 || (_installRetryAt.TryGetValue((player, game), out var retryAt) && Now < retryAt))
             {
                 continue;
             }
 
-            var output = OutputPath(game, player);
-            var sidecar = output + ".sources";
             try
             {
-                if (File.Exists(output) && File.Exists(sidecar) && File.ReadAllText(sidecar) == signature)
+                if (game == _runningGame)
                 {
-                    _installed[(player, game)] = signature;
+                    var showing = _liveMounted.GetValueOrDefault((player, game))
+                                  ?? _mountedAtLaunch.GetValueOrDefault(output);
+                    if (showing != signature)
+                    {
+                        MountLive(player, game, bases.Concat(ordered.Select(a => CachePath(a!.Hash))).ToList(), signature);
+                    }
+
                     continue;
                 }
 
-                if (game == _runningGame)
+                if (_installed.GetValueOrDefault((player, game)) == signature)
                 {
-                    MountLive(player, game, bases.Concat(ordered.Select(a => CachePath(a!.Hash))).ToList(), signature);
+                    continue;
+                }
+
+                if (File.Exists(output) && File.Exists(sidecar) && File.ReadAllText(sidecar) == signature)
+                {
+                    _installed[(player, game)] = signature;
                     continue;
                 }
 
@@ -478,12 +530,7 @@ public sealed class ModelSyncCoordinator
 
     private void MountLive(int player, Game game, IReadOnlyList<string> sources, string signature)
     {
-        if (_liveMounted.GetValueOrDefault((player, game)) == signature)
-        {
-            return;
-        }
-
-        var live = Path.ChangeExtension(OutputPath(game, player), $".live{++_liveSerial}.o2r");
+        var live =Path.ChangeExtension(OutputPath(game, player), $".live{++_liveSerial}.o2r");
         var result = ModelRepack.Repack(sources, live, player);
         if (!result.Ok)
         {
@@ -600,15 +647,17 @@ public sealed class ModelSyncCoordinator
             if (loaded.Count == 0)
             {
                 own.Add(new OwnArchive(
-                    new ModelAnnounce(_seed.PlayerId, share.Game, "", EmptySetHash, 1, 0, 0), ""));
+                    new ModelAnnounce(_seed.PlayerId, share.Game, "", EmptySetHash, 1, 0, 0,
+                                      ModelSyncProtocol.SetId([])), ""));
                 continue;
             }
 
+            var setId = ModelSyncProtocol.SetId(loaded.Select(archive => archive.Hash));
             for (var i = 0; i < loaded.Count; i++)
             {
                 own.Add(new OwnArchive(
                     new ModelAnnounce(_seed.PlayerId, share.Game, Path.GetFileName(loaded[i].Path),
-                                      loaded[i].Hash, loaded[i].Size, i, loaded.Count),
+                                      loaded[i].Hash, loaded[i].Size, i, loaded.Count, setId),
                     loaded[i].Path));
             }
         }
@@ -660,7 +709,7 @@ public sealed class ModelSyncCoordinator
                     continue;
                 }
 
-                var set = new RemoteSet(persisted.Hashes.Count);
+                var set = new RemoteSet(persisted.Hashes.Count, ModelSyncProtocol.SetId(persisted.Hashes));
                 for (var i = 0; i < persisted.Hashes.Count; i++)
                 {
                     set.ByIndex[i] = new ModelAnnounce(persisted.Player, game, "",

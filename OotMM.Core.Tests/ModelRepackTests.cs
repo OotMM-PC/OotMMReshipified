@@ -300,14 +300,15 @@ public class ModelSyncTests
     }
 
     [Fact]
-    public void Download_RejectsOutOfOrderChunksAndAssemblesInOrder()
+    public void Download_AcceptsChunksInAnyOrderAndAssemblesThemInSequence()
     {
         var download = new ModelDownload("abc123", 3);
-        Assert.True(download.Accept(new ModelChunk(1, "abc123", 0, 3, [1, 2])));
-        Assert.False(download.Accept(new ModelChunk(1, "abc123", 2, 3, [5, 6])));
-        Assert.True(download.Accept(new ModelChunk(1, "abc123", 1, 3, [3, 4])));
-        Assert.False(download.Complete);
         Assert.True(download.Accept(new ModelChunk(1, "abc123", 2, 3, [5, 6])));
+        Assert.False(download.Accept(new ModelChunk(1, "abc123", 2, 3, [5, 6])));
+        Assert.False(download.Accept(new ModelChunk(1, "abc123", 3, 3, [7, 8])));
+        Assert.True(download.Accept(new ModelChunk(1, "abc123", 0, 3, [1, 2])));
+        Assert.False(download.Complete);
+        Assert.True(download.Accept(new ModelChunk(1, "abc123", 1, 3, [3, 4])));
 
         Assert.True(download.Complete);
         Assert.Equal(new byte[] { 1, 2, 3, 4, 5, 6 }, download.Assemble());

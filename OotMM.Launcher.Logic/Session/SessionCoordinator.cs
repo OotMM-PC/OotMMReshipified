@@ -455,6 +455,7 @@ public sealed class SessionCoordinator : IDisposable
         }
 
         GameAudioSync.PrepareLaunch(_session.OotExe, _session.MmExe, ActiveGame);
+        _modelSync?.NoteGameLaunching(ActiveGame);
         _process?.Dispose();
         _ipc?.Dispose();
         _ipc = new GameIpcServer(ActiveGame);

@@ -1135,7 +1135,7 @@ public sealed class SessionCoordinator : IDisposable
         return new RosterMeta(
             ShowNames: true,
             Pvp: _multiworld?.Pvp ?? false,
-            DeathLink: _multiworld?.DeathLink ?? false,
+            DeathLink: (_multiworld?.DeathLink ?? Core.Relay.DeathLinkMode.Off) != Core.Relay.DeathLinkMode.Off,
             SpeedPercent: TimerEnabled ? _speedPercent : 100,
             SpeedSmooth: _speedSmooth,
             TransportState: transport,

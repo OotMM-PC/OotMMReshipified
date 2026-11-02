@@ -24,7 +24,7 @@ public sealed class ConfigViewModel : ViewModelBase
     private int _relayPort;
     private bool _hostPvp;
     private bool _hostFriendlyFire;
-    private bool _hostDeathLink;
+    private int _hostDeathLink;
     private string _multiworldAddress = "";
     private string _playerName = "";
     private string _statusMessage = "";
@@ -51,7 +51,7 @@ public sealed class ConfigViewModel : ViewModelBase
         _relayPort = settings.RelayPort;
         _hostPvp = settings.EnablePvp;
         _hostFriendlyFire = settings.EnablePvp && settings.EnableFriendlyFire;
-        _hostDeathLink = settings.EnableDeathLink;
+        _hostDeathLink = (int)settings.DeathLink;
         MmCard.PortAdultModel = settings.PortOotAdultModel;
         MmCard.PortChildModel = settings.PortOotChildModel;
         _multiworldAddress = settings.MultiworldAddress;
@@ -257,7 +257,7 @@ public sealed class ConfigViewModel : ViewModelBase
         }
     }
 
-    public bool HostDeathLink
+    public int HostDeathLink
     {
         get => _hostDeathLink;
         set
@@ -726,7 +726,7 @@ public sealed class ConfigViewModel : ViewModelBase
         _settings.RelayPort = RelayPort;
         _settings.EnablePvp = HostPvp;
         _settings.EnableFriendlyFire = HostFriendlyFire;
-        _settings.EnableDeathLink = HostDeathLink;
+        _settings.DeathLink = (OotMM.Core.Relay.DeathLinkMode)HostDeathLink;
         _settings.PortOotAdultModel = MmCard.PortAdultModel;
         _settings.PortOotChildModel = MmCard.PortChildModel;
         _settings.MultiworldAddress = MultiworldAddress;

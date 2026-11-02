@@ -50,7 +50,7 @@ foreach (var arg in args)
     {
         case "-h" or "--help" or "/?":
             Console.WriteLine("OoTMM dedicated multiworld server (protocol v4)\n"
-                              + "usage: ootmm_server [port] [--pvp] [--friendly-fire] [--death-link]\n"
+                              + "usage: ootmm_server [port] [--pvp] [--friendly-fire] [--death-link=off|team|global]\n"
                               + "       ootmm_server --register-manifest [--world-state <dir>]\n"
                               + "                    <player1-seed> ... <playerN-seed>\n\n"
                               + "Normal settings load from server.properties next to the executable.");
@@ -62,8 +62,20 @@ foreach (var arg in args)
             config.Rules.FriendlyFire = true;
             continue;
         case "--death-link":
-            config.Rules.DeathLink = true;
+            config.Rules.DeathLink = DeathLinkMode.Global;
             continue;
+    }
+
+    if (arg.StartsWith("--death-link=", StringComparison.Ordinal))
+    {
+        if (DeathLinkModes.Parse(arg["--death-link=".Length..]) is not { } mode)
+        {
+            Console.Error.WriteLine($"ootmm_server: invalid argument '{arg}' (expected off, team or global)");
+            return 2;
+        }
+
+        config.Rules.DeathLink = mode;
+        continue;
     }
 
     if (portSet || !ushort.TryParse(arg, out var port) || port == 0)
@@ -137,7 +149,19 @@ file sealed class ServerProperties
                 case "port":
                     Console.Error.WriteLine($"[server] server.properties line {lineNo}: invalid port '{value}'");
                     break;
-                case "pvp" or "friendly-fire" or "death-link" or "timer-enabled" or "manifest-bootstrap":
+                case "death-link":
+                    if (DeathLinkModes.Parse(value) is { } deathLink)
+                    {
+                        config.Rules.DeathLink = deathLink;
+                    }
+                    else
+                    {
+                        Console.Error.WriteLine(
+                            $"[server] server.properties line {lineNo}: invalid death-link value '{value}' (expected off, team or global)");
+                    }
+
+                    break;
+                case "pvp" or "friendly-fire" or "timer-enabled" or "manifest-bootstrap":
                 {
                     var lowered = value.ToLowerInvariant();
                     var parsed = lowered is "true" or "1" or "yes" or "on";
@@ -152,7 +176,6 @@ file sealed class ServerProperties
                     {
                         case "pvp": config.Rules.Pvp = parsed; break;
                         case "friendly-fire": config.Rules.FriendlyFire = parsed; break;
-                        case "death-link": config.Rules.DeathLink = parsed; break;
                         case "manifest-bootstrap": config.Rules.AllowManifestBootstrap = parsed; break;
                         default: config.Rules.TimerEnabled = parsed; break;
                     }
@@ -200,9 +223,9 @@ file sealed class ServerProperties
                 + $"pvp={(config.Rules.Pvp ? "true" : "false")}\n\n"
                 + "# With PvP on, whether teammates can hurt each other.\n"
                 + $"friendly-fire={(config.Rules.FriendlyFire ? "true" : "false")}\n\n"
-                + "# Teammates always share deaths. Global death link also kills every\n"
-                + "# player on every other team in the session.\n"
-                + $"death-link={(config.Rules.DeathLink ? "true" : "false")}\n\n"
+                + "# Shared deaths: off, team (teammates die together) or global (every\n"
+                + "# player in the session dies together).\n"
+                + $"death-link={DeathLinkModes.Tag(config.Rules.DeathLink)}\n\n"
                 + "# Timer (game speed) feature: each launcher offers a game-speed slider\n"
                 + "# constrained to [timer-min, timer-max] percent (100 = vanilla speed).\n"
                 + $"timer-enabled={(config.Rules.TimerEnabled ? "true" : "false")}\n"

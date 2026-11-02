@@ -225,18 +225,21 @@ Item {
 
                 Chip {
                     visible: view.vm.hostRelay
-                    text: "Global death link"
-                    lit: view.vm.hostDeathLink
+                    text: ["Death link: Off", "Death link: Team", "Death link: Global"][view.vm.hostDeathLink]
+                    lit: view.vm.hostDeathLink !== 0
                     ToolTip.visible: hovered
                     ToolTip.delay: 500
-                    ToolTip.text: "Server rule: when any player dies, everyone dies. Teammates always share deaths."
-                    onClicked: view.vm.hostDeathLink = !view.vm.hostDeathLink
+                    ToolTip.text: ["Server rule: players never die because someone else died. Click for Team.",
+                                   "Server rule: teammates die together. Click for Global.",
+                                   "Server rule: when any player dies, everyone dies. Click for Off."][view.vm.hostDeathLink]
+                    onClicked: view.vm.hostDeathLink = (view.vm.hostDeathLink + 1) % 3
                 }
 
                 Text {
+                    visible: !view.vm.hostRelay
                     height: 28
                     verticalAlignment: Text.AlignVCenter
-                    text: view.vm.hostRelay ? "Teammates always share deaths" : "Rules are set by the host"
+                    text: "Rules are set by the host"
                     color: theme.dim
                     font.family: theme.font
                     font.pixelSize: 12

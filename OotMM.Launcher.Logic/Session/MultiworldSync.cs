@@ -86,7 +86,7 @@ public sealed class MultiworldSync : IDisposable
 
     public bool Pvp { get; private set; }
     public bool FriendlyFire { get; private set; }
-    public bool DeathLink { get; private set; }
+    public DeathLinkMode DeathLink { get; private set; }
     public bool TimerEnabled { get; private set; } = true;
     public int TimerMin { get; private set; }
     public int TimerMax { get; private set; } = 250;
@@ -300,7 +300,8 @@ public sealed class MultiworldSync : IDisposable
                     _lastSessionMeta = line;
                     Pvp = line.Contains("\"pvp\":true");
                     FriendlyFire = line.Contains("\"friendlyFire\":true");
-                    DeathLink = line.Contains("\"deathLink\":true");
+                    DeathLink = DeathLinkModes.Parse(RelayProtocol.ExtractStringField(line, "deathLinkMode"))
+                                ?? (line.Contains("\"deathLink\":true") ? DeathLinkMode.Global : DeathLinkMode.Team);
                     TimerEnabled = !line.Contains("\"timerEnabled\":false");
                     TimerMin = RelayProtocol.ExtractIntField(line, "timerMin");
                     TimerMax = RelayProtocol.ExtractIntField(line, "timerMax", 250);
@@ -310,9 +311,9 @@ public sealed class MultiworldSync : IDisposable
                         rules.Add(FriendlyFire ? "PvP with friendly fire" : "PvP");
                     }
 
-                    if (DeathLink)
+                    if (DeathLink != DeathLinkMode.Off)
                     {
-                        rules.Add("global death link");
+                        rules.Add($"{DeathLinkModes.Tag(DeathLink)} death link");
                     }
 
                     EventLogged?.Invoke(

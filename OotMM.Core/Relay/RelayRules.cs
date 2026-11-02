@@ -1,10 +1,35 @@
 namespace OotMM.Core.Relay;
 
+public enum DeathLinkMode
+{
+    Off,
+    Team,
+    Global,
+}
+
+public static class DeathLinkModes
+{
+    public static string Tag(DeathLinkMode mode) => mode switch
+    {
+        DeathLinkMode.Team => "team",
+        DeathLinkMode.Global => "global",
+        _ => "off",
+    };
+
+    public static DeathLinkMode? Parse(string value) => value.Trim().ToLowerInvariant() switch
+    {
+        "off" or "false" or "no" or "0" => DeathLinkMode.Off,
+        "team" => DeathLinkMode.Team,
+        "global" or "true" or "yes" or "on" or "1" => DeathLinkMode.Global,
+        _ => null,
+    };
+}
+
 public sealed class RelayRules
 {
     public bool Pvp { get; set; }
     public bool FriendlyFire { get; set; }
-    public bool DeathLink { get; set; }
+    public DeathLinkMode DeathLink { get; set; }
     public bool TimerEnabled { get; set; } = true;
     public int TimerMinPercent { get; set; }
     public int TimerMaxPercent { get; set; } = 250;

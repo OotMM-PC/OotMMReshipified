@@ -93,7 +93,7 @@ public sealed class RelayEngine
         BoundPort = ((IPEndPoint)listener.LocalEndPoint!).Port;
         Log($"[relay] multiworld relay listening on port {BoundPort}"
             + (_rules.Pvp ? " (PvP enabled)" : "") + (_rules.Pvp && _rules.FriendlyFire ? " (friendly fire enabled)" : "")
-            + (_rules.DeathLink ? " (global death link enabled)" : ""));
+            + (_rules.DeathLink != DeathLinkMode.Off ? $" ({DeathLinkModes.Tag(_rules.DeathLink)} death link enabled)" : ""));
         Log($"[relay] check state persists in {_storeDir}");
 
         var lastMeta = SessionMetaLine();
@@ -277,7 +277,7 @@ public sealed class RelayEngine
     private string SessionMetaLine() =>
         $"{{\"type\":\"{RelayProtocol.SessionMeta}\",\"pvp\":{(_rules.Pvp ? "true" : "false")}"
         + $",\"friendlyFire\":{(_rules.FriendlyFire ? "true" : "false")}"
-        + $",\"deathLink\":{(_rules.DeathLink ? "true" : "false")}"
+        + $",\"deathLinkMode\":\"{DeathLinkModes.Tag(_rules.DeathLink)}\""
         + $",\"timerEnabled\":{(_rules.TimerEnabled ? "true" : "false")}"
         + $",\"timerMin\":{_rules.TimerMinPercent},\"timerMax\":{_rules.TimerMaxPercent}}}\n";
 
@@ -568,8 +568,12 @@ public sealed class RelayEngine
 
         if (type == PresencePackets.DeathLink)
         {
-            Broadcast(c.Room, line + "\n", except: c,
-                      recipient => _rules.DeathLink || recipient.TeamId == c.TeamId);
+            if (_rules.DeathLink != DeathLinkMode.Off)
+            {
+                Broadcast(c.Room, line + "\n", except: c,
+                          recipient => _rules.DeathLink == DeathLinkMode.Global || recipient.TeamId == c.TeamId);
+            }
+
             return;
         }
 

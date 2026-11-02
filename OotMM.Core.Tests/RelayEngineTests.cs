@@ -332,21 +332,44 @@ public class RelayEngineTests : IDisposable
     }
 
     [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void DeathLinkAlwaysReachesTeammatesAndOtherTeamsOnlyWhenGlobal(bool global)
+    [InlineData(DeathLinkMode.Off, false, false)]
+    [InlineData(DeathLinkMode.Team, true, false)]
+    [InlineData(DeathLinkMode.Global, true, true)]
+    public void DeathLinkReachesOnlyWhoTheModeIncludes(DeathLinkMode mode, bool toTeammate, bool toRival)
     {
-        var (source, teammate, rival) = JoinTwoTeams(new RelayRules { DeathLink = global });
+        var (source, teammate, rival) = JoinTwoTeams(new RelayRules { DeathLink = mode });
         using var a = source;
         using var b = teammate;
         using var c = rival;
 
         var death = """{"type":"OOTMM_DEATH_LINK","seedId":"protocol-test","teamId":"team","sourcePlayer":1,"seq":3}""";
         source.Send(death);
-        Assert.Equal(death, teammate.ReceiveType(PresencePackets.DeathLink));
-        var toRival = rival.ReceiveType(PresencePackets.DeathLink, timeoutMs: global ? 3000 : 400);
-        Assert.Equal(global ? death : null, toRival);
+        Assert.Equal(toTeammate ? death : null,
+                     teammate.ReceiveType(PresencePackets.DeathLink, timeoutMs: toTeammate ? 3000 : 400));
+        Assert.Equal(toRival ? death : null,
+                     rival.ReceiveType(PresencePackets.DeathLink, timeoutMs: toRival ? 3000 : 400));
     }
+
+    [Fact]
+    public void DeathLinkIsOffByDefaultAndAnnounced()
+    {
+        Assert.Equal(DeathLinkMode.Off, new RelayRules().DeathLink);
+        var port = StartEngine(new RelayRules { DeathLink = DeathLinkMode.Team });
+        using var p1 = new Wire(port);
+        p1.Send(Hello(1, "p1"));
+        Assert.Contains("\"deathLinkMode\":\"team\"", p1.ReceiveType(RelayProtocol.SessionMeta));
+    }
+
+    [Theory]
+    [InlineData("off", DeathLinkMode.Off)]
+    [InlineData("false", DeathLinkMode.Off)]
+    [InlineData("team", DeathLinkMode.Team)]
+    [InlineData("TEAM", DeathLinkMode.Team)]
+    [InlineData("global", DeathLinkMode.Global)]
+    [InlineData("true", DeathLinkMode.Global)]
+    [InlineData("nonsense", null)]
+    public void DeathLinkModeParsesCurrentAndLegacyValues(string value, DeathLinkMode? expected) =>
+        Assert.Equal(expected, DeathLinkModes.Parse(value));
 
     [Fact]
     public void SessionMetaAnnouncesFriendlyFire()

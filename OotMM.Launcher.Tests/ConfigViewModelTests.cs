@@ -27,12 +27,24 @@ public sealed class ConfigViewModelTests
     [Fact]
     public void HostRulesRestoreFromSettings()
     {
-        var settings = new UiSettings { EnablePvp = true, EnableFriendlyFire = true, EnableDeathLink = true };
+        var settings = new UiSettings { EnablePvp = true, EnableFriendlyFire = true, DeathLink = Core.Relay.DeathLinkMode.Team };
         var config = new ConfigViewModel(settings, new NoPicker(), () => { }, (_, _, _, _) => { });
 
         Assert.True(config.HostPvp);
         Assert.True(config.HostFriendlyFire);
-        Assert.True(config.HostDeathLink);
+        Assert.Equal(1, config.HostDeathLink);
+    }
+
+    [Theory]
+    [InlineData("{}", Core.Relay.DeathLinkMode.Off)]
+    [InlineData("{\"EnableDeathLink\":false}", Core.Relay.DeathLinkMode.Off)]
+    [InlineData("{\"EnableDeathLink\":true}", Core.Relay.DeathLinkMode.Global)]
+    [InlineData("{\"DeathLink\":1}", Core.Relay.DeathLinkMode.Team)]
+    public void DeathLinkSettingLoadsFromCurrentAndOlderFiles(string json, Core.Relay.DeathLinkMode expected)
+    {
+        var settings = System.Text.Json.JsonSerializer.Deserialize<UiSettings>(json)!;
+        Assert.Equal(expected, settings.DeathLink);
+        Assert.DoesNotContain("EnableDeathLink", System.Text.Json.JsonSerializer.Serialize(settings));
     }
 
     private sealed class NoPicker : IFilePicker

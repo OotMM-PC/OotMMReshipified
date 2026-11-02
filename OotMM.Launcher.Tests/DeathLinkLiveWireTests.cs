@@ -94,12 +94,35 @@ public class DeathLinkLiveWireTests : IDisposable
         }
     }
 
+    [Fact]
+    public void DeathReachesNobodyWhenOff()
+    {
+        var port = StartEngine(new RelayRules());
+        var source = Join(port, 1, "team");
+        var teammate = Join(port, 2, "team");
+        var rival = Join(port, 2, "rivals");
+        PumpUntil(() => _syncs.All(sync => sync.Ready));
+        Assert.All(_syncs, sync => Assert.True(sync.Ready));
+
+        source.SubmitDeathLink();
+        var deaths = new List<string>();
+        PumpUntil(() =>
+        {
+            deaths.AddRange(teammate.TakeRemoteDeaths());
+            deaths.AddRange(rival.TakeRemoteDeaths());
+            return false;
+        }, seconds: 1);
+
+        Assert.Empty(deaths);
+        Assert.Equal(DeathLinkMode.Off, teammate.DeathLink);
+    }
+
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void DeathReachesTeammateOnceAndOtherTeamOnlyWhenGlobal(bool global)
     {
-        var port = StartEngine(new RelayRules { DeathLink = global });
+        var port = StartEngine(new RelayRules { DeathLink = global ? DeathLinkMode.Global : DeathLinkMode.Team });
         var source = Join(port, 1, "team");
         var teammate = Join(port, 2, "team");
         var rival = Join(port, 2, "rivals");

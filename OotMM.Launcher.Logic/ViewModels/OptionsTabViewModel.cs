@@ -10,6 +10,7 @@ public sealed class OptionsTabViewModel : ViewModelBase
     private bool _devMode;
     private bool _cheatGatePending;
     private bool _holdToZTarget;
+    private bool _remoteItemPrompts = true;
 
     public OptionsTabViewModel(
         int themeIndex, double uiScale, Action<int> onThemeChanged, Action<double> onUiScaleChanged,
@@ -45,6 +46,20 @@ public sealed class OptionsTabViewModel : ViewModelBase
             if (Set(ref _holdToZTarget, value))
             {
                 HoldToZTargetChanged?.Invoke(value);
+            }
+        }
+    }
+
+    internal Action<bool>? RemoteItemPromptsChanged { get; set; }
+
+    public bool RemoteItemPrompts
+    {
+        get => _remoteItemPrompts;
+        set
+        {
+            if (Set(ref _remoteItemPrompts, value))
+            {
+                RemoteItemPromptsChanged?.Invoke(value);
             }
         }
     }

@@ -81,6 +81,27 @@ public class GameIpcProtocolTests
     }
 
     [Fact]
+    public void RemoteItem_CarriesBackgroundAndQuietFlags()
+    {
+        using var document = JsonDocument.Parse(GameIpcProtocol.BuildPresentItem(
+            new ItemRef(Game.Oot, "OOT_HAMMER", "Hammer"), Game.Oot, 3, 2,
+            debug: false, viewerPlayer: 2, background: true, quiet: true));
+        Assert.True(document.RootElement.GetProperty("background").GetBoolean());
+        Assert.True(document.RootElement.GetProperty("quiet").GetBoolean());
+        Assert.Equal(3, document.RootElement.GetProperty("sourcePlayer").GetInt32());
+    }
+
+    [Fact]
+    public void CheckReward_IsNeitherBackgroundNorQuiet()
+    {
+        using var document = JsonDocument.Parse(GameIpcProtocol.BuildPresentItem(
+            new ItemRef(Game.Oot, "OOT_HAMMER", "Hammer"), Game.Oot, 2, 2,
+            debug: false, viewerPlayer: 2, checkKey: "oot:CHECK"));
+        Assert.False(document.RootElement.GetProperty("background").GetBoolean());
+        Assert.False(document.RootElement.GetProperty("quiet").GetBoolean());
+    }
+
+    [Fact]
     public void DebugPresentItemRoundTrips()
     {
         const string json =

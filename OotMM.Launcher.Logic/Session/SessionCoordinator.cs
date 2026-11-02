@@ -36,6 +36,7 @@ public sealed class SessionCoordinator : IDisposable
     private bool _speedSmooth;
     private bool _zTargetHold;
     private bool _ipcSettingsDirty = true;
+    private readonly List<(ushort SourcePlayer, ItemRef Item)> _pendingRemoteItems = [];
     private long _settingsRevision;
     private long _forceUnlockSeq;
     private ulong _lastNativeSaveRequest;
@@ -68,6 +69,7 @@ public sealed class SessionCoordinator : IDisposable
                 }
             };
             _multiworld.OwnFactConfirmed += OnOwnFactConfirmed;
+            _multiworld.RemoteItemReceived += OnRemoteItemReceived;
             _multiworld.SyncChanged += () =>
             {
                 _stateDirty = true;
@@ -131,6 +133,8 @@ public sealed class SessionCoordinator : IDisposable
             }
         }
     }
+
+    public bool RemoteItemPrompts { get; set; } = true;
 
     public bool ZTargetHold
     {
@@ -780,6 +784,7 @@ public sealed class SessionCoordinator : IDisposable
                         CompletedChecks.Order(StringComparer.Ordinal)));
                     _ipcSettingsDirty = true;
                     LogEvent($"{GameInfo.Title(ActiveGame)} connected to the launcher.");
+                    FlushRemoteItems();
                     break;
                 case GameIpcEventType.Message:
                     if (NativeSaveRequest.TryParse(ipcEvent.Message, out var saveRequest, out _))
@@ -851,6 +856,41 @@ public sealed class SessionCoordinator : IDisposable
                     break;
             }
         }
+    }
+
+    private void OnRemoteItemReceived(ushort sourcePlayer, ItemPlacement placement)
+    {
+        ReconcileInventory();
+        var item = placement.Item with
+        {
+            Name = ProgressiveItemNames.Resolve(
+                _session.Seed, placement.Item.Game, placement.Item, _inventory.Items),
+        };
+        _pendingRemoteItems.Add((sourcePlayer, item));
+        FlushRemoteItems();
+    }
+
+    private void FlushRemoteItems()
+    {
+        if (_ipc?.IsConnected != true)
+        {
+            return;
+        }
+
+        foreach (var (sourcePlayer, item) in _pendingRemoteItems)
+        {
+            _ipc.Send(GameIpcProtocol.BuildPresentItem(
+                item,
+                item.Game,
+                sourcePlayer,
+                _session.Seed.PlayerId,
+                debug: false,
+                viewerPlayer: _session.Seed.PlayerId,
+                background: true,
+                quiet: !RemoteItemPrompts));
+        }
+
+        _pendingRemoteItems.Clear();
     }
 
     private void SendDebugItemPresentation(DebugPresentItem request)

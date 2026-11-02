@@ -63,6 +63,21 @@ ColumnLayout {
 
     SectionLabel {
         Layout.topMargin: 10
+        text: "Multiplayer"
+    }
+
+    GoldCheck {
+        Layout.fillWidth: true
+        text: "Show prompts for items from other players"
+        on: tab.vm ? tab.vm.remoteItemPrompts : true
+        ToolTip.visible: hovered
+        ToolTip.delay: 500
+        ToolTip.text: "Shows a background prompt that doesn't stop play. Turn it off to receive these items silently. Junk like rupees and ammo always floats above Link's head either way."
+        onFlipped: value => tab.vm.remoteItemPrompts = value
+    }
+
+    SectionLabel {
+        Layout.topMargin: 10
         text: "Advanced"
     }
 

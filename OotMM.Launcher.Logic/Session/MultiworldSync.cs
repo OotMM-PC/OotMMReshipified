@@ -120,6 +120,7 @@ public sealed class MultiworldSync : IDisposable
 
     public event Action<string, bool>? EventLogged;
     public event Action<Game, string>? OwnFactConfirmed;
+    public event Action<ushort, ItemPlacement>? RemoteItemReceived;
     public event Action<string>? ModelLineReceived;
     public event Action? SyncChanged;
     public event Action? AutoHostWanted;
@@ -566,6 +567,11 @@ public sealed class MultiworldSync : IDisposable
         if (!_remoteReceipts.Add(key))
         {
             return false;
+        }
+
+        if (!quiet && Live)
+        {
+            RemoteItemReceived?.Invoke(sourcePlayer, placement);
         }
 
         _remoteCounts[placement.Item.Id] = _remoteCounts.GetValueOrDefault(placement.Item.Id) + 1;

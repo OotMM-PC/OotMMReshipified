@@ -124,7 +124,9 @@ public static class GameIpcProtocol
         ushort recipientPlayer,
         bool debug,
         ushort viewerPlayer = 0,
-        string? checkKey = null) =>
+        string? checkKey = null,
+        bool background = false,
+        bool quiet = false) =>
         JsonSerializer.Serialize(new
         {
             type = MessageType.PresentItem,
@@ -137,6 +139,8 @@ public static class GameIpcProtocol
             viewerPlayer = viewerPlayer == 0 ? recipientPlayer : viewerPlayer,
             debug,
             check = checkKey,
+            background,
+            quiet,
         });
 
     public static string BuildRemotePlayerPoses(IReadOnlyList<string> poses)

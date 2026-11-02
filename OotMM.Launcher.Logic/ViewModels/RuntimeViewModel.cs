@@ -48,6 +48,8 @@ public sealed class RuntimeViewModel : ViewModelBase
         {
             HoldToZTarget = settings.HoldToZTarget,
             HoldToZTargetChanged = ApplyHoldToZTarget,
+            RemoteItemPrompts = settings.RemoteItemPrompts,
+            RemoteItemPromptsChanged = ApplyRemoteItemPrompts,
         };
         Progress = new ProgressTabViewModel();
         _tabs = [Tracker, Log, SessionTab, Options, Progress];
@@ -90,6 +92,7 @@ public sealed class RuntimeViewModel : ViewModelBase
         };
         coordinator.AllowDebugMenus = settings.DevMode;
         coordinator.ZTargetHold = settings.HoldToZTarget;
+        coordinator.RemoteItemPrompts = settings.RemoteItemPrompts;
         vm.Tracker.ForceUnlockSender = coordinator.ForceUnlock;
         vm.Options.RestartGame = coordinator.RestartGame;
 
@@ -287,6 +290,16 @@ public sealed class RuntimeViewModel : ViewModelBase
         if (_coordinator is not null)
         {
             _coordinator.ZTargetHold = hold;
+        }
+    }
+
+    private void ApplyRemoteItemPrompts(bool prompts)
+    {
+        _settings.RemoteItemPrompts = prompts;
+        _settings.Save();
+        if (_coordinator is not null)
+        {
+            _coordinator.RemoteItemPrompts = prompts;
         }
     }
 

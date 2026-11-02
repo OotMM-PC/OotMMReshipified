@@ -765,6 +765,23 @@ public sealed class SessionCoordinator : IDisposable
         }
     }
 
+    public void SetLauncherKeyboard(bool wanted)
+    {
+        if (!GameWindow.IsAlive(_gameChild))
+        {
+            return;
+        }
+
+        if (wanted)
+        {
+            GameWindow.FocusOwner(GameHostHandle);
+        }
+        else if (GameWindow.OwnerIsActive(GameHostHandle))
+        {
+            GameWindow.Focus(_gameChild);
+        }
+    }
+
     public void OnHostActivated()
     {
         if (GameWindow.IsAlive(_gameChild) && GameWindow.CursorOverWindow(GameHostHandle))

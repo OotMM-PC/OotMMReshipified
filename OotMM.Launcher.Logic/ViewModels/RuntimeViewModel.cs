@@ -180,6 +180,8 @@ public sealed class RuntimeViewModel : ViewModelBase
 
     internal event Action? GameHostAttached;
 
+    public void SetLauncherKeyboard(bool wanted) => _coordinator?.SetLauncherKeyboard(wanted);
+
     public void NotifyGameHostCreated(nint handle)
     {
         if (_coordinator is null)

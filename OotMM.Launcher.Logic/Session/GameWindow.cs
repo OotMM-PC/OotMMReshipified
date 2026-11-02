@@ -53,6 +53,9 @@ public static class GameWindow
     public static bool OwnerIsForeground(nint window) =>
         IsAlive(window) && GetForegroundWindow() == GetAncestor(window, 2);
 
+    public static bool OwnerIsActive(nint window) =>
+        IsAlive(window) && GetActiveWindow() == GetAncestor(window, 2);
+
     public static bool LeftButtonDown() => (GetAsyncKeyState(0x01) & 0x8000) != 0;
 
     public static void Layout(nint child, int width, int height) =>
@@ -76,6 +79,14 @@ public static class GameWindow
         if (childThread != selfThread)
         {
             AttachThreadInput(selfThread, childThread, false);
+        }
+    }
+
+    public static void FocusOwner(nint window)
+    {
+        if (IsAlive(window))
+        {
+            Focus(GetAncestor(window, 2));
         }
     }
 
@@ -127,6 +138,9 @@ public static class GameWindow
 
     [DllImport("user32.dll")]
     private static extern nint GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern nint GetActiveWindow();
 
     [DllImport("user32.dll")]
     private static extern nint GetAncestor(nint hwnd, uint flags);

@@ -65,7 +65,11 @@ ColumnLayout {
         placeholderText: "Search checks (Ctrl+F)"
         text: tab.vm ? tab.vm.filterText : ""
         onTextEdited: tab.vm.filterText = text
-        Keys.onEscapePressed: tab.vm.filterText = ""
+        onAccepted: focus = false
+        Keys.onEscapePressed: {
+            tab.vm.filterText = ""
+            focus = false
+        }
 
         LinkButton {
             id: clear

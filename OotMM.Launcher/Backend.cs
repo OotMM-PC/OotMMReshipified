@@ -42,6 +42,14 @@ public sealed class Backend : INotifyPropertyChanged
 
     public void CompletePick(string path) => _picker.Complete(path);
 
+    public void SetTextFieldFocus(bool focused)
+    {
+        if (Main.IsRuntime)
+        {
+            Main.Runtime?.SetLauncherKeyboard(focused);
+        }
+    }
+
     public void SetGameArea(double x, double y, double width, double height, double devicePixelRatio)
     {
         if (!Main.IsRuntime || Main.Runtime is not { IsPreview: false } runtime)

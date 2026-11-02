@@ -16,6 +16,8 @@ TextField {
     selectByMouse: true
     selectionColor: theme.alpha(tint, 0.45)
     selectedTextColor: theme.text
+    onPressed: app.setTextFieldFocus(true)
+    onActiveFocusChanged: app.setTextFieldFocus(activeFocus)
 
     background: Rectangle {
         radius: 5

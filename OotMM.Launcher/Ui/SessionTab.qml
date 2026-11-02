@@ -36,6 +36,14 @@ ColumnLayout {
     }
 
     GoldButton {
+        Layout.fillWidth: true
+        text: "Restart to OoT title screen"
+        enabled: !!(tab.vm && tab.vm.coordinatorReady)
+        tip: "Closes the active game and boots Ocarina of Time to its title screen, ready to pick your save."
+        onClicked: tab.vm.restartToOotTitle()
+    }
+
+    GoldButton {
         id: toMm
         Layout.fillWidth: true
         visible: !!(tab.vm && tab.vm.showSwitchToMm)

@@ -220,6 +220,16 @@ public sealed class SessionCoordinator : IDisposable
             EndSession(error);
     }
 
+    public void RestartToOotTitle()
+    {
+        _process?.Terminate();
+        _modelSync?.InstallNow();
+        ActiveGame = Game.Oot;
+        LogEvent("Restarting to the Ocarina of Time title screen…");
+        if (StartActiveGame(null, null) is { } error)
+            EndSession(error);
+    }
+
     public void SwitchGame(uint? ootAge = null)
     {
         _process?.Terminate();

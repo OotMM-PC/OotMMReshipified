@@ -34,6 +34,8 @@ public sealed class SessionTabViewModel : ViewModelBase
 
     public void RestartGame() => _coordinator?.RestartGame();
 
+    public void RestartToOotTitle() => _coordinator?.RestartToOotTitle();
+
     public void SwitchGame() => SwitchTo(null);
 
     public void SwitchGameAsChild() => SwitchTo(1);

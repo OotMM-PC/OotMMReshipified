@@ -132,6 +132,118 @@ public class ModelRepackTests
             Directory.Delete(dir, recursive: true);
         }
     }
+
+    private static string WriteArchive(string dir, string name, params (string Path, byte[] Data)[] entries)
+    {
+        var archive = Path.Combine(dir, name);
+        using var file = File.Create(archive);
+        using var zip = new ZipArchive(file, ZipArchiveMode.Create);
+        foreach (var (path, data) in entries)
+        {
+            using var s = zip.CreateEntry(path).Open();
+            s.Write(data);
+        }
+
+        return archive;
+    }
+
+    private static byte[] ReadEntry(ZipArchive zip, string path)
+    {
+        using var stream = zip.GetEntry(path)!.Open();
+        using var buffer = new MemoryStream();
+        stream.CopyTo(buffer);
+        return buffer.ToArray();
+    }
+
+    [Fact]
+    public void Repack_KeepsAltPrefixedReferencesResolvable()
+    {
+        var dir = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            const string limb = "alt/objects/object_link_zora/gLinkZoraCollarLimb";
+            const string dl = "alt/objects/object_link_zora/gLinkZoraCollarDL";
+            var limbBody = new List<byte> { 0x2E };
+            limbBody.AddRange(Encoding.ASCII.GetBytes(dl));
+            limbBody.Add(0x2E);
+            var input = WriteArchive(dir, "zora.o2r",
+                (limb, limbBody.ToArray()),
+                (dl, Encoding.ASCII.GetBytes("<DisplayList/>")),
+                ("alt/objects/object_link_zora/gLinkZoraUnusedDL", [1]));
+
+            var output = Path.Combine(dir, "out.o2r");
+            Assert.True(ModelRepack.Repack([input], output, 3).Ok);
+
+            using var zip = ZipFile.OpenRead(output);
+            var names = zip.Entries.Select(e => e.FullName).OrderBy(n => n).ToList();
+            Assert.Equal(
+                [
+                    "alt/p03objs/object_link_zora/gLinkZoraCollarDL",
+                    "p03objs/object_link_zora/gLinkZoraCollarDL",
+                    "p03objs/object_link_zora/gLinkZoraCollarLimb",
+                    "p03objs/object_link_zora/gLinkZoraUnusedDL",
+                ],
+                names);
+            Assert.Contains("alt/p03objs/object_link_zora/gLinkZoraCollarDL",
+                            Encoding.ASCII.GetString(ReadEntry(zip, "p03objs/object_link_zora/gLinkZoraCollarLimb")));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Repack_RewritesHashesOfAltPathsEvenWhenTheEntryIsPlain()
+    {
+        var dir = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            const string tex = "objects/object_link_child/gLinkHumanEyesTex";
+            var hash = Crc64.OfPath("alt/" + tex);
+            var body = new List<byte>();
+            body.AddRange(BitConverter.GetBytes((uint)(hash >> 32)));
+            body.AddRange(BitConverter.GetBytes((uint)hash));
+            var input = WriteArchive(dir, "model.o2r",
+                ("objects/object_link_child/gLinkHumanDL", body.ToArray()),
+                (tex, [1, 2, 3]));
+
+            var output = Path.Combine(dir, "out.o2r");
+            Assert.True(ModelRepack.Repack([input], output, 4).Ok);
+
+            using var zip = ZipFile.OpenRead(output);
+            var rewritten = ReadEntry(zip, "p04objs/object_link_child/gLinkHumanDL");
+            var expected = Crc64.OfPath("p04objs/object_link_child/gLinkHumanEyesTex");
+            Assert.Equal((uint)(expected >> 32), BitConverter.ToUInt32(rewritten, 0));
+            Assert.Equal((uint)expected, BitConverter.ToUInt32(rewritten, 4));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Repack_PrefersAltOverPlainLikeTheGameDoes()
+    {
+        var dir = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            const string path = "object_link_boy/gLinkAdultTunicTex";
+            var first = WriteArchive(dir, "a.o2r", ("alt/objects/" + path, [7]));
+            var second = WriteArchive(dir, "b.o2r", ("objects/" + path, [1]));
+            var output = Path.Combine(dir, "out.o2r");
+
+            Assert.True(ModelRepack.Repack([first, second], output, 2).Ok);
+
+            using var zip = ZipFile.OpenRead(output);
+            Assert.Equal([7], ReadEntry(zip, "p02objs/" + path));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
 }
 
 public class ModelSyncTests
@@ -305,6 +417,30 @@ public class ModelPortTests
             var entry = ported.Entries.Single();
             Assert.Equal("objects/ot_obj_link_boy/gLinkAdultTunicTex", entry.FullName);
             Assert.Equal(2, entry.Length);
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void PortDirectory_KeepsAltPrefixedReferencesResolvable()
+    {
+        var dir = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            const string dl = "alt/objects/object_link_boy/gLinkAdultCollarDL";
+            var input = MakeArchive(dir,
+                ("alt/objects/object_link_boy/gLinkAdultCollarLimb", Encoding.ASCII.GetBytes(dl)),
+                (dl, [1]));
+            var output = Path.Combine(dir, "port.o2r");
+
+            Assert.True(ModelRepack.PortDirectory([input], output, "object_link_boy", "ot_obj_link_boy").Ok);
+
+            using var ported = ZipFile.OpenRead(output);
+            Assert.NotNull(ported.GetEntry("objects/ot_obj_link_boy/gLinkAdultCollarDL"));
+            Assert.NotNull(ported.GetEntry("alt/objects/ot_obj_link_boy/gLinkAdultCollarDL"));
         }
         finally
         {

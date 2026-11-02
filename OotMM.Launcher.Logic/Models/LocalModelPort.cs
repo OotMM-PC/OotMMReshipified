@@ -10,7 +10,7 @@ public static class LocalModelPort
     public const string AdultArchive = "zz_localmodel_oot_adult.o2r";
     public const string ChildArchive = "zz_localmodel_oot_child.o2r";
     private const string ChildMarkerEntry = "objects/ot_obj_link_child/ootmm_localmodel_marker";
-    private const string PortFormat = "portv2|";
+    private const string PortFormat = "portv3|";
 
     public static ModelPortStatus EnsureAdult(
         string ootExePath, string mmExePath, IReadOnlyList<string> selectedOotModels, bool enabled)

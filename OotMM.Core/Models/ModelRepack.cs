@@ -82,7 +82,7 @@ public static class ModelRepack
     private sealed class RewritePlan
     {
         public List<(byte[] From, byte[] To)> Tokens { get; } = [];
-        public Dictionary<byte, List<(byte[] From, byte[] To)>> HashBuckets { get; } = [];
+        public Dictionary<ulong, byte[]> Hashes { get; } = [];
 
         public void AddToken(string from, string to)
         {
@@ -94,7 +94,13 @@ public static class ModelRepack
             Tokens.Add((Encoding.ASCII.GetBytes(from), Encoding.ASCII.GetBytes(to)));
         }
 
-        public void AddPath(string oldPath, string newPath)
+        public void AddTarget(string canonical, string target)
+        {
+            AddPath(canonical, target);
+            AddPath("alt/" + canonical, target);
+        }
+
+        private void AddPath(string oldPath, string newPath)
         {
             var oldHash = Crc64.OfPath(oldPath);
             var newHash = Crc64.OfPath(newPath);
@@ -103,16 +109,7 @@ public static class ModelRepack
             Add(BigEndian(oldHash), BigEndian(newHash));
         }
 
-        private void Add(byte[] from, byte[] to)
-        {
-            if (!HashBuckets.TryGetValue(from[0], out var bucket))
-            {
-                bucket = [];
-                HashBuckets[from[0]] = bucket;
-            }
-
-            bucket.Add((from, to));
-        }
+        private void Add(byte[] from, byte[] to) => Hashes[BitConverter.ToUInt64(from)] = to;
 
         private static byte[] WordSplit(ulong hash)
         {
@@ -155,30 +152,61 @@ public static class ModelRepack
                 continue;
             }
 
-            if (remaining >= 8 && plan.HashBuckets.TryGetValue(data[i], out var bucket))
+            if (remaining >= 8 && plan.Hashes.TryGetValue(BitConverter.ToUInt64(span.Slice(i, 8)), out var hash))
             {
-                var matched = false;
-                foreach (var (from, to) in bucket)
-                {
-                    if (span.Slice(i, 8).SequenceEqual(from))
-                    {
-                        to.CopyTo(span[i..]);
-                        hashRefs++;
-                        i += 8;
-                        matched = true;
-                        break;
-                    }
-                }
-
-                if (matched)
-                {
-                    continue;
-                }
+                hash.CopyTo(span[i..]);
+                hashRefs++;
+                i += 8;
+                continue;
             }
 
             i++;
         }
     }
+
+    private static void AddAltAliases(Dictionary<string, byte[]> entries, string targetPrefix)
+    {
+        var marker = Encoding.ASCII.GetBytes("alt/" + targetPrefix);
+        var aliases = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+        foreach (var data in entries.Values)
+        {
+            for (var at = 0; at < data.Length;)
+            {
+                var found = data.AsSpan(at).IndexOf(marker);
+                if (found < 0)
+                {
+                    break;
+                }
+
+                var start = at + found + "alt/".Length;
+                var end = start;
+                while (end < data.Length && IsPathByte(data[end]))
+                {
+                    end++;
+                }
+
+                var reference = Encoding.ASCII.GetString(data, start, end - start);
+                for (var length = reference.Length; length > targetPrefix.Length; length--)
+                {
+                    if (entries.TryGetValue(reference[..length], out var target))
+                    {
+                        aliases["alt/" + reference[..length]] = target;
+                    }
+                }
+
+                at = end;
+            }
+        }
+
+        foreach (var (path, data) in aliases)
+        {
+            entries[path] = data;
+        }
+    }
+
+    private static bool IsPathByte(byte value) =>
+        value is >= (byte)'a' and <= (byte)'z' or >= (byte)'A' and <= (byte)'Z' or >= (byte)'0' and <= (byte)'9'
+            or (byte)'_' or (byte)'/' or (byte)'.' or (byte)'-' or (byte)' ';
 
     public static RepackResult Repack(IReadOnlyList<string> inputs, string output, int playerId) =>
         Build(inputs, output, playerId, linkObjectsOnly: false);
@@ -223,11 +251,7 @@ public static class ModelRepack
 
                     entries[target] = load();
                     fromAlt[target] = isAlt;
-                    plan.AddPath(path, target);
-                    if (isAlt)
-                    {
-                        plan.AddPath(canonicalSource, target);
-                    }
+                    plan.AddTarget(canonicalSource, target);
                 }
             }
 
@@ -243,6 +267,8 @@ public static class ModelRepack
             {
                 ApplyRewrites(data, plan, ref stringRefs, ref hashRefs);
             }
+
+            AddAltAliases(entries, $"objects/{toDir}/");
 
             Directory.CreateDirectory(Path.GetDirectoryName(output) ?? ".");
             var temporary = output + ".tmp";
@@ -276,6 +302,7 @@ public static class ModelRepack
         }
 
         var entries = new Dictionary<string, byte[]>(StringComparer.Ordinal);
+        var fromAlt = new Dictionary<string, bool>(StringComparer.Ordinal);
 
         try
         {
@@ -294,12 +321,15 @@ public static class ModelRepack
                         continue;
                     }
 
-                    entries[target] = load();
-                    plan.AddPath(path, target);
-                    if (path.StartsWith("alt/", StringComparison.Ordinal))
+                    var isAlt = path.StartsWith("alt/", StringComparison.Ordinal);
+                    if (!isAlt && fromAlt.GetValueOrDefault(target))
                     {
-                        plan.AddPath(path["alt/".Length..], target);
+                        continue;
                     }
+
+                    entries[target] = load();
+                    fromAlt[target] = isAlt;
+                    plan.AddTarget(isAlt ? path["alt/".Length..] : path, target);
                 }
             }
 
@@ -314,6 +344,8 @@ public static class ModelRepack
             {
                 ApplyRewrites(data, plan, ref stringRefs, ref hashRefs);
             }
+
+            AddAltAliases(entries, prefix + "objs/");
 
             Directory.CreateDirectory(Path.GetDirectoryName(output) ?? ".");
             var temporary = output + ".tmp";

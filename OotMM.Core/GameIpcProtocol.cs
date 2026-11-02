@@ -44,6 +44,7 @@ public static class GameIpcProtocol
         public const string PvpHit = "pvpHit";
         public const string DeathLink = "deathLink";
         public const string ModelReady = "modelReady";
+        public const string MountModelArchive = "mountModelArchive";
         public const string ModelMounted = "modelMounted";
         public const string CrossGameTransition = "crossGameTransition";
         public const string TransitionAccepted = "transitionAccepted";
@@ -141,6 +142,14 @@ public static class GameIpcProtocol
             check = checkKey,
             background,
             quiet,
+        });
+
+    public static string BuildMountModelArchive(string path, int player) =>
+        JsonSerializer.Serialize(new
+        {
+            type = MessageType.MountModelArchive,
+            path,
+            player,
         });
 
     public static string BuildRemotePlayerPoses(IReadOnlyList<string> poses)

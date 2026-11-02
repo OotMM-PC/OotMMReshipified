@@ -57,6 +57,9 @@ public sealed class ModelSyncCoordinator
     private readonly Dictionary<(int Player, Game Game), string> _installed = [];
     private readonly Dictionary<(int Player, Game Game), TimeSpan> _installRetryAt = [];
     private readonly HashSet<string> _installBlockedLogged = [];
+    private readonly Dictionary<(int Player, Game Game), string> _liveMounted = [];
+    private readonly HashSet<Game> _liveGames = [];
+    private int _liveSerial;
     private TimeSpan _lastAnnounceAt = TimeSpan.MinValue;
     private ulong _announcedGeneration;
     private readonly HashSet<int> _filledSlots = [];
@@ -80,11 +83,17 @@ public sealed class ModelSyncCoordinator
         _modsDirs = modsDirs;
         _fillArchives = fillArchives;
         _send = send;
+        foreach (var game in _modsDirs.Keys)
+        {
+            DeleteLiveArchives(game);
+        }
+
         LoadPersistedSets();
         TryInstallAll();
     }
 
     public event Action<string>? Logged;
+    public event Action<Game, string, int>? LiveArchiveReady;
 
     public static ModelSyncCoordinator Create(
         Core.Session session, UiSettings settings, Func<string, bool> send, Func<IEnumerable<int>> remoteSlots)
@@ -389,9 +398,14 @@ public sealed class ModelSyncCoordinator
 
     private void TryInstallAll()
     {
+        foreach (var game in _liveGames.Where(game => game != _runningGame).ToList())
+        {
+            DeleteLiveArchives(game);
+        }
+
         foreach (var ((player, game), set) in _remoteSets)
         {
-            if (game == _runningGame || set.Refused || set.ByIndex.Count != set.Count)
+            if (set.Refused || set.ByIndex.Count != set.Count)
             {
                 continue;
             }
@@ -428,6 +442,12 @@ public sealed class ModelSyncCoordinator
                     continue;
                 }
 
+                if (game == _runningGame)
+                {
+                    MountLive(player, game, bases.Concat(ordered.Select(a => CachePath(a!.Hash))).ToList(), signature);
+                    continue;
+                }
+
                 var result = ModelRepack.Repack(
                     bases.Concat(ordered.Select(a => CachePath(a!.Hash))).ToList(), output, player);
                 if (!result.Ok)
@@ -452,6 +472,52 @@ public sealed class ModelSyncCoordinator
                     Logged?.Invoke($"Could not install player {player}'s model yet ({ex.Message}); "
                                    + "it will keep retrying in the background.");
                 }
+            }
+        }
+    }
+
+    private void MountLive(int player, Game game, IReadOnlyList<string> sources, string signature)
+    {
+        if (_liveMounted.GetValueOrDefault((player, game)) == signature)
+        {
+            return;
+        }
+
+        var live = Path.ChangeExtension(OutputPath(game, player), $".live{++_liveSerial}.o2r");
+        var result = ModelRepack.Repack(sources, live, player);
+        if (!result.Ok)
+        {
+            _remoteSets[(player, game)].FailedSignature = signature;
+            Logged?.Invoke($"Could not prepare player {player}'s {GameInfo.ToSeedTag(game)} model: {result.Error}");
+            return;
+        }
+
+        _liveGames.Add(game);
+        _liveMounted[(player, game)] = signature;
+        Logged?.Invoke($"Player {player}'s {GameInfo.ToSeedTag(game)} model ({result.Kept} assets) "
+                       + "is being applied.");
+        LiveArchiveReady?.Invoke(game, live, player);
+    }
+
+    private void DeleteLiveArchives(Game game)
+    {
+        _liveGames.Remove(game);
+        foreach (var key in _liveMounted.Keys.Where(key => key.Game == game).ToList())
+        {
+            _liveMounted.Remove(key);
+        }
+
+        foreach (var path in Directory.Exists(_modsDirs[game])
+                     ? Directory.GetFiles(_modsDirs[game], "zz_coop_*.live*.o2r")
+                     : [])
+        {
+            try
+            {
+                File.Delete(path);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                _liveGames.Add(game);
             }
         }
     }

@@ -37,6 +37,7 @@ public sealed class SessionCoordinator : IDisposable
     private bool _zTargetHold;
     private bool _ipcSettingsDirty = true;
     private readonly List<(ushort SourcePlayer, ItemRef Item)> _pendingRemoteItems = [];
+    private readonly List<(Game Game, string Path, int Player)> _pendingLiveModels = [];
     private long _settingsRevision;
     private long _forceUnlockSeq;
     private ulong _lastNativeSaveRequest;
@@ -85,6 +86,11 @@ public sealed class SessionCoordinator : IDisposable
             {
                 _multiworld.ModelLineReceived += _modelSync.HandleLine;
                 _modelSync.Logged += LogEvent;
+                _modelSync.LiveArchiveReady += (game, path, player) =>
+                {
+                    _pendingLiveModels.Add((game, path, player));
+                    FlushLiveModels();
+                };
             }
         }
     }
@@ -785,6 +791,7 @@ public sealed class SessionCoordinator : IDisposable
                     _ipcSettingsDirty = true;
                     LogEvent($"{GameInfo.Title(ActiveGame)} connected to the launcher.");
                     FlushRemoteItems();
+                    FlushLiveModels();
                     break;
                 case GameIpcEventType.Message:
                     if (NativeSaveRequest.TryParse(ipcEvent.Message, out var saveRequest, out _))
@@ -856,6 +863,22 @@ public sealed class SessionCoordinator : IDisposable
                     break;
             }
         }
+    }
+
+    private void FlushLiveModels()
+    {
+        if (_ipc?.IsConnected != true)
+        {
+            return;
+        }
+
+        _pendingLiveModels.RemoveAll(live => live.Game != ActiveGame || !File.Exists(live.Path));
+        foreach (var (_, path, player) in _pendingLiveModels)
+        {
+            _ipc.Send(GameIpcProtocol.BuildMountModelArchive(path, player));
+        }
+
+        _pendingLiveModels.Clear();
     }
 
     private void OnRemoteItemReceived(ushort sourcePlayer, ItemPlacement placement)

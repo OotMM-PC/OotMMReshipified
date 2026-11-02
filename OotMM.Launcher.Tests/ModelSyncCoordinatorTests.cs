@@ -134,6 +134,62 @@ public class ModelSyncCoordinatorTests
     }
 
     [Fact]
+    public void SetArrivingForTheRunningGameBuildsALiveArchiveAndCleansItUp()
+    {
+        var dir = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            var model = Path.Combine(dir, "model.o2r");
+            MakeArchive(model, ("objects/object_link_child/gLinkHumanSkel", [1, 2, 3]));
+            var aOut = new List<string>();
+            var bOut = new List<string>();
+            var a = MakeCoordinator(MakeSeed(1), Path.Combine(dir, "a"),
+                [new ModelShareSet(Game.Mm, [model])], [], aOut);
+            var b = MakeCoordinator(MakeSeed(2), Path.Combine(dir, "b"), [], [], bOut);
+            var mods = Path.Combine(dir, "b", "mm", "mods");
+            var mounted = new List<(Game Game, string Path, int Player)>();
+            b.LiveArchiveReady += (game, path, player) => mounted.Add((game, path, player));
+
+            for (var round = 0; round < 6 && mounted.Count == 0; round++)
+            {
+                a.Tick(true, 1);
+                b.Tick(true, 1, Game.Mm);
+                a.PumpSend(true);
+                foreach (var line in aOut.ToList())
+                {
+                    b.HandleLine(line);
+                }
+
+                foreach (var line in bOut.ToList())
+                {
+                    a.HandleLine(line);
+                }
+
+                aOut.Clear();
+                bOut.Clear();
+            }
+
+            var live = Assert.Single(mounted);
+            Assert.Equal(Game.Mm, live.Game);
+            Assert.Equal(1, live.Player);
+            Assert.True(File.Exists(live.Path));
+            Assert.False(File.Exists(Path.Combine(mods, "zz_coop_p01.o2r.sources")));
+
+            b.Tick(true, 1, Game.Mm);
+            Assert.Single(mounted);
+
+            b.InstallNow();
+            Assert.False(File.Exists(live.Path));
+            Assert.True(File.Exists(Path.Combine(mods, "zz_coop_p01.o2r")));
+            Assert.StartsWith("set|", File.ReadAllText(Path.Combine(mods, "zz_coop_p01.o2r.sources")));
+        }
+        finally
+        {
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void PersistedSetsReinstallAtConstructionBeforeAnyTraffic()
     {
         var dir = Directory.CreateTempSubdirectory().FullName;

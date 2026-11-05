@@ -229,6 +229,18 @@ public class GameIpcProtocolTests
     }
 
     [Fact]
+    public void TryParseRenewalGrant_ReadsItemAndRejectsOthers()
+    {
+        Assert.True(GameIpcProtocol.TryParseRenewalGrant(
+            """{"type":"renewalGrant","itemId":"MM_BOMBS_5"}""", out var itemId));
+        Assert.Equal("MM_BOMBS_5", itemId);
+        Assert.False(GameIpcProtocol.TryParseRenewalGrant(
+            """{"type":"renewalGrant","itemId":"bad id"}""", out _));
+        Assert.False(GameIpcProtocol.TryParseRenewalGrant(
+            """{"type":"checkCollected","check":"mm:MM_NPC"}""", out _));
+    }
+
+    [Fact]
     public void TryParseCheckCollected_ReadsValidKey()
     {
         Assert.True(GameIpcProtocol.TryParseCheckCollected(

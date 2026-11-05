@@ -43,6 +43,7 @@ public sealed class SessionCoordinator : IDisposable
     private ulong _lastNativeSaveRequest;
     private readonly Dictionary<string, ItemRef> _resolvedCheckRewards = new(StringComparer.Ordinal);
     private readonly HashSet<string> _endgameBosses = new(StringComparer.Ordinal);
+    private readonly Dictionary<string, int> _renewalGrants = new(StringComparer.Ordinal);
 
     public SessionCoordinator(Core.Session session, MultiworldSync? multiworld = null,
                               ModelSyncCoordinator? modelSync = null, Game? startingGame = null)
@@ -297,7 +298,8 @@ public sealed class SessionCoordinator : IDisposable
             {
                 var name = Path.GetFileName(sidecar);
                 if (name.StartsWith(stateName + ".applied", StringComparison.Ordinal)
-                    || name.StartsWith(stateName + ".triforce", StringComparison.Ordinal))
+                    || name.StartsWith(stateName + ".triforce", StringComparison.Ordinal)
+                    || name.StartsWith(stateName + ".vitals", StringComparison.Ordinal))
                 {
                     File.Delete(sidecar);
                 }
@@ -335,6 +337,7 @@ public sealed class SessionCoordinator : IDisposable
         CompletedChecks.Clear();
         _resolvedCheckRewards.Clear();
         _endgameBosses.Clear();
+        _renewalGrants.Clear();
         ok &= _inventory.TryClearDebugAdjustments();
         ReconcileInventory();
         _stateStamp = DateTime.MinValue;
@@ -693,6 +696,21 @@ public sealed class SessionCoordinator : IDisposable
                 }
             }
 
+            if (doc.RootElement.TryGetProperty("renewalGrants", out var renewals)
+                && renewals.ValueKind == System.Text.Json.JsonValueKind.Object)
+            {
+                foreach (var entry in renewals.EnumerateObject())
+                {
+                    if (SessionInventory.IsValidItemId(entry.Name)
+                        && entry.Value.TryGetInt32(out var granted)
+                        && granted > _renewalGrants.GetValueOrDefault(entry.Name))
+                    {
+                        _renewalGrants[entry.Name] = granted;
+                        changed = true;
+                    }
+                }
+            }
+
             if (doc.RootElement.TryGetProperty("endgameBosses", out var bosses)
                 && bosses.ValueKind == System.Text.Json.JsonValueKind.Array)
             {
@@ -731,6 +749,7 @@ public sealed class SessionCoordinator : IDisposable
             completedChecks = CompletedChecks.Order(StringComparer.Ordinal),
             resolvedCheckRewards = _resolvedCheckRewards,
             endgameBosses = _endgameBosses.Order(StringComparer.Ordinal),
+            renewalGrants = _renewalGrants,
             sessionValues = _session.LogicalSlot is { } slot
                 ? new Dictionary<string, string> { ["ootmm.activeSlot"] = slot.ToString(System.Globalization.CultureInfo.InvariantCulture) }
                 : new Dictionary<string, string>(),
@@ -851,6 +870,19 @@ public sealed class SessionCoordinator : IDisposable
                         && presentation is not null)
                     {
                         SendDebugItemPresentation(presentation);
+                        break;
+                    }
+                    if (GameIpcProtocol.TryParseRenewalGrant(ipcEvent.Message, out var renewalItem))
+                    {
+                        _renewalGrants[renewalItem] = _renewalGrants.GetValueOrDefault(renewalItem) + 1;
+                        if (SaveCompletedState())
+                        {
+                            ReconcileInventory();
+                        }
+                        else
+                        {
+                            _renewalGrants[renewalItem]--;
+                        }
                         break;
                     }
                     if (GameIpcProtocol.TryParseCheckCollected(
@@ -1013,7 +1045,8 @@ public sealed class SessionCoordinator : IDisposable
         if (_inventory.Reconcile(
                 CompletedChecks,
                 _multiworld?.RemoteItemCounts ?? new Dictionary<string, int>(),
-                _endgameBosses)
+                _endgameBosses,
+                _renewalGrants)
             && _ipc is not null)
         {
             _ipc.Send(GameIpcProtocol.BuildInventorySnapshot(

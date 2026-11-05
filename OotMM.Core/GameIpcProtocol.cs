@@ -37,6 +37,7 @@ public static class GameIpcProtocol
         public const string InventorySnapshot = "inventorySnapshot";
         public const string InventoryDelta = "inventoryDelta";
         public const string InventoryDebugSet = "inventoryDebugSet";
+        public const string RenewalGrant = "renewalGrant";
         public const string DebugPresentItem = "debugPresentItem";
         public const string PresentItem = "presentItem";
         public const string LocalPlayerPose = "localPlayerPose";
@@ -188,6 +189,28 @@ public static class GameIpcProtocol
             type = MessageType.CompletedChecks,
             checks = checkKeys,
         });
+
+    public static bool TryParseRenewalGrant(string json, out string itemId)
+    {
+        itemId = "";
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || ReadString(root, "type") != MessageType.RenewalGrant)
+            {
+                return false;
+            }
+
+            itemId = ReadString(root, "itemId");
+            return SessionInventory.IsValidItemId(itemId);
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
 
     public static bool TryParseCheckCollected(string json, out string checkKey, out string error) =>
         TryParseCheckCollected(json, out checkKey, out _, out error);

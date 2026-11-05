@@ -203,6 +203,41 @@ public sealed class SessionCoordinatorTests
     private static void Invoke(SessionCoordinator coordinator, string method, params object[] args) =>
         typeof(SessionCoordinator).GetMethod(method, BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(coordinator, args);
 
+    [Fact]
+    public void SoloResetDropsTheOtherGamesPurchaseVitals()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "ootmm-reset-vitals-" + Guid.NewGuid());
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var session = RewardSession(directory);
+            foreach (var (property, file) in new[]
+                     {
+                         ("SessionDir", ""), ("OotInbox", "oot.inbox"), ("OotOutbox", "oot.outbox"),
+                         ("MmInbox", "mm.inbox"), ("MmOutbox", "mm.outbox"),
+                         ("OotOutboxCursor", "oot.cursor"), ("MmOutboxCursor", "mm.cursor"),
+                     })
+            {
+                typeof(OotMM.Core.Session).GetProperty(property)!.SetValue(session, Path.Combine(directory, file));
+            }
+            string[] dropped = ["state.json.vitals.oot", "state.json.vitals.mm", "state.json.vitals.oot.used"];
+            foreach (var name in dropped.Append("unrelated.json"))
+            {
+                File.WriteAllText(Path.Combine(directory, name), "{}");
+            }
+            using var coordinator = new SessionCoordinator(session, startingGame: Game.Mm);
+
+            Assert.True(coordinator.ResetSeedProgress());
+
+            Assert.All(dropped, name => Assert.False(File.Exists(Path.Combine(directory, name))));
+            Assert.True(File.Exists(Path.Combine(directory, "unrelated.json")));
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
     [Theory]
     [InlineData(2)]
     [InlineData(4)]

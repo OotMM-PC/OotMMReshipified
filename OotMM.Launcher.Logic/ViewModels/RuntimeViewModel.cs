@@ -91,7 +91,8 @@ public sealed class RuntimeViewModel : ViewModelBase
             ActiveGame = coordinator.ActiveGame,
         };
         coordinator.AllowDebugMenus = settings.DevMode;
-        coordinator.ZTargetHold = settings.HoldToZTarget;
+        coordinator.ZTargetHold = settings.HoldToZTarget || coordinator.ZTargetHold;
+        vm.Options.ShowHoldToZTarget(coordinator.ZTargetHold);
         coordinator.RemoteItemPrompts = settings.RemoteItemPrompts;
         vm.Tracker.ForceUnlockSender = coordinator.ForceUnlock;
         vm.Options.RestartGame = coordinator.RestartGame;

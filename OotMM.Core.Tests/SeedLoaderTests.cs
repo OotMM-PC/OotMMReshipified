@@ -49,6 +49,7 @@ public class SeedLoaderTests
         Assert.Equal(Game.Mm, seed.StartingGame);
         Assert.True(seed.IsMultiworld);
         Assert.True(seed.Cosmetics.GerudoTunic);
+        Assert.True(seed.Cosmetics.DefaultHold);
         Assert.False(seed.Cosmetics.MusicCategories);
         Assert.Equal("music.ocm", seed.Cosmetics.MusicCompanionFile);
     }

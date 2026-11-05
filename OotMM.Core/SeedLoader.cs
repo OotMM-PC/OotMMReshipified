@@ -126,7 +126,8 @@ public static class SeedLoader
             OptionalStrictBool(cosmetics, "gerudoTunic", false, "Seed cosmetics.gerudoTunic must be a boolean"),
             OptionalStrictBool(cosmetics, "musicCategories", true, "Seed cosmetics.musicCategories must be a boolean"),
             OptionalStrictBool(cosmetics, "musicNames", true, "Seed cosmetics.musicNames must be a boolean"),
-            companionFile);
+            companionFile,
+            OptionalStrictBool(cosmetics, "defaultHold", false, "Seed cosmetics.defaultHold must be a boolean"));
     }
 
     private static List<int> ParseSongEvents(JsonElement root, string key, int requiredCount)

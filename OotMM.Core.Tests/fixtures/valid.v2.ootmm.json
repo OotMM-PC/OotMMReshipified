@@ -10,6 +10,7 @@
   "startingGame": "mm",
   "cosmetics": {
     "gerudoTunic": true,
+    "defaultHold": true,
     "musicCategories": false,
     "musicNames": true,
     "musicCompanion": { "fileName": "music.ocm" }

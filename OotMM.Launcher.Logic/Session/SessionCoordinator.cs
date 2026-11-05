@@ -52,6 +52,7 @@ public sealed class SessionCoordinator : IDisposable
         _multiworld = multiworld;
         _modelSync = modelSync;
         _inventory = new SessionInventory(session.Seed, session.DebugItemsPath);
+        _zTargetHold = session.Seed.Cosmetics.DefaultHold;
         ActiveGame = session.RecoveredTransition?.ToGame ?? startingGame ?? session.Seed.ResolveStartingGame();
         _timer = UiScheduler.CreateTimer(TimeSpan.FromMilliseconds(250), Tick);
         _focusTimer = UiScheduler.CreateTimer(TimeSpan.FromMilliseconds(25), PollGameFocus);

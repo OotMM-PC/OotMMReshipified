@@ -50,6 +50,8 @@ public sealed class OptionsTabViewModel : ViewModelBase
         }
     }
 
+    internal void ShowHoldToZTarget(bool hold) => Set(ref _holdToZTarget, hold, nameof(HoldToZTarget));
+
     internal Action<bool>? RemoteItemPromptsChanged { get; set; }
 
     public bool RemoteItemPrompts

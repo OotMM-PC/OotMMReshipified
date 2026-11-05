@@ -6,7 +6,7 @@ public sealed class Seed
     public const string RequiredGeneratorVersion = "31.1";
 
     public sealed record CosmeticsInfo(
-        bool GerudoTunic, bool MusicCategories, bool MusicNames, string MusicCompanionFile);
+        bool GerudoTunic, bool MusicCategories, bool MusicNames, string MusicCompanionFile, bool DefaultHold = false);
 
     public sealed record WorldFlag(bool All, IReadOnlyList<string> Members);
 

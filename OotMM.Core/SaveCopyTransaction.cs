@@ -102,7 +102,8 @@ public sealed class SaveCopyTransaction
     {
         if (bytes is null)
         {
-            File.Delete(path);
+            if (File.Exists(path))
+                File.Delete(path);
             return;
         }
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);

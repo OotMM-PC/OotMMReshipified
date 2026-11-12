@@ -6,7 +6,19 @@ namespace OotMM.Core;
 
 public static class NativeSaveCopy
 {
-    public static bool TryExecute(Session source, Session target, out string error)
+    public static bool TryExecute(Session source, Session target, out string error) =>
+        TryTransfer(source, target, true, out error);
+
+    public static bool TryInherit(Session source, Session target, out string error) =>
+        TryTransfer(source, target, false, out error);
+
+    public static bool HasNativeSave(Session session, uint slot)
+    {
+        var paths = Destinations(session, session.SessionDir, slot);
+        return File.Exists(paths["oot"]) || File.Exists(paths["mm"]) || File.Exists(paths["mmBackup"]);
+    }
+
+    private static bool TryTransfer(Session source, Session target, bool copyNative, out string error)
     {
         error = "Save copy requires distinct slots and identities in the same seed and native save directories.";
         if (source.LogicalSlot is not { } sourceSlot || target.LogicalSlot is not { } targetSlot
@@ -31,7 +43,7 @@ public static class NativeSaveCopy
             var foundNative = false;
             foreach (var (key, game) in new[] { ("oot", Game.Oot), ("mm", Game.Mm) })
             {
-                if (!File.Exists(from[key]))
+                if (!copyNative || !File.Exists(from[key]))
                     continue;
                 foundNative = true;
                 if (!NativeSaveCopyPayload.TryCreate(game, File.ReadAllText(from[key]), source.SaveId, sourceSlot,
@@ -39,7 +51,7 @@ public static class NativeSaveCopy
                     return false;
                 replacements[key] = Encoding.UTF8.GetBytes(payload);
             }
-            if (!foundNative)
+            if (copyNative && !foundNative)
             {
                 error = "The source slot has no native save to copy.";
                 return false;

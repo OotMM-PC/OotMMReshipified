@@ -95,6 +95,22 @@ public sealed class NativeSaveCopyTests : IDisposable
     }
 
     [Fact]
+    public void NewSaveInheritsCheckStateWithoutNativeSaves()
+    {
+        File.WriteAllText(_target.StatePath, """{"completedChecks":[],"sessionValues":{"ootmm.activeSlot":"1"}}""");
+        File.WriteAllText(_target.OotInbox, "stale delivery");
+        Directory.Delete(Path.GetDirectoryName(Mm(0))!, true);
+        Assert.True(NativeSaveCopy.HasNativeSave(_source, 0));
+        Assert.False(NativeSaveCopy.HasNativeSave(_target, 1));
+        Assert.True(NativeSaveCopy.TryInherit(_source, _target, out var error), error);
+        Assert.False(NativeSaveCopy.HasNativeSave(_target, 1));
+        Assert.Contains("oot:example", File.ReadAllText(_target.StatePath));
+        Assert.Equal(1u, SessionOwnership.ParseRuntimeLogicalSlot(File.ReadAllText(_target.StatePath), out _));
+        Assert.Equal("", File.ReadAllText(_target.OotInbox));
+        Assert.Equal(0L, DurableFile.ReadOffset(_target.OotOutboxCursor));
+    }
+
+    [Fact]
     public void PendingCopyRecoveryBlocksStartupEvenWhenDestinationIsNotSelected()
     {
         File.WriteAllText(Path.Combine(_target.SessionDir, "save-copy.pending.json"), "{");

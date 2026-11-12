@@ -1431,6 +1431,8 @@ public sealed class SessionCoordinator : IDisposable
         }
         if (!SessionPaths.TryPrepareSelectedSession(_session, request, _lastNativeSaveRequest,
                 out var selected, out var error)
+            || (!NativeSaveCopy.HasNativeSave(selected!, request.TargetSlot)
+                && !NativeSaveCopy.TryInherit(_session, selected!, out error))
             || !SharedResourceSaves.TryRead(selected!, out _, out error))
         {
             Reject(error);
@@ -1443,6 +1445,7 @@ public sealed class SessionCoordinator : IDisposable
             return;
         }
         _lastNativeSaveRequest = request.RequestId;
+        selected.OpenFileSelect = true;
         _ended = true;
         _timer.Stop();
         _focusTimer.Stop();

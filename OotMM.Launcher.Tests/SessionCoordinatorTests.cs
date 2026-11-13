@@ -175,6 +175,33 @@ public sealed class SessionCoordinatorTests
         }
     }
 
+    [Fact]
+    public void ForceUnlockRecordsAndGrantsTheCheckWithoutARestart()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "ootmm-force-" + Guid.NewGuid());
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var session = RewardSession(directory);
+            using var coordinator = new SessionCoordinator(session, startingGame: Game.Oot);
+            var inventory = (SessionInventory)typeof(SessionCoordinator)
+                .GetField("_inventory", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(coordinator)!;
+
+            Assert.False(coordinator.ForceUnlock("mm:MM_UNKNOWN"));
+            Assert.True(coordinator.ForceUnlock("mm:MM_REWARD_ALIAS"));
+            Assert.False(coordinator.ForceUnlock("mm:MM_REWARD"));
+
+            Assert.Equal(["mm:MM_REWARD"], coordinator.CompletedChecks);
+            Assert.Equal(1u, inventory.Items.GetValueOrDefault("OOT_OCARINA"));
+            using var saved = System.Text.Json.JsonDocument.Parse(File.ReadAllText(session.StatePath));
+            Assert.Equal("mm:MM_REWARD", saved.RootElement.GetProperty("completedChecks")[0].GetString());
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
     private static OotMM.Core.Session RewardSession(string directory, ushort sourcePlayer = 1)
     {
         var seed = new Seed

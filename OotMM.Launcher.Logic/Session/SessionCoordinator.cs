@@ -39,7 +39,6 @@ public sealed class SessionCoordinator : IDisposable
     private readonly List<(ushort SourcePlayer, ItemRef Item)> _pendingRemoteItems = [];
     private readonly List<(Game Game, string Path, int Player)> _pendingLiveModels = [];
     private long _settingsRevision;
-    private long _forceUnlockSeq;
     private ulong _lastNativeSaveRequest;
     private readonly Dictionary<string, ItemRef> _resolvedCheckRewards = new(StringComparer.Ordinal);
     private readonly HashSet<string> _endgameBosses = new(StringComparer.Ordinal);
@@ -163,25 +162,28 @@ public sealed class SessionCoordinator : IDisposable
         set => _session.AllowDebugMenus = value;
     }
 
-    public bool ForceUnlock(string checkId)
+    public bool ForceUnlock(string checkKey)
     {
-        if (_process is not { Running: true } || _pendingTransition is not null)
+        if (_ended || _pendingTransition is not null || ResolveLocalCheck(checkKey) is not { } placement)
         {
             return false;
         }
 
-        var commandId = "launcher-force-"
-                        + DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1000
-                        + "-" + ++_forceUnlockSeq;
-        var packet = $"{{\"type\":\"OOTMM_ADMIN_UNLOCK_CHECK\",\"checkId\":\"{checkId}\""
-                     + $",\"commandId\":\"{commandId}\",\"grant\":true}}";
-        var adminInbox = ActiveInbox + $".slot{_session.LogicalSlot ?? 0}.admin.jsonl";
-        if (FilePacketBridge.AppendPacketLines(adminInbox, [packet]) != 1)
+        var key = Identity.CheckKey(placement.Check.Game, placement.Check.Id);
+        if (CompletedChecks.Contains(key))
         {
-            LogEvent($"Force-unlock failed to queue for {checkId}.");
             return false;
         }
 
+        HandleCheckCollected(key);
+        if (!CompletedChecks.Contains(key))
+        {
+            LogEvent($"Force-unlock failed for {placement.Check.Name}.");
+            return false;
+        }
+
+        ReconcileInventory();
+        LogEvent($"Force-unlocked {placement.Check.Name}.");
         return true;
     }
 

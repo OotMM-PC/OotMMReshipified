@@ -266,7 +266,7 @@ public sealed class TrackerTabViewModel : ViewModelBase
         if (_armedRow == row && DateTime.UtcNow - _armedAt <= TimeSpan.FromSeconds(5))
         {
             Disarm();
-            if (ForceUnlockSender?.Invoke(row.CheckId) == true)
+            if (ForceUnlockSender?.Invoke(row.GameTag.ToLowerInvariant() + ":" + row.CheckId) == true)
             {
                 row.IsPending = true;
             }

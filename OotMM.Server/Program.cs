@@ -198,6 +198,48 @@ file sealed class ServerProperties
                     Console.Error.WriteLine(
                         $"[server] server.properties line {lineNo}: invalid {key} value '{value}' (expected 0-1000)");
                     break;
+                case "trap-ice-breakout" or "trap-ice-damage" or "trap-fire-damage" or "trap-shock-damage"
+                    when int.TryParse(value, out var trapValue):
+                    switch (key)
+                    {
+                        case "trap-ice-breakout": config.Rules.Traps.IceBreakoutPercent = trapValue; break;
+                        case "trap-ice-damage": config.Rules.Traps.IceDamageQuarters = trapValue; break;
+                        case "trap-fire-damage": config.Rules.Traps.FireDamageQuarters = trapValue; break;
+                        default: config.Rules.Traps.ShockDamageQuarters = trapValue; break;
+                    }
+
+                    config.Rules.Traps = config.Rules.Traps.Normalized();
+                    break;
+                case "trap-fire-seconds" or "trap-shock-seconds"
+                    when double.TryParse(value, System.Globalization.NumberStyles.Float,
+                                         System.Globalization.CultureInfo.InvariantCulture, out var seconds):
+                    if (key == "trap-fire-seconds")
+                    {
+                        config.Rules.Traps.FireSeconds = seconds;
+                    }
+                    else
+                    {
+                        config.Rules.Traps.ShockSeconds = seconds;
+                    }
+
+                    config.Rules.Traps = config.Rules.Traps.Normalized();
+                    break;
+                case "trap-knockback":
+                    if (TrapTuning.TryParseKnockback(value, out _, out var knockbackError))
+                    {
+                        config.Rules.Traps.Knockback = value;
+                    }
+                    else
+                    {
+                        Console.Error.WriteLine(
+                            $"[server] server.properties line {lineNo}: invalid trap-knockback: {knockbackError}");
+                    }
+
+                    break;
+                case "trap-ice-breakout" or "trap-ice-damage" or "trap-fire-damage" or "trap-shock-damage"
+                    or "trap-fire-seconds" or "trap-shock-seconds":
+                    Console.Error.WriteLine($"[server] server.properties line {lineNo}: invalid {key} value '{value}'");
+                    break;
                 default:
                     Console.Error.WriteLine($"[server] server.properties line {lineNo}: unknown key '{key}'");
                     break;
@@ -233,7 +275,19 @@ file sealed class ServerProperties
                 + $"timer-max={config.Rules.TimerMaxPercent}\n\n"
                 + "# Register each player's seed manifest automatically when they first join.\n"
                 + "# Set false only when the room was provisioned with --register-manifest.\n"
-                + $"manifest-bootstrap={(config.Rules.AllowManifestBootstrap ? "true" : "false")}\n");
+                + $"manifest-bootstrap={(config.Rules.AllowManifestBootstrap ? "true" : "false")}\n\n"
+                + "# Trap tuning for every player in the session. The defaults are the original traps.\n"
+                + "# Ice break-out effort in percent (25-400). Damage values are quarter hearts (0-80).\n"
+                + $"trap-ice-breakout={config.Rules.Traps.IceBreakoutPercent}\n"
+                + $"trap-ice-damage={config.Rules.Traps.IceDamageQuarters}\n"
+                + $"trap-fire-damage={config.Rules.Traps.FireDamageQuarters}\n"
+                + "# Longest fire burn in seconds (0-30) and shock length in seconds (0.5-10).\n"
+                + $"trap-fire-seconds={config.Rules.Traps.FireSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture)}\n"
+                + $"trap-shock-damage={config.Rules.Traps.ShockDamageQuarters}\n"
+                + $"trap-shock-seconds={config.Rules.Traps.ShockSeconds.ToString(System.Globalization.CultureInfo.InvariantCulture)}\n"
+                + "# Knockback chances as chance:distance pairs, for example 25:200, 50:60.\n"
+                + "# Leftover chance and an empty value use the original random knockback.\n"
+                + $"trap-knockback={config.Rules.Traps.Knockback}\n");
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {

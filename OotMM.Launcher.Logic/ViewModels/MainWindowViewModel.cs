@@ -174,6 +174,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             Pvp = _settings.EnablePvp,
             FriendlyFire = _settings.EnablePvp && _settings.EnableFriendlyFire,
             DeathLink = _settings.DeathLink,
+            Traps = _settings.Traps.Normalized(),
         };
         var engine = new OotMM.Core.Relay.RelayEngine(storeDir, rules);
         new Thread(() => engine.Run(port, CancellationToken.None)) { IsBackground = true }.Start();

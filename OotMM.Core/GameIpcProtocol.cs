@@ -81,8 +81,24 @@ public static class GameIpcProtocol
                 transportState = settings.TransportState,
                 pendingChecks = settings.PendingChecks,
                 zTargetHold = settings.ZTargetHold,
+                traps = BuildTrapSettings(settings.Traps ?? new TrapTuning()),
             },
         });
+
+    private static object BuildTrapSettings(TrapTuning tuning)
+    {
+        var traps = tuning.Normalized();
+        return new
+        {
+            iceBreakoutPercent = traps.IceBreakoutPercent,
+            iceDamage = traps.IceDamageQuarters * 4,
+            fireDamage = traps.FireDamageQuarters * 4,
+            fireDuration = traps.FireFrames,
+            shockDamage = traps.ShockDamageQuarters * 4,
+            shockDuration = traps.ShockFrames,
+            knockback = traps.KnockbackChances.Select(row => new { percent = row.Percent, distance = row.Distance }),
+        };
+    }
 
     public static string BuildProtocolError(string message) =>
         JsonSerializer.Serialize(new

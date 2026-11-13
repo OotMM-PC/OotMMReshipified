@@ -34,6 +34,7 @@ public sealed class RelayRules
     public int TimerMinPercent { get; set; }
     public int TimerMaxPercent { get; set; } = 250;
     public bool AllowManifestBootstrap { get; set; } = true;
+    public TrapTuning Traps { get; set; } = new();
 }
 
 public sealed record VerifiedClientIdentity(

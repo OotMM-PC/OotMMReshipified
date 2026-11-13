@@ -44,6 +44,12 @@ public sealed class ConfigViewModel : ViewModelBase
         _picker = picker;
         OotCard = new GameCardViewModel(isOot: true, picker, FormChanged);
         MmCard = new GameCardViewModel(isOot: false, picker, FormChanged);
+        Traps = new TrapSettingsViewModel(settings.Traps, traps =>
+        {
+            _settings.Traps = traps;
+            Raise(nameof(Traps));
+            FormChanged();
+        });
 
         _restoring = true;
         _seedPath = settings.SeedPath;
@@ -76,6 +82,7 @@ public sealed class ConfigViewModel : ViewModelBase
 
     public GameCardViewModel OotCard { get; }
     public GameCardViewModel MmCard { get; }
+    public TrapSettingsViewModel Traps { get; }
 
     public void BrowseSeed() => _ = BrowseSeedAsync(_picker);
 
@@ -727,6 +734,7 @@ public sealed class ConfigViewModel : ViewModelBase
         _settings.EnablePvp = HostPvp;
         _settings.EnableFriendlyFire = HostFriendlyFire;
         _settings.DeathLink = (OotMM.Core.Relay.DeathLinkMode)HostDeathLink;
+        _settings.Traps = Traps.Current;
         _settings.PortOotAdultModel = MmCard.PortAdultModel;
         _settings.PortOotChildModel = MmCard.PortChildModel;
         _settings.MultiworldAddress = MultiworldAddress;

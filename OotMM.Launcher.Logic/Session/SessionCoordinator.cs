@@ -27,6 +27,7 @@ public sealed class SessionCoordinator : IDisposable
     private DateTime _handoffDeadline;
     private DateTime _stateStamp = DateTime.MinValue;
     private bool _stateDirty;
+    private TrapTuning _traps = new();
     private bool _initialSyncDone;
     private bool _ended;
     private bool _recoveryPending;
@@ -142,6 +143,16 @@ public sealed class SessionCoordinator : IDisposable
     }
 
     public bool RemoteItemPrompts { get; set; } = true;
+
+    public TrapTuning Traps
+    {
+        get => _multiworld?.Traps ?? _traps;
+        set
+        {
+            _traps = (value ?? new TrapTuning()).Normalized();
+            _ipcSettingsDirty = true;
+        }
+    }
 
     public bool ZTargetHold
     {
@@ -1193,7 +1204,8 @@ public sealed class SessionCoordinator : IDisposable
             SpeedSmooth: _speedSmooth,
             TransportState: transport,
             PendingChecks: (uint)(_multiworld?.PendingChecks ?? 0),
-            ZTargetHold: _zTargetHold);
+            ZTargetHold: _zTargetHold,
+            Traps: Traps);
     }
 
     private void LogCheckCollected(string checkKey)

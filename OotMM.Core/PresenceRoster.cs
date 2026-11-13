@@ -8,7 +8,8 @@ public sealed record RosterMeta(
     bool SpeedSmooth,
     string TransportState,
     uint PendingChecks,
-    bool ZTargetHold = false);
+    bool ZTargetHold = false,
+    TrapTuning? Traps = null);
 
 public static class PresenceRoster
 {

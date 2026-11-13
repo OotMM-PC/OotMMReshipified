@@ -87,6 +87,7 @@ public sealed class MultiworldSync : IDisposable
     public bool Pvp { get; private set; }
     public bool FriendlyFire { get; private set; }
     public DeathLinkMode DeathLink { get; private set; }
+    public TrapTuning Traps { get; private set; } = new();
     public bool TimerEnabled { get; private set; } = true;
     public int TimerMin { get; private set; }
     public int TimerMax { get; private set; } = 250;
@@ -305,6 +306,7 @@ public sealed class MultiworldSync : IDisposable
                     TimerEnabled = !line.Contains("\"timerEnabled\":false");
                     TimerMin = RelayProtocol.ExtractIntField(line, "timerMin");
                     TimerMax = RelayProtocol.ExtractIntField(line, "timerMax", 250);
+                    Traps = TrapTuning.FromMetaLine(line);
                     var rules = new List<string>();
                     if (Pvp)
                     {
@@ -314,6 +316,11 @@ public sealed class MultiworldSync : IDisposable
                     if (DeathLink != DeathLinkMode.Off)
                     {
                         rules.Add($"{DeathLinkModes.Tag(DeathLink)} death link");
+                    }
+
+                    if (!Traps.IsOriginal)
+                    {
+                        rules.Add("custom traps");
                     }
 
                     EventLogged?.Invoke(

@@ -6,6 +6,7 @@ Item {
     id: view
 
     property var vm
+    readonly property var trapsVm: vm ? vm.traps : null
 
     Flickable {
         anchors.fill: parent
@@ -235,6 +236,16 @@ Item {
                     onClicked: view.vm.hostDeathLink = (view.vm.hostDeathLink + 1) % 3
                 }
 
+                Chip {
+                    visible: view.vm.hostRelay
+                    text: (view.trapsVm ? view.trapsVm.summary : "Traps") + "  ✎"
+                    lit: !!(view.trapsVm && !view.trapsVm.isOriginal)
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 500
+                    ToolTip.text: "Server rule: how hard traps hit every player in the session."
+                    onClicked: trapsPopup.open()
+                }
+
                 Text {
                     visible: !view.vm.hostRelay
                     height: 28
@@ -243,6 +254,21 @@ Item {
                     color: theme.dim
                     font.family: theme.font
                     font.pixelSize: 12
+                }
+            }
+
+            Flow {
+                Layout.fillWidth: true
+                visible: !view.vm.showMultiworld
+                spacing: 8
+
+                Chip {
+                    text: (view.trapsVm ? view.trapsVm.summary : "Traps") + "  ✎"
+                    lit: !!(view.trapsVm && !view.trapsVm.isOriginal)
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 500
+                    ToolTip.text: "How hard traps hit. The defaults are the original traps."
+                    onClicked: trapsPopup.open()
                 }
             }
 
@@ -379,5 +405,10 @@ Item {
     RelayPopup {
         id: relay
         config: view.vm
+    }
+
+    TrapsPopup {
+        id: trapsPopup
+        traps: view.trapsVm
     }
 }

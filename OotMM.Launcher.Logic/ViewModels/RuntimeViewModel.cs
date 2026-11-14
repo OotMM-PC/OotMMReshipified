@@ -408,29 +408,19 @@ public sealed class RuntimeViewModel : ViewModelBase
 
         foreach (var (placement, row) in _placementRows)
         {
-            if (!row.Collected || !placement.IsFor(seed.PlayerId))
+            if (row.Collected && placement.IsFor(seed.PlayerId))
             {
-                continue;
-            }
-
-            var itemId = placement.Item.Id;
-            input.Items[itemId] = input.Items.GetValueOrDefault(itemId) + 1;
-            if (_solver.IsRenewableLocation(placement.Check.Name))
-            {
-                input.Renewables[itemId] = input.Renewables.GetValueOrDefault(itemId) + 1;
-            }
-
-            if (_solver.IsLicenseLocation(placement.Check.Name))
-            {
-                input.Licenses[itemId] = input.Licenses.GetValueOrDefault(itemId) + 1;
+                AddLogicItem(input, placement.Item.Id, placement.Check.Name);
             }
         }
 
         if (_coordinator.Multiworld is { } sync)
         {
-            foreach (var (itemId, count) in sync.RemoteItemCounts)
+            foreach (var placement in sync.RemoteItemPlacements)
             {
-                input.Items[itemId] = input.Items.GetValueOrDefault(itemId) + count;
+                var location = seed.FindPlacement(placement.Check.Game, placement.Check.Id)?.Check.Name
+                               ?? placement.Check.Name;
+                AddLogicItem(input, placement.Item.Id, location);
             }
         }
 
@@ -438,6 +428,20 @@ public sealed class RuntimeViewModel : ViewModelBase
         foreach (var (placement, row) in _placementRows)
         {
             row.InLogic = reachable.Contains(placement.Check.Name);
+        }
+    }
+
+    private void AddLogicItem(LogicSolver.Input input, string itemId, string location)
+    {
+        input.Items[itemId] = input.Items.GetValueOrDefault(itemId) + 1;
+        if (_solver!.IsRenewableLocation(location))
+        {
+            input.Renewables[itemId] = input.Renewables.GetValueOrDefault(itemId) + 1;
+        }
+
+        if (_solver.IsLicenseLocation(location))
+        {
+            input.Licenses[itemId] = input.Licenses.GetValueOrDefault(itemId) + 1;
         }
     }
 

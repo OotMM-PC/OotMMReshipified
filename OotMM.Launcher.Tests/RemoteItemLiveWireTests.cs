@@ -114,6 +114,8 @@ public class RemoteItemLiveWireTests : IDisposable
 
         Assert.Equal((1, "OOT_HAMMER"), Assert.Single(received));
         Assert.Equal(1, receiver.RemoteItemCounts["OOT_HAMMER"]);
+        var placement = Assert.Single(receiver.RemoteItemPlacements);
+        Assert.Equal(("OOT_HAMMER", "CHECK_A"), (placement.Item.Id, placement.Check.Id));
     }
 
     [Fact]

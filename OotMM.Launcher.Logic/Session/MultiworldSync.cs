@@ -29,6 +29,7 @@ public sealed class MultiworldSync : IDisposable
     private readonly Dictionary<ushort, string> _otherWorldHashes = [];
     private readonly HashSet<string> _remoteReceipts = [];
     private readonly Dictionary<string, int> _remoteCounts = [];
+    private readonly List<ItemPlacement> _remotePlacements = [];
     private readonly List<(string Path, string Line)> _pendingWrites = [];
     private ulong _highestFerriedSeq;
     private ulong _relaySeq;
@@ -115,6 +116,7 @@ public sealed class MultiworldSync : IDisposable
     public TransportState State { get; private set; } = TransportState.Connecting;
     public int PendingChecks { get; private set; }
     public IReadOnlyDictionary<string, int> RemoteItemCounts => _remoteCounts;
+    public IReadOnlyList<ItemPlacement> RemoteItemPlacements => _remotePlacements;
     public long ReceiptRevision { get; private set; }
     public string ResumeSummary =>
         $"ferry log resumes at seq {_highestFerriedSeq} ({_acked.Count} own fact(s) pre-acked)";
@@ -583,6 +585,7 @@ public sealed class MultiworldSync : IDisposable
         }
 
         _remoteCounts[placement.Item.Id] = _remoteCounts.GetValueOrDefault(placement.Item.Id) + 1;
+        _remotePlacements.Add(placement);
         ReceiptRevision++;
         if (!quiet)
         {

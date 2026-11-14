@@ -5,38 +5,44 @@ using System.Text.Json.Serialization;
 
 namespace OotMM.Core;
 
-public sealed record KnockbackChance(int Percent, int Distance);
+public sealed record KnockbackChance(int Percent, int MinDistance, int MaxDistance)
+{
+    public bool IsRange => MinDistance != MaxDistance;
+}
 
 public sealed class TrapTuning
 {
     public const int FramesPerSecond = 20;
-    public const int MaxDamageQuarters = 80;
+    public const int OriginalDamagePercent = 100;
+    public const int MaxDamagePercent = 1000;
     public const int MinIceBreakoutPercent = 25;
     public const int MaxIceBreakoutPercent = 400;
     public const double MaxFireSeconds = 30;
     public const double MinShockSeconds = 0.5;
     public const double MaxShockSeconds = 10;
     public const int MaxKnockbackDistance = 2000;
+    public const string OriginalKnockback = "100:0-600";
 
     public int IceBreakoutPercent { get; set; } = 100;
-    public int IceDamageQuarters { get; set; }
-    public int FireDamageQuarters { get; set; }
+    public int IceDamagePercent { get; set; } = OriginalDamagePercent;
+    public int FireDamagePercent { get; set; } = OriginalDamagePercent;
     public double FireSeconds { get; set; } = 10;
-    public int ShockDamageQuarters { get; set; }
+    public int ShockDamagePercent { get; set; } = OriginalDamagePercent;
     public double ShockSeconds { get; set; } = 1;
-    public string Knockback { get; set; } = "";
+    public string Knockback { get; set; } = OriginalKnockback;
 
     public TrapTuning Normalized()
     {
+        var knockback = (Knockback ?? "").Trim();
         return new TrapTuning
         {
             IceBreakoutPercent = Math.Clamp(IceBreakoutPercent, MinIceBreakoutPercent, MaxIceBreakoutPercent),
-            IceDamageQuarters = Math.Clamp(IceDamageQuarters, 0, MaxDamageQuarters),
-            FireDamageQuarters = Math.Clamp(FireDamageQuarters, 0, MaxDamageQuarters),
+            IceDamagePercent = Math.Clamp(IceDamagePercent, 0, MaxDamagePercent),
+            FireDamagePercent = Math.Clamp(FireDamagePercent, 0, MaxDamagePercent),
             FireSeconds = double.IsFinite(FireSeconds) ? Math.Clamp(FireSeconds, 0, MaxFireSeconds) : 10,
-            ShockDamageQuarters = Math.Clamp(ShockDamageQuarters, 0, MaxDamageQuarters),
+            ShockDamagePercent = Math.Clamp(ShockDamagePercent, 0, MaxDamagePercent),
             ShockSeconds = double.IsFinite(ShockSeconds) ? Math.Clamp(ShockSeconds, MinShockSeconds, MaxShockSeconds) : 1,
-            Knockback = TryParseKnockback(Knockback, out _, out _) ? (Knockback ?? "").Trim() : "",
+            Knockback = knockback.Length > 0 && TryParseKnockback(knockback, out _, out _) ? knockback : OriginalKnockback,
         };
     }
 
@@ -48,7 +54,7 @@ public sealed class TrapTuning
 
     [JsonIgnore]
     public IReadOnlyList<KnockbackChance> KnockbackChances =>
-        TryParseKnockback(Knockback, out var rows, out _) ? rows : [];
+        TryParseKnockback(Normalized().Knockback, out var rows, out _) ? rows : [];
 
     [JsonIgnore]
     public bool IsOriginal
@@ -56,9 +62,10 @@ public sealed class TrapTuning
         get
         {
             var traps = Normalized();
-            return traps.IceBreakoutPercent == 100 && traps.IceDamageQuarters == 0 && traps.FireDamageQuarters == 0
-                   && traps.FireSeconds.Equals(10.0) && traps.ShockDamageQuarters == 0 && traps.ShockSeconds.Equals(1.0)
-                   && traps.Knockback.Length == 0;
+            return traps.IceBreakoutPercent == 100 && traps.IceDamagePercent == OriginalDamagePercent
+                   && traps.FireDamagePercent == OriginalDamagePercent && traps.FireSeconds.Equals(10.0)
+                   && traps.ShockDamagePercent == OriginalDamagePercent && traps.ShockSeconds.Equals(1.0)
+                   && traps.KnockbackChances.SequenceEqual([new KnockbackChance(100, 0, 600)]);
         }
     }
 
@@ -68,10 +75,10 @@ public sealed class TrapTuning
         return JsonSerializer.Serialize(new
         {
             iceBreakoutPercent = traps.IceBreakoutPercent,
-            iceDamageQuarters = traps.IceDamageQuarters,
-            fireDamageQuarters = traps.FireDamageQuarters,
+            iceDamagePercent = traps.IceDamagePercent,
+            fireDamagePercent = traps.FireDamagePercent,
             fireSeconds = traps.FireSeconds,
-            shockDamageQuarters = traps.ShockDamageQuarters,
+            shockDamagePercent = traps.ShockDamagePercent,
             shockSeconds = traps.ShockSeconds,
             knockback = traps.Knockback,
         });
@@ -90,10 +97,10 @@ public sealed class TrapTuning
             return new TrapTuning
             {
                 IceBreakoutPercent = Read(traps, "iceBreakoutPercent", defaults.IceBreakoutPercent),
-                IceDamageQuarters = Read(traps, "iceDamageQuarters", defaults.IceDamageQuarters),
-                FireDamageQuarters = Read(traps, "fireDamageQuarters", defaults.FireDamageQuarters),
+                IceDamagePercent = Read(traps, "iceDamagePercent", defaults.IceDamagePercent),
+                FireDamagePercent = Read(traps, "fireDamagePercent", defaults.FireDamagePercent),
                 FireSeconds = Read(traps, "fireSeconds", defaults.FireSeconds),
-                ShockDamageQuarters = Read(traps, "shockDamageQuarters", defaults.ShockDamageQuarters),
+                ShockDamagePercent = Read(traps, "shockDamagePercent", defaults.ShockDamagePercent),
                 ShockSeconds = Read(traps, "shockSeconds", defaults.ShockSeconds),
                 Knockback = traps["knockback"] is JsonValue knockback && knockback.TryGetValue(out string? text)
                     ? text ?? ""
@@ -116,7 +123,8 @@ public sealed class TrapTuning
         var source = (text ?? "").Trim().Trim('[', ']').Trim();
         if (source.Length == 0)
         {
-            return true;
+            error = "Enter at least one chance, for example 100:0-600.";
+            return false;
         }
 
         var total = 0;
@@ -131,12 +139,11 @@ public sealed class TrapTuning
             var colon = part.IndexOf(':');
             if (colon <= 0 || colon == part.Length - 1)
             {
-                error = $"'{part}' should look like 25:200 (chance:distance).";
+                error = $"'{part}' should look like 25:200 or 25:100-300 (chance:distance).";
                 return false;
             }
 
             var chanceText = part[..colon].Trim().TrimEnd('%').Trim();
-            var distanceText = part[(colon + 1)..].Trim();
             if (!int.TryParse(chanceText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var chance)
                 || chance <= 0 || chance > 100)
             {
@@ -144,10 +151,19 @@ public sealed class TrapTuning
                 return false;
             }
 
-            if (!int.TryParse(distanceText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var distance)
-                || distance < 0 || distance > MaxKnockbackDistance)
+            var distanceText = part[(colon + 1)..].Trim();
+            var dash = distanceText.IndexOf('-', 1);
+            var minText = dash > 0 ? distanceText[..dash].Trim() : distanceText;
+            var maxText = dash > 0 ? distanceText[(dash + 1)..].Trim() : distanceText;
+            if (!TryParseDistance(minText, out var min) || !TryParseDistance(maxText, out var max))
             {
-                error = $"'{part}': the distance must be from 0 to {MaxKnockbackDistance}.";
+                error = $"'{part}': distances must be from 0 to {MaxKnockbackDistance}.";
+                return false;
+            }
+
+            if (max < min)
+            {
+                error = $"'{part}': the range must go from the smaller distance to the larger one.";
                 return false;
             }
 
@@ -158,9 +174,19 @@ public sealed class TrapTuning
                 return false;
             }
 
-            rows.Add(new KnockbackChance(chance, distance));
+            rows.Add(new KnockbackChance(chance, min, max));
+        }
+
+        if (rows.Count == 0)
+        {
+            error = "Enter at least one chance, for example 100:0-600.";
+            return false;
         }
 
         return true;
     }
+
+    private static bool TryParseDistance(string text, out int distance) =>
+        int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out distance)
+        && distance >= 0 && distance <= MaxKnockbackDistance;
 }

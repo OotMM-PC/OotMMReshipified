@@ -91,12 +91,17 @@ public static class GameIpcProtocol
         return new
         {
             iceBreakoutPercent = traps.IceBreakoutPercent,
-            iceDamage = traps.IceDamageQuarters * 4,
-            fireDamage = traps.FireDamageQuarters * 4,
+            iceDamagePercent = traps.IceDamagePercent,
+            fireDamagePercent = traps.FireDamagePercent,
             fireDuration = traps.FireFrames,
-            shockDamage = traps.ShockDamageQuarters * 4,
+            shockDamagePercent = traps.ShockDamagePercent,
             shockDuration = traps.ShockFrames,
-            knockback = traps.KnockbackChances.Select(row => new { percent = row.Percent, distance = row.Distance }),
+            knockback = traps.KnockbackChances.Select(row => new
+            {
+                percent = row.Percent,
+                minDistance = row.MinDistance,
+                maxDistance = row.MaxDistance,
+            }),
         };
     }
 

@@ -85,25 +85,25 @@ PanelPopup {
             }
 
             TrapSlider {
-                label: "Ice trap damage"
+                label: "Ice trap damage over time"
                 valueText: popup.traps ? popup.traps.iceDamageText : ""
-                tip: "Damage when an ice trap hits. The freeze still drains health over time as it always has."
+                tip: "Health lost while frozen, as a percent of the original drain. 100% is the original."
                 from: 0
-                to: 20
-                step: 0.25
-                value: popup.traps ? popup.traps.iceDamageHearts : 0
-                onMoved: value => popup.traps.iceDamageHearts = value
+                to: 1000
+                step: 25
+                value: popup.traps ? popup.traps.iceDamagePercent : 100
+                onMoved: value => popup.traps.iceDamagePercent = value
             }
 
             TrapSlider {
-                label: "Fire trap damage"
+                label: "Fire trap damage over time"
                 valueText: popup.traps ? popup.traps.fireDamageText : ""
-                tip: "Damage when a fire trap hits, on top of the burn."
+                tip: "Health lost while burning, as a percent of the original burn. 100% is the original."
                 from: 0
-                to: 20
-                step: 0.25
-                value: popup.traps ? popup.traps.fireDamageHearts : 0
-                onMoved: value => popup.traps.fireDamageHearts = value
+                to: 1000
+                step: 25
+                value: popup.traps ? popup.traps.fireDamagePercent : 100
+                onMoved: value => popup.traps.fireDamagePercent = value
             }
 
             TrapSlider {
@@ -118,14 +118,14 @@ PanelPopup {
             }
 
             TrapSlider {
-                label: "Shock trap damage"
+                label: "Shock trap damage over time"
                 valueText: popup.traps ? popup.traps.shockDamageText : ""
-                tip: "Damage when a shock trap hits."
+                tip: "Health lost while shocked, as a percent of the original rate. The original 1 second shock ends before it deals any."
                 from: 0
-                to: 20
-                step: 0.25
-                value: popup.traps ? popup.traps.shockDamageHearts : 0
-                onMoved: value => popup.traps.shockDamageHearts = value
+                to: 1000
+                step: 25
+                value: popup.traps ? popup.traps.shockDamagePercent : 100
+                onMoved: value => popup.traps.shockDamagePercent = value
             }
 
             TrapSlider {
@@ -149,11 +149,11 @@ PanelPopup {
 
             Field {
                 Layout.fillWidth: true
-                placeholderText: "Original random knockback"
+                placeholderText: "100:0-600"
                 text: popup.traps ? popup.traps.knockbackText : ""
                 ToolTip.visible: hovered
                 ToolTip.delay: 500
-                ToolTip.text: "Chance and distance pairs, for example 25:200, 50:60. That is a 25% chance of 200 units and a 50% chance of 60. Link is about 50 units tall. Whatever chance is left over uses the original random knockback."
+                ToolTip.text: "Chance and distance pairs, for example 25:200, 50:60-120. That is a 25% chance of 200 units and a 50% chance of anywhere from 60 to 120. Link is about 50 units tall. The original is 100:0-600. Whatever chance is left over uses the original random knockback."
                 onEditingFinished: popup.traps.knockbackText = text
             }
 

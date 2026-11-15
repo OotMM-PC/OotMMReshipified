@@ -244,6 +244,29 @@ public class SeedLoaderTests
             SeedLoader.LoadFromJson(MutateValid(root => root["seedName"] = "Juicy Gibdo")).SeedName);
     }
 
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public void FixedChecks_HideUnshuffledFrogsAndLottery(bool shuffled, bool expectedFixed)
+    {
+        var seed = SeedLoader.LoadFromJson(MutateValid(root =>
+        {
+            root["settings"]!["shuffleFrogsRupeesOot"] = shuffled;
+            root["settings"]!["shuffleLotteryMm"] = shuffled;
+        }));
+        ItemPlacement Placement(Game game, string id, string name, string item) => new(
+            new CheckRef(game, id, name, [], 84, "npc", null), new ItemRef(game, item, item), null, 1, 1, false);
+
+        var frog = Placement(Game.Oot, "OOT_ZORA_RIVER_FROGS_SARIAS_SONG", "OOT Zora River Frogs Sarias Song", "OOT_RUPEE_PURPLE");
+        var lottery = Placement(Game.Mm, "MM_LOTTERY_PRIZE_NIGHT_1", "MM Lottery Prize Night 1", "MM_RUPEE_PURPLE");
+        var frogGame = Placement(Game.Oot, "OOT_ZORA_RIVER_FROGS_GAME", "OOT Zora River Frogs Game", "OOT_RUPEE_RED");
+
+        Assert.Equal(expectedFixed, FixedChecks.IsFixed(seed, frog));
+        Assert.Equal(expectedFixed, FixedChecks.IsFixed(seed, lottery));
+        Assert.Equal(!expectedFixed, seed.IsTrackedPlacement(frog));
+        Assert.False(FixedChecks.IsFixed(seed, frogGame));
+    }
+
     [Fact]
     public void StartingChecks_EmptyWithoutStartingRules()
     {

@@ -102,7 +102,7 @@ public sealed class RuntimeViewModel : ViewModelBase
         foreach (var placement in coordinator.Session.Seed.Placements)
         {
             var check = placement.Check;
-            if (coordinator.Session.Seed.IsStartingCheck(check.Id))
+            if (!coordinator.Session.Seed.IsTrackedPlacement(placement))
                 continue;
             var row = new CheckRowViewModel(
                 GameInfo.ToSeedTag(check.Game).ToUpperInvariant(),

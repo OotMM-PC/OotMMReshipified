@@ -85,7 +85,10 @@ public sealed class Seed
         game is Game.Oot or Game.Mm && (nativeId & 0x80000000u) == 0
         && destinations.Contains(game != sourceGame ? nativeId | 0x80000000u : nativeId);
 
-    public int PlayableCheckCount => Placements.Count(p => !IsStartingCheck(p.Check.Id));
+    public int PlayableCheckCount => Placements.Count(IsTrackedPlacement);
+
+    public bool IsTrackedPlacement(ItemPlacement placement) =>
+        !IsStartingCheck(placement.Check.Id) && !FixedChecks.IsFixed(this, placement);
 
     public bool IsStartingCheck(string checkId) => (_startingChecks ??= BuildStartingChecks()).Contains(checkId);
 

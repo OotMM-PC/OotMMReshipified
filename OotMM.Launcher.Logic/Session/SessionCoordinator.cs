@@ -662,19 +662,34 @@ public sealed class SessionCoordinator : IDisposable
         else if (_process is not null && !_process.Running)
         {
             _pendingSwitch = null;
+            var crash = DescribeCrash(_process);
             if (ShouldRelaunchAfterStartupCrash(_process.ExitCode, DateTime.UtcNow - _launchedAt, _launchRetries)
                 && ReadRecoveryFailure() is null)
             {
                 _launchRetries++;
                 _relaunching = true;
-                LogEvent($"{GameInfo.Title(ActiveGame)} crashed while starting; starting it again.");
+                LogEvent(crash ?? $"{GameInfo.Title(ActiveGame)} crashed while starting.");
+                LogEvent($"Starting {GameInfo.Title(ActiveGame)} again.");
                 _process.Dispose();
                 _process = null;
                 StartActiveGame(_launchEntrance, _launchOotAge);
                 return;
             }
-            EndSession(ReadRecoveryFailure() ?? $"{GameInfo.Title(ActiveGame)} exited — session closed.");
+            EndSession(ReadRecoveryFailure() ?? crash ?? $"{GameInfo.Title(ActiveGame)} exited — session closed.");
         }
+    }
+
+    private string? DescribeCrash(GameProcess process)
+    {
+        if (process.ExitCode is not { } exitCode || !CrashReports.IsCrashExit(exitCode))
+        {
+            return null;
+        }
+
+        var exe = ActiveGame == Game.Oot ? _session.OotExe : _session.MmExe;
+        var report = CrashReports.Find(exe, process.Pid, _launchedAt);
+        return CrashReports.Describe(GameInfo.Title(ActiveGame), exe, exitCode,
+            report is null ? null : CrashReports.Bundle(report));
     }
 
     public static readonly TimeSpan StartupCrashWindow = TimeSpan.FromSeconds(30);

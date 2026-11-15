@@ -25,6 +25,13 @@ public sealed class SessionCoordinator : IDisposable
     private long _outboxOffset;
     private CrossGameTransition? _pendingTransition;
     private DateTime _handoffDeadline;
+    private uint? _launchEntrance;
+    private uint? _launchOotAge;
+    private DateTime _launchedAt;
+    private int _launchRetries;
+    private bool _relaunching;
+    private PendingSwitch? _pendingSwitch;
+    private ulong _saveRequestCounter;
     private DateTime _stateStamp = DateTime.MinValue;
     private bool _stateDirty;
     private TrapTuning _traps = new();
@@ -255,7 +262,52 @@ public sealed class SessionCoordinator : IDisposable
             EndSession(error);
     }
 
+    public static readonly TimeSpan SwitchSaveTimeout = TimeSpan.FromSeconds(10);
+
+    public bool IsSwitchPending => _pendingSwitch is not null;
+
     public void SwitchGame(uint? ootAge = null)
+    {
+        if (_ended || _starting || _pendingSwitch is not null)
+            return;
+        if (_process?.Running == true && _ipc?.IsConnected == true)
+        {
+            var requestId = ++_saveRequestCounter;
+            if (_ipc.Send(GameIpcProtocol.BuildSaveRequest(requestId)))
+            {
+                _pendingSwitch = new PendingSwitch(requestId, DateTime.UtcNow + SwitchSaveTimeout, ootAge);
+                LogEvent($"Saving {GameInfo.Title(ActiveGame)} before switching…");
+                StateChanged?.Invoke();
+                return;
+            }
+        }
+        PerformSwitch(ootAge);
+    }
+
+    private void CompletePendingSwitch(ulong requestId, bool saved)
+    {
+        if (_pendingSwitch is not { } pending || pending.RequestId != requestId)
+            return;
+        _pendingSwitch = null;
+        if (saved)
+        {
+            PerformSwitch(pending.OotAge);
+            return;
+        }
+        LogEvent($"{GameInfo.Title(ActiveGame)} could not save, so the switch was cancelled. Try again.");
+        StateChanged?.Invoke();
+    }
+
+    private void ExpirePendingSwitch()
+    {
+        if (_pendingSwitch is not { } pending || DateTime.UtcNow < pending.Deadline)
+            return;
+        _pendingSwitch = null;
+        LogEvent($"{GameInfo.Title(ActiveGame)} did not confirm its save, so the switch was cancelled. Try again.");
+        StateChanged?.Invoke();
+    }
+
+    private void PerformSwitch(uint? ootAge)
     {
         _process?.Terminate();
         _modelSync?.InstallNow();
@@ -512,6 +564,11 @@ public sealed class SessionCoordinator : IDisposable
             return selectionError;
         }
 
+        _launchEntrance = bootEntrance;
+        _launchOotAge = ootAge;
+        _launchedAt = DateTime.UtcNow;
+        if (!_relaunching) _launchRetries = 0;
+        _relaunching = false;
         _outboxOffset = DurableFile.ReadOffset(ActiveOutboxCursor) ?? 0;
         _session.OpenFileSelect = false;
         _lastNativeSaveRequest = 0;
@@ -558,6 +615,8 @@ public sealed class SessionCoordinator : IDisposable
             return;
         }
 
+        ExpirePendingSwitch();
+
         if (_recoveryPending && File.Exists(_session.StatePath + ".recovery-result.json"))
         {
             _recoveryPending = false;
@@ -602,9 +661,28 @@ public sealed class SessionCoordinator : IDisposable
         }
         else if (_process is not null && !_process.Running)
         {
+            _pendingSwitch = null;
+            if (ShouldRelaunchAfterStartupCrash(_process.ExitCode, DateTime.UtcNow - _launchedAt, _launchRetries)
+                && ReadRecoveryFailure() is null)
+            {
+                _launchRetries++;
+                _relaunching = true;
+                LogEvent($"{GameInfo.Title(ActiveGame)} crashed while starting; starting it again.");
+                _process.Dispose();
+                _process = null;
+                StartActiveGame(_launchEntrance, _launchOotAge);
+                return;
+            }
             EndSession(ReadRecoveryFailure() ?? $"{GameInfo.Title(ActiveGame)} exited — session closed.");
         }
     }
+
+    public static readonly TimeSpan StartupCrashWindow = TimeSpan.FromSeconds(30);
+
+    public const int StartupCrashRetries = 2;
+
+    public static bool ShouldRelaunchAfterStartupCrash(int? exitCode, TimeSpan sinceLaunch, int retries) =>
+        exitCode is { } code && code != 0 && sinceLaunch <= StartupCrashWindow && retries < StartupCrashRetries;
 
     private void DrainActiveOutbox()
     {
@@ -845,6 +923,14 @@ public sealed class SessionCoordinator : IDisposable
                     FlushLiveModels();
                     break;
                 case GameIpcEventType.Message:
+                    if (GameIpcProtocol.TryParseSaveCompleted(ipcEvent.Message, out var savedRequest, out var saved))
+                    {
+                        var switching = _pendingSwitch?.RequestId == savedRequest && saved;
+                        CompletePendingSwitch(savedRequest, saved);
+                        if (switching || _ended)
+                            return;
+                        break;
+                    }
                     if (NativeSaveRequest.TryParse(ipcEvent.Message, out var saveRequest, out _))
                     {
                         HandleNativeSaveRequest(saveRequest!);
@@ -1471,3 +1557,5 @@ public sealed class SessionCoordinator : IDisposable
 
     private void LogEvent(string message) => EventLogged?.Invoke(message);
 }
+
+internal sealed record PendingSwitch(ulong RequestId, DateTime Deadline, uint? OotAge);

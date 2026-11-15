@@ -49,6 +49,8 @@ public static class GameIpcProtocol
         public const string ModelMounted = "modelMounted";
         public const string CrossGameTransition = "crossGameTransition";
         public const string TransitionAccepted = "transitionAccepted";
+        public const string SaveRequest = "saveRequest";
+        public const string SaveCompleted = "saveCompleted";
         public const string EndgameReached = "endgameReached";
     }
 
@@ -301,6 +303,40 @@ public static class GameIpcProtocol
 
     public static bool TryParseDeathLink(string json, out string death) =>
         TryParseEnvelopeBody(json, MessageType.DeathLink, "death", out death);
+
+    public static string BuildSaveRequest(ulong requestId) =>
+        JsonSerializer.Serialize(new
+        {
+            type = MessageType.SaveRequest,
+            requestId,
+        });
+
+    public static bool TryParseSaveCompleted(string json, out ulong requestId, out bool saved)
+    {
+        requestId = 0;
+        saved = false;
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object
+                || ReadString(root, "type") != MessageType.SaveCompleted
+                || !root.TryGetProperty("requestId", out var id) || !id.TryGetUInt64(out requestId)
+                || !root.TryGetProperty("saved", out var result)
+                || result.ValueKind is not (JsonValueKind.True or JsonValueKind.False))
+            {
+                requestId = 0;
+                return false;
+            }
+
+            saved = result.GetBoolean();
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
 
     public static bool TryParseEndgameReached(string json, out string boss)
     {

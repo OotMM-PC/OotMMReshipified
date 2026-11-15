@@ -72,6 +72,21 @@ public sealed class GameProcess : IDisposable
         }
     }
 
+    public int? ExitCode
+    {
+        get
+        {
+            try
+            {
+                return _process is { HasExited: true } ? _process.ExitCode : null;
+            }
+            catch (InvalidOperationException)
+            {
+                return null;
+            }
+        }
+    }
+
     public void Terminate()
     {
         Resume();

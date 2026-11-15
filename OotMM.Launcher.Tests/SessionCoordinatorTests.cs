@@ -291,4 +291,18 @@ public sealed class SessionCoordinatorTests
         Assert.False(startup.IsCancellationRequested);
         Assert.Contains(messages, message => message.StartsWith("Reset refused:"));
     }
+
+    [Theory]
+    [InlineData(unchecked((int)0xC0000005), 3, 0, true)]
+    [InlineData(unchecked((int)0xC0000005), 3, 1, true)]
+    [InlineData(unchecked((int)0xC0000005), 3, 2, false)]
+    [InlineData(unchecked((int)0xC0000005), 45, 0, false)]
+    [InlineData(0, 3, 0, false)]
+    public void StartupCrashesRelaunchTheSameEntryALimitedNumberOfTimes(int exitCode, int seconds, int retries,
+                                                                       bool expected)
+    {
+        Assert.Equal(expected, SessionCoordinator.ShouldRelaunchAfterStartupCrash(
+            exitCode, TimeSpan.FromSeconds(seconds), retries));
+        Assert.False(SessionCoordinator.ShouldRelaunchAfterStartupCrash(null, TimeSpan.Zero, 0));
+    }
 }

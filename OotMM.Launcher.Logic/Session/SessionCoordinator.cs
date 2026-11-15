@@ -207,6 +207,8 @@ public sealed class SessionCoordinator : IDisposable
 
     public HashSet<string> CompletedChecks { get; } = [];
 
+    public IReadOnlyCollection<string> EndgameBosses => _endgameBosses;
+
     public event Action? StateChanged;
     public event Action<string>? EventLogged;
     public event Action<string>? RemoteEventLogged;

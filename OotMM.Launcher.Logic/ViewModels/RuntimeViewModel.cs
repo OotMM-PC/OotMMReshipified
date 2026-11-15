@@ -19,6 +19,7 @@ public sealed class RuntimeViewModel : ViewModelBase
     private bool _isRunning;
     private bool _isFinalizingSync;
     private long _seenReceiptRevision;
+    private int _seenEndgameBosses;
     private string _multiworldStatus = "";
     private double _sidebarScale = 1.0;
 
@@ -158,6 +159,7 @@ public sealed class RuntimeViewModel : ViewModelBase
             {
                 Raise(nameof(ActiveGameTitle));
                 Raise(nameof(ActiveIsOot));
+                Progress.FollowGame(value);
             }
         }
     }
@@ -279,6 +281,10 @@ public sealed class RuntimeViewModel : ViewModelBase
             RebuildProgress();
             Tracker.NotifyCheckStatesChanged();
         }
+        else if (_coordinator.EndgameBosses.Count != _seenEndgameBosses)
+        {
+            RebuildProgress();
+        }
 
         Tracker.UpdateStats(
             _placementRows.Count(pr => pr.Row.InLogic && !pr.Row.Collected),
@@ -385,10 +391,12 @@ public sealed class RuntimeViewModel : ViewModelBase
             }
         }
 
+        _seenEndgameBosses = _coordinator.EndgameBosses.Count;
         var report = ProgressReport.Build(seed, checks, counts,
                                           _coordinator.Multiworld?.ForeignOwnedChecks());
-        Progress.SetReport(report, seed.PlayerId, seed.PlayerCount,
-                           seed.GetStringSetting("songs", "anywhere"));
+        Progress.SetReport(report, seed.GetStringSetting("goal", "both"), seed.PlayerCount > 1,
+                           _coordinator.EndgameBosses.Contains(Endgame.Ganon),
+                           _coordinator.EndgameBosses.Contains(Endgame.Majora));
     }
 
     private void RecomputeLogic()

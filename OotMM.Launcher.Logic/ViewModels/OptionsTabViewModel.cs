@@ -12,6 +12,9 @@ public sealed class OptionsTabViewModel : ViewModelBase
     private bool _holdToZTarget;
     private bool _remoteItemPrompts = true;
     private bool _fairySpotPads;
+    private bool _contentFilters;
+    private string _contentFiltersNote = "";
+    private bool _contentFiltersAvailable = true;
     private bool _potRolling = true;
 
     public OptionsTabViewModel(
@@ -94,6 +97,42 @@ public sealed class OptionsTabViewModel : ViewModelBase
                 PotRollingChanged?.Invoke(value);
             }
         }
+    }
+
+    internal Action<bool>? ContentFiltersChanged { get; set; }
+
+    public bool ContentFilters
+    {
+        get => _contentFilters;
+        set
+        {
+            if (Set(ref _contentFilters, value))
+            {
+                ContentFiltersChanged?.Invoke(value);
+            }
+        }
+    }
+
+    /// <summary>Why the contents filters cannot be used right now, or empty when they can.</summary>
+    public string ContentFiltersNote
+    {
+        get => _contentFiltersNote;
+        internal set
+        {
+            if (Set(ref _contentFiltersNote, value))
+            {
+                Raise(nameof(ContentFiltersAllowed));
+            }
+        }
+    }
+
+    public bool ContentFiltersAllowed => _contentFiltersNote.Length == 0;
+
+    /// <summary>False on seeds that never show what checks hold, where the option has no use.</summary>
+    public bool ContentFiltersAvailable
+    {
+        get => _contentFiltersAvailable;
+        internal set => Set(ref _contentFiltersAvailable, value);
     }
 
     public bool CheatGatePending

@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
 
+using OotMM.Core;
+
 namespace OotMM.Launcher.ViewModels;
 
 public sealed class CheckRowViewModel : ViewModelBase
@@ -27,6 +29,10 @@ public sealed class CheckRowViewModel : ViewModelBase
     public string CheckId { get; }
 
     public string ItemText { get; }
+
+    public ContentClass Content { get; init; }
+
+    public bool Required { get; init; }
 
     public bool Collected
     {
@@ -89,7 +95,28 @@ public sealed class TrackerTabViewModel : ViewModelBase
     private int _inLogicCount;
     private bool _solverLoaded;
     private bool _isMultiworld;
+    private int _ootContentFilter;
+    private int _mmContentFilter;
+    private bool _ootRevealed;
+    private bool _mmRevealed;
+    private bool _separateStones;
+    private bool _hasRequiredData;
+    private bool _contentFiltersEnabled;
+    private string _ootContentLabels = "Any contents";
+    private string _mmContentLabels = "Any contents";
     private int _scrollResetToken;
+
+    private static readonly (string Label, ContentClass Kind)[] ContentKinds =
+    [
+        ("Major items", ContentClass.Major),
+        ("Small keys", ContentClass.Key),
+        ("Boss keys", ContentClass.BossKey),
+        ("Skulltula tokens", ContentClass.Spider),
+        ("Stray fairies", ContentClass.Fairy),
+        ("Hearts", ContentClass.Heart),
+        ("Souls", ContentClass.Soul),
+        ("Maps and compasses", ContentClass.MapCompass),
+    ];
 
     internal Func<string, bool>? ForceUnlockSender { get; set; }
 
@@ -101,6 +128,161 @@ public sealed class TrackerTabViewModel : ViewModelBase
         _scrollResetToken++;
         Raise(nameof(ScrollResetToken));
         RaiseListChanged();
+    }
+
+    /// <summary>Whether the player turned the contents filters on and the session allows them.</summary>
+    public bool ContentFiltersEnabled
+    {
+        get => _contentFiltersEnabled;
+        set
+        {
+            if (!Set(ref _contentFiltersEnabled, value))
+            {
+                return;
+            }
+
+            if (!value)
+            {
+                _ootContentFilter = 0;
+                _mmContentFilter = 0;
+                Raise(nameof(OotContentFilterIndex));
+                Raise(nameof(MmContentFilterIndex));
+            }
+
+            Raise(nameof(ShowOotContentFilter));
+            Raise(nameof(ShowMmContentFilter));
+            FiltersChanged();
+        }
+    }
+
+    /// <summary>The filter choices for a game, each with how many uncollected checks hold it, joined by "|".</summary>
+    public string OotContentLabels => _ootContentLabels;
+
+    public string MmContentLabels => _mmContentLabels;
+
+    private string ContentLabels(string gameTag, bool counted)
+    {
+        var labels = new List<string> { "Any contents" };
+        string Entry(string label, Func<CheckRowViewModel, bool> holds) =>
+            counted ? $"{label} ({_allChecks.Count(r => r.GameTag == gameTag && !r.Collected && holds(r))} left)" : label;
+
+        if (_hasRequiredData)
+        {
+            labels.Add(Entry("Way of the Hero", r => r.Required));
+        }
+
+        labels.AddRange(ContentKinds.Select(kind => Entry(kind.Label, r => r.Content == kind.Kind)));
+        return string.Join("|", labels);
+    }
+
+    private void RefreshContentLabels()
+    {
+        var oot = ContentLabels("OOT", _contentFiltersEnabled && _ootRevealed);
+        if (oot != _ootContentLabels)
+        {
+            _ootContentLabels = oot;
+            Raise(nameof(OotContentLabels));
+        }
+
+        var mm = ContentLabels("MM", _contentFiltersEnabled && _mmRevealed);
+        if (mm != _mmContentLabels)
+        {
+            _mmContentLabels = mm;
+            Raise(nameof(MmContentLabels));
+        }
+    }
+
+    public int OotContentFilterIndex
+    {
+        get => _ootContentFilter;
+        set => SetContentFilter(ref _ootContentFilter, _contentFiltersEnabled && _ootRevealed, value,
+                                nameof(OotContentFilterIndex));
+    }
+
+    public int MmContentFilterIndex
+    {
+        get => _mmContentFilter;
+        set => SetContentFilter(ref _mmContentFilter, _contentFiltersEnabled && _mmRevealed, value,
+                                nameof(MmContentFilterIndex));
+    }
+
+    public bool OotContentUnlocked => _ootRevealed;
+
+    public bool MmContentUnlocked => _mmRevealed;
+
+    public string OotContentLockedText => LockedText("OoT");
+
+    public string MmContentLockedText => LockedText("MM");
+
+    public bool ShowOotContentFilter => _contentFiltersEnabled && _gameFilterIndex != 2;
+
+    public bool ShowMmContentFilter => _contentFiltersEnabled && _gameFilterIndex != 1;
+
+    private string LockedText(string game) =>
+        _separateStones ? $"Locked: find the {game} Stone of Agony"
+        : "Locked: find the Stone of Agony";
+
+    private void SetContentFilter(ref int field, bool unlocked, int value, string name)
+    {
+        var limit = ContentKinds.Length + (_hasRequiredData ? 1 : 0);
+        var next = unlocked ? Math.Clamp(value, 0, limit) : 0;
+        if (field != next)
+        {
+            field = next;
+            Raise(name);
+            FiltersChanged();
+        }
+    }
+
+    /// <summary>Sets which games currently reveal what their checks hold, and whether each game has its own stone.</summary>
+    public void SetContentAccess(bool oot, bool mm, bool separateStones)
+    {
+        if (oot == _ootRevealed && mm == _mmRevealed && separateStones == _separateStones)
+        {
+            return;
+        }
+
+        _ootRevealed = oot;
+        _mmRevealed = mm;
+        _separateStones = separateStones;
+        if (!oot && _ootContentFilter != 0)
+        {
+            _ootContentFilter = 0;
+            Raise(nameof(OotContentFilterIndex));
+        }
+
+        if (!mm && _mmContentFilter != 0)
+        {
+            _mmContentFilter = 0;
+            Raise(nameof(MmContentFilterIndex));
+        }
+
+        Raise(nameof(OotContentUnlocked));
+        Raise(nameof(MmContentUnlocked));
+        Raise(nameof(OotContentLockedText));
+        Raise(nameof(MmContentLockedText));
+        RaiseListChanged();
+    }
+
+    private bool MatchesContents(CheckRowViewModel row)
+    {
+        var index = (row.GameTag == "OOT" ? _ootContentFilter : _mmContentFilter) - 1;
+        if (index < 0)
+        {
+            return true;
+        }
+
+        if (_hasRequiredData)
+        {
+            if (index == 0)
+            {
+                return row.Required;
+            }
+
+            index--;
+        }
+
+        return index < ContentKinds.Length && row.Content == ContentKinds[index].Kind;
     }
 
     public string FilterText
@@ -122,6 +304,8 @@ public sealed class TrackerTabViewModel : ViewModelBase
         {
             if (Set(ref _gameFilterIndex, value))
             {
+                Raise(nameof(ShowOotContentFilter));
+                Raise(nameof(ShowMmContentFilter));
                 FiltersChanged();
             }
         }
@@ -214,13 +398,16 @@ public sealed class TrackerTabViewModel : ViewModelBase
         var matches = _allChecks.Where(r =>
             (_gameFilterIndex != 1 || r.GameTag == "OOT")
             && (_gameFilterIndex != 2 || r.GameTag == "MM")
+            && MatchesContents(r)
             && MatchesSearch(r, terms)).ToList();
 
         var rows = matches.Where(r =>
             (!_hideCollected || !r.Collected)
             && (!_onlyInLogic || r.InLogic || r.Collected)).ToList();
 
-        var hidden = terms.Length > 0 ? matches.Count - rows.Count : 0;
+        var hidden = matches.Count(r =>
+            terms.Length > 0 || (r.GameTag == "OOT" ? _ootContentFilter : _mmContentFilter) != 0) - rows.Count(r =>
+            terms.Length > 0 || (r.GameTag == "OOT" ? _ootContentFilter : _mmContentFilter) != 0);
         if (hidden != _hiddenMatches)
         {
             _hiddenMatches = hidden;
@@ -319,9 +506,18 @@ public sealed class TrackerTabViewModel : ViewModelBase
         }
     }
 
-    public void SetChecks(IEnumerable<CheckRowViewModel> checks)
+    public void SetChecks(IEnumerable<CheckRowViewModel> checks, bool hasRequiredData = false)
     {
         _allChecks = checks.ToList();
+        if (hasRequiredData != _hasRequiredData)
+        {
+            _hasRequiredData = hasRequiredData;
+            _ootContentFilter = 0;
+            _mmContentFilter = 0;
+            Raise(nameof(OotContentFilterIndex));
+            Raise(nameof(MmContentFilterIndex));
+        }
+
         RaiseListChanged();
     }
 
@@ -334,6 +530,7 @@ public sealed class TrackerTabViewModel : ViewModelBase
             Raise(nameof(VisibleChecks));
         }
 
+        RefreshContentLabels();
         Raise(nameof(SummaryText));
         Raise(nameof(CollectedFraction));
     }
@@ -342,22 +539,24 @@ public sealed class TrackerTabViewModel : ViewModelBase
 
     public void LoadSampleData()
     {
-        CheckRowViewModel Row(string tag, string name, string item, bool collected, bool inLogic) =>
-            new(tag, name, item, checkId: name) { Collected = collected, InLogic = inLogic };
+        CheckRowViewModel Row(string tag, string name, string item, bool collected, bool inLogic,
+                              ContentClass content = ContentClass.Normal) =>
+            new(tag, name, item, checkId: name) { Collected = collected, InLogic = inLogic, Content = content };
 
         SetChecks(
         [
-            Row("OOT", "Deku Tree — Map Chest", "Kokiri Sword", true, true),
-            Row("OOT", "Market — Mask Shop Delivery", "MM Song of Soaring", true, true),
-            Row("OOT", "Hyrule Field — Ocarina of Time", "", false, true),
+            Row("OOT", "Deku Tree — Map Chest", "Kokiri Sword", true, true, ContentClass.Major),
+            Row("OOT", "Market — Mask Shop Delivery", "MM Song of Soaring", true, true, ContentClass.Major),
+            Row("OOT", "Hyrule Field — Ocarina of Time", "", false, true, ContentClass.Major),
             Row("OOT", "Kakariko — Anju's Cuccos", "", false, true),
             Row("OOT", "Dodongo's Cavern — Boss Heart Container", "", false, false),
             Row("MM", "Clock Town — Postbox", "", false, true),
             Row("MM", "Great Bay — Zora Cape Heart Piece", "", false, false),
-            Row("MM", "Woodfall Temple — Boss Key Chest", "", false, false),
+            Row("MM", "Woodfall Temple — Boss Key Chest", "", false, false, ContentClass.Key),
             Row("MM", "Astral Observatory — Moon's Tear", "OOT Slingshot", true, true),
             Row("MM", "Southern Swamp — Kotake's Mushroom Trade", "", false, true),
         ]);
         UpdateStats(4, solverLoaded: true, isMultiworld: false);
+        SetContentAccess(oot: true, mm: true, separateStones: true);
     }
 }

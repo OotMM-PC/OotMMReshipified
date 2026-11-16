@@ -240,6 +240,16 @@ Item {
 
                 Chip {
                     visible: view.vm.hostRelay
+                    text: "Contents filters"
+                    lit: view.vm.hostContentFilters
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 500
+                    ToolTip.text: "Server rule: players may turn on tracker filters that list the checks holding keys, tokens and other items once they own the Stone of Agony. Turn off for challenge runs."
+                    onClicked: view.vm.hostContentFilters = !view.vm.hostContentFilters
+                }
+
+                Chip {
+                    visible: view.vm.hostRelay
                     text: ["Death link: Off", "Death link: Team", "Death link: Global"][view.vm.hostDeathLink]
                     lit: view.vm.hostDeathLink !== 0
                     ToolTip.visible: hovered

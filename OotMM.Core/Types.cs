@@ -19,6 +19,9 @@ public sealed record ItemPlacement(
     ushort SourcePlayer,
     bool Major)
 {
+    /// <summary>Whether the seed's analysis found this check required to finish; null when the seed carries no such data.</summary>
+    public bool? Required { get; init; }
+
     public bool IsFor(ushort player) => OwnerPlayer == 0 || OwnerPlayer == player;
 }
 

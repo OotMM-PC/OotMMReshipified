@@ -36,6 +36,24 @@ public class SeedLoaderTests
     }
 
     [Fact]
+    public void RequiredFlag_IsUnknownUntilTheSeedCarriesIt()
+    {
+        Assert.All(SeedLoader.LoadFromJson(ValidJson()).Placements, p => Assert.Null(p.Required));
+
+        var seed = SeedLoader.LoadFromJson(MutateValid(root =>
+        {
+            var placements = root["placements"]!.AsArray();
+            for (var i = 0; i < placements.Count; i++)
+            {
+                placements[i]!["woth"] = i == 0;
+            }
+        }));
+
+        Assert.True(seed.Placements[0].Required);
+        Assert.All(seed.Placements.Skip(1), p => Assert.False(p.Required));
+    }
+
+    [Fact]
     public void ValidSeed_ParsesIdentityAndScalars()
     {
         var seed = SeedLoader.LoadFromJson(ValidJson());

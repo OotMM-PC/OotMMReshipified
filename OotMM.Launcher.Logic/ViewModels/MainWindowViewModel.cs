@@ -175,6 +175,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             FriendlyFire = _settings.EnablePvp && _settings.EnableFriendlyFire,
             PvpDamagePercent = _settings.PvpDamagePercent,
             DeathLink = _settings.DeathLink,
+            ContentFilters = _settings.HostContentFilters,
             Traps = _settings.Traps.Normalized(),
         };
         var engine = new OotMM.Core.Relay.RelayEngine(storeDir, rules);

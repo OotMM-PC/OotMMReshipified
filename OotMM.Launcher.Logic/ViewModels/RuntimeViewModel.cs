@@ -55,7 +55,10 @@ public sealed class RuntimeViewModel : ViewModelBase
             FairySpotPadsChanged = ApplyFairySpotPads,
             PotRolling = settings.PotRolling,
             PotRollingChanged = ApplyPotRolling,
+            ContentFilters = settings.ContentFilters,
+            ContentFiltersChanged = ApplyContentFilters,
         };
+        Tracker.ContentFiltersEnabled = settings.ContentFilters;
         Progress = new ProgressTabViewModel();
         _tabs = [Tracker, Log, SessionTab, Options, Progress];
 
@@ -116,14 +119,20 @@ public sealed class RuntimeViewModel : ViewModelBase
                 check.Name.Length > 0 ? check.Name : check.Id,
                 placement.Item.Name,
                 check.Id,
-                placement.IsFor(localPlayer)) { InLogic = true };
+                placement.IsFor(localPlayer))
+            {
+                InLogic = true,
+                Content = ContainerContents.Classify(coordinator.Session.Seed, placement),
+                Required = placement.Required == true,
+            };
             if (vm._checkRows.TryAdd(Identity.CheckKey(check.Game, check.Id), row))
             {
                 vm._placementRows.Add((placement, row));
             }
         }
 
-        vm.Tracker.SetChecks(vm._checkRows.Values);
+        vm.Tracker.SetChecks(vm._checkRows.Values,
+                             coordinator.Session.Seed.Placements.Any(p => p.Required is not null));
 
         var solver = new LogicSolver();
         if (solver.LoadFromSeedFile(coordinator.Session.SeedPath))
@@ -138,6 +147,8 @@ public sealed class RuntimeViewModel : ViewModelBase
         vm.RefreshFromCoordinator();
         vm.RecomputeLogic();
         vm.RebuildProgress();
+        vm.UpdateContentAccess();
+        vm.UpdateContentFilterRule();
         vm.Tracker.NotifyCheckStatesChanged();
         return vm;
     }
@@ -263,6 +274,7 @@ public sealed class RuntimeViewModel : ViewModelBase
         ActiveGame = _coordinator.ActiveGame;
         IsRunning = _coordinator.IsRunning;
         UpdateMultiworldStatus();
+        UpdateContentFilterRule();
 
         var changed = false;
         foreach (var (key, row) in _checkRows)
@@ -285,6 +297,7 @@ public sealed class RuntimeViewModel : ViewModelBase
         {
             RecomputeLogic();
             RebuildProgress();
+            UpdateContentAccess();
             Tracker.NotifyCheckStatesChanged();
         }
         else if (_coordinator.EndgameBosses.Count != _seenEndgameBosses)
@@ -337,6 +350,26 @@ public sealed class RuntimeViewModel : ViewModelBase
         {
             _coordinator.PotRolling = rolling;
         }
+    }
+
+    private void ApplyContentFilters(bool filters)
+    {
+        _settings.ContentFilters = filters;
+        _settings.Save();
+        UpdateContentFilterRule();
+    }
+
+    private void UpdateContentFilterRule()
+    {
+        var allowed = _coordinator?.Multiworld?.ContentFilters;
+        var networked = _coordinator?.Multiworld is not null;
+        Options.ContentFiltersAvailable =
+            _coordinator?.Session.Seed.GetStringSetting("csmc", "always") != "never";
+        Options.ContentFiltersNote = !networked || allowed == true ? ""
+            : allowed == false ? "The server has turned this off for this session."
+            : "Available once the server's rules arrive.";
+        Tracker.ContentFiltersEnabled = _settings.ContentFilters && Options.ContentFiltersAvailable
+                                        && Options.ContentFiltersAllowed;
     }
 
     private void ApplyDevMode(bool devMode)
@@ -395,15 +428,28 @@ public sealed class RuntimeViewModel : ViewModelBase
         var checks = _placementRows
             .Select(pr => (pr.Placement, pr.Row.Collected))
             .ToList();
+        var counts = OwnedItemCounts();
+
+        _seenEndgameBosses = _coordinator.EndgameBosses.Count;
+        var report = ProgressReport.Build(seed, checks, counts,
+                                          _coordinator.Multiworld?.ForeignOwnedChecks());
+        Progress.SetReport(report, seed.GetStringSetting("goal", "both"), seed.PlayerCount > 1,
+                           _coordinator.EndgameBosses.Contains(Endgame.Ganon),
+                           _coordinator.EndgameBosses.Contains(Endgame.Majora));
+    }
+
+    private Dictionary<string, int> OwnedItemCounts()
+    {
+        var seed = _coordinator!.Session.Seed;
         var counts = new Dictionary<string, int>();
         foreach (var starting in seed.StartingItems)
         {
             counts[starting.Item.Id] = counts.GetValueOrDefault(starting.Item.Id) + starting.Count;
         }
 
-        foreach (var (placement, collected) in checks)
+        foreach (var (placement, row) in _placementRows)
         {
-            if (collected && placement.IsFor(seed.PlayerId))
+            if (row.Collected && placement.IsFor(seed.PlayerId))
             {
                 counts[placement.Item.Id] = counts.GetValueOrDefault(placement.Item.Id) + 1;
             }
@@ -417,12 +463,23 @@ public sealed class RuntimeViewModel : ViewModelBase
             }
         }
 
-        _seenEndgameBosses = _coordinator.EndgameBosses.Count;
-        var report = ProgressReport.Build(seed, checks, counts,
-                                          _coordinator.Multiworld?.ForeignOwnedChecks());
-        Progress.SetReport(report, seed.GetStringSetting("goal", "both"), seed.PlayerCount > 1,
-                           _coordinator.EndgameBosses.Contains(Endgame.Ganon),
-                           _coordinator.EndgameBosses.Contains(Endgame.Majora));
+        return counts;
+    }
+
+    private void UpdateContentAccess()
+    {
+        if (_coordinator is null)
+        {
+            return;
+        }
+
+        var seed = _coordinator.Session.Seed;
+        var counts = OwnedItemCounts();
+        bool Owns(string itemId) => counts.GetValueOrDefault(itemId) > 0;
+        Tracker.SetContentAccess(
+            ContainerContents.IsRevealed(seed, Game.Oot, Owns),
+            ContainerContents.IsRevealed(seed, Game.Mm, Owns),
+            seed.GetBoolSetting("stoneAgonyMm") && !seed.GetBoolSetting("sharedStoneAgony"));
     }
 
     private void RecomputeLogic()

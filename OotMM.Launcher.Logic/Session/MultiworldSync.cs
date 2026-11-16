@@ -89,6 +89,10 @@ public sealed class MultiworldSync : IDisposable
     public bool FriendlyFire { get; private set; }
     public int PvpDamagePercent { get; private set; } = RelayRules.DefaultPvpDamagePercent;
     public DeathLinkMode DeathLink { get; private set; }
+
+    /// <summary>Whether the server allows the tracker's contents filters; null until its rules arrive.</summary>
+    public bool? ContentFilters { get; private set; }
+
     public TrapTuning Traps { get; private set; } = new();
     public bool TimerEnabled { get; private set; } = true;
     public int TimerMin { get; private set; }
@@ -312,6 +316,13 @@ public sealed class MultiworldSync : IDisposable
                     TimerMin = RelayProtocol.ExtractIntField(line, "timerMin");
                     TimerMax = RelayProtocol.ExtractIntField(line, "timerMax", 250);
                     Traps = TrapTuning.FromMetaLine(line);
+                    var contentFilters = !line.Contains("\"contentFilters\":false");
+                    if (!contentFilters && ContentFilters != false)
+                    {
+                        EventLogged?.Invoke("The server has turned the tracker's contents filters off.", true);
+                    }
+
+                    ContentFilters = contentFilters;
                     var rules = new List<string>();
                     if (Pvp)
                     {

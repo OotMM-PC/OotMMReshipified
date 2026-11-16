@@ -86,6 +86,30 @@ ColumnLayout {
         onFlipped: value => tab.vm.fairySpotPads = value
     }
 
+    GoldCheck {
+        Layout.fillWidth: true
+        visible: !!(tab.vm && tab.vm.contentFiltersAvailable)
+        text: "Filter tracker checks by what they hold"
+        enabled: !!(tab.vm && tab.vm.contentFiltersAllowed)
+        opacity: enabled ? 1 : 0.5
+        on: !!(tab.vm && tab.vm.contentFilters && tab.vm.contentFiltersAllowed)
+        ToolTip.visible: hovered
+        ToolTip.delay: 500
+        ToolTip.text: "Adds a contents filter per game to the Tracker tab: keys, tokens, hearts and so on, with how many are left. Each game's filter unlocks with that game's Stone of Agony. The server can turn this off."
+        onFlipped: value => tab.vm.contentFilters = value
+    }
+
+    Text {
+        Layout.fillWidth: true
+        Layout.leftMargin: 28
+        visible: text.length > 0 && !!(tab.vm && tab.vm.contentFiltersAvailable)
+        wrapMode: Text.WordWrap
+        text: tab.vm ? tab.vm.contentFiltersNote : ""
+        color: theme.dim
+        font.family: theme.font
+        font.pixelSize: 12
+    }
+
     SectionLabel {
         Layout.topMargin: 10
         text: "Multiplayer"

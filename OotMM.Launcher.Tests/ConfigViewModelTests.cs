@@ -39,6 +39,18 @@ public sealed class ConfigViewModelTests
     }
 
     [Fact]
+    public void ContentFiltersRuleDefaultsToAllowedAndSaves()
+    {
+        var settings = new UiSettings();
+        var config = new ConfigViewModel(settings, new NoPicker(), () => { }, (_, _, _, _) => { });
+        Assert.True(config.HostContentFilters);
+
+        config.HostContentFilters = false;
+        Assert.False(settings.HostContentFilters);
+        Assert.False(new ConfigViewModel(settings, new NoPicker(), () => { }, (_, _, _, _) => { }).HostContentFilters);
+    }
+
+    [Fact]
     public void HostRulesRestoreFromSettings()
     {
         var settings = new UiSettings { EnablePvp = true, EnableFriendlyFire = true, DeathLink = Core.Relay.DeathLinkMode.Team };

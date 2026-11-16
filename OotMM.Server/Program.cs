@@ -51,7 +51,7 @@ foreach (var arg in args)
         case "-h" or "--help" or "/?":
             Console.WriteLine("OoTMM dedicated multiworld server (protocol v4)\n"
                               + "usage: ootmm_server [port] [--pvp] [--friendly-fire] [--pvp-damage=<percent>]\n"
-                              + "                    [--death-link=off|team|global]\n"
+                              + "                    [--death-link=off|team|global] [--no-content-filters]\n"
                               + "       ootmm_server --register-manifest [--world-state <dir>]\n"
                               + "                    <player1-seed> ... <playerN-seed>\n\n"
                               + "Normal settings load from server.properties next to the executable.");
@@ -64,6 +64,9 @@ foreach (var arg in args)
             continue;
         case "--death-link":
             config.Rules.DeathLink = DeathLinkMode.Global;
+            continue;
+        case "--no-content-filters":
+            config.Rules.ContentFilters = false;
             continue;
     }
 
@@ -184,7 +187,7 @@ file sealed class ServerProperties
                     Console.Error.WriteLine(
                         $"[server] server.properties line {lineNo}: invalid pvp-damage value '{value}' (expected {PvpDamage.MinPercent}-{PvpDamage.MaxPercent})");
                     break;
-                case "pvp" or "friendly-fire" or "timer-enabled" or "manifest-bootstrap":
+                case "pvp" or "friendly-fire" or "timer-enabled" or "manifest-bootstrap" or "content-filters":
                 {
                     var lowered = value.ToLowerInvariant();
                     var parsed = lowered is "true" or "1" or "yes" or "on";
@@ -200,6 +203,7 @@ file sealed class ServerProperties
                         case "pvp": config.Rules.Pvp = parsed; break;
                         case "friendly-fire": config.Rules.FriendlyFire = parsed; break;
                         case "manifest-bootstrap": config.Rules.AllowManifestBootstrap = parsed; break;
+                        case "content-filters": config.Rules.ContentFilters = parsed; break;
                         default: config.Rules.TimerEnabled = parsed; break;
                     }
 
@@ -302,6 +306,10 @@ file sealed class ServerProperties
                 + "# Register each player's seed manifest automatically when they first join.\n"
                 + "# Set false only when the room was provisioned with --register-manifest.\n"
                 + $"manifest-bootstrap={(config.Rules.AllowManifestBootstrap ? "true" : "false")}\n\n"
+                + "# Whether players may turn on the tracker's contents filters, which list the\n"
+                + "# checks holding keys, tokens and other items once they own the Stone of Agony.\n"
+                + "# Set false for challenge runs. A server rule; players cannot override it.\n"
+                + $"content-filters={(config.Rules.ContentFilters ? "true" : "false")}\n\n"
                 + "# Trap tuning for every player in the session. The defaults are the original traps.\n"
                 + "# Ice break-out effort in percent (25-400).\n"
                 + "# Damage is dealt over time while the trap lasts, in percent of the original rate (0-1000).\n"

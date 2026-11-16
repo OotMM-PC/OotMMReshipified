@@ -397,6 +397,19 @@ public class RelayEngineTests : IDisposable
         Assert.Contains($"\"pvpDamage\":{announced},", meta);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void SessionMetaAnnouncesWhetherContentFiltersAreAllowed(bool allowed)
+    {
+        var port = StartEngine(new RelayRules { ContentFilters = allowed });
+        using var p1 = new Wire(port);
+        p1.Send(Hello(1, "p1"));
+        var meta = p1.ReceiveType(RelayProtocol.SessionMeta);
+        Assert.NotNull(meta);
+        Assert.Contains($"\"contentFilters\":{(allowed ? "true" : "false")}", meta);
+    }
+
     [Fact]
     public void Allowlist_RejectsProgressAndUnboundFrames()
     {

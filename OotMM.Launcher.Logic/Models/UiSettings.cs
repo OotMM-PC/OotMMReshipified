@@ -20,6 +20,7 @@ public sealed class UiSettings
     public bool EnableFriendlyFire { get; set; }
     public int PvpDamagePercent { get; set; } = OotMM.Core.Relay.RelayRules.DefaultPvpDamagePercent;
     public OotMM.Core.Relay.DeathLinkMode DeathLink { get; set; }
+    public bool HostContentFilters { get; set; } = true;
 
     public bool EnableDeathLink
     {
@@ -46,6 +47,7 @@ public sealed class UiSettings
     public bool RemoteItemPrompts { get; set; } = true;
     public bool FairySpotPads { get; set; }
     public bool PotRolling { get; set; } = true;
+    public bool ContentFilters { get; set; }
     public OotMM.Core.TrapTuning Traps { get; set; } = new();
 
     public double UiScale { get; set; } = 1.0;

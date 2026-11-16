@@ -358,7 +358,13 @@ public static class SeedLoader
                 cloak,
                 OptionalU16(entry, "ownerPlayer", seedPlayerId),
                 OptionalU16(entry, "sourcePlayer", seedPlayerId),
-                OptionalBool(entry, "major", false)));
+                OptionalBool(entry, "major", false))
+            {
+                Required = entry.TryGetProperty("woth", out var woth)
+                    && woth.ValueKind is JsonValueKind.True or JsonValueKind.False
+                    ? woth.GetBoolean()
+                    : null,
+            });
         }
 
         return placements;

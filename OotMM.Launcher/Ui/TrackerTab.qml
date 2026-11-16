@@ -125,6 +125,67 @@ ColumnLayout {
         }
     }
 
+    component ContentFilter: RowLayout {
+        id: filter
+
+        property string game
+        property bool unlocked
+        property string labels
+        property string lockedText
+        property int selected
+        signal picked(int index)
+
+        Layout.fillWidth: true
+        spacing: 8
+
+        Rectangle {
+            implicitWidth: 38
+            implicitHeight: 20
+            radius: 4
+            color: theme.alpha(filter.game === "MM" ? theme.mm : theme.gold, 0.16)
+
+            Text {
+                anchors.centerIn: parent
+                text: filter.game
+                color: filter.game === "MM" ? theme.mmBright : theme.goldBright
+                font.family: theme.font
+                font.pixelSize: 10
+            }
+        }
+
+        GoldCombo {
+            Layout.fillWidth: true
+            enabled: filter.unlocked
+            opacity: enabled ? 1 : 0.6
+            tint: filter.game === "MM" ? theme.mm : theme.accent
+            model: filter.labels.split("|")
+            currentIndex: filter.selected
+            displayText: filter.unlocked ? (model[filter.selected] || "") : filter.lockedText
+            onModelChanged: currentIndex = Qt.binding(() => filter.selected)
+            onActivated: index => filter.picked(index)
+        }
+    }
+
+    ContentFilter {
+        visible: !!(tab.vm && tab.vm.showOotContentFilter)
+        game: "OOT"
+        unlocked: !!(tab.vm && tab.vm.ootContentUnlocked)
+        labels: tab.vm ? tab.vm.ootContentLabels : "Any contents"
+        lockedText: tab.vm ? tab.vm.ootContentLockedText : ""
+        selected: tab.vm ? tab.vm.ootContentFilterIndex : 0
+        onPicked: index => tab.vm.ootContentFilterIndex = index
+    }
+
+    ContentFilter {
+        visible: !!(tab.vm && tab.vm.showMmContentFilter)
+        game: "MM"
+        unlocked: !!(tab.vm && tab.vm.mmContentUnlocked)
+        labels: tab.vm ? tab.vm.mmContentLabels : "Any contents"
+        lockedText: tab.vm ? tab.vm.mmContentLockedText : ""
+        selected: tab.vm ? tab.vm.mmContentFilterIndex : 0
+        onPicked: index => tab.vm.mmContentFilterIndex = index
+    }
+
     GoldCheck {
         visible: !!(tab.vm && tab.vm.devMode)
         text: "Force-unlock mode"

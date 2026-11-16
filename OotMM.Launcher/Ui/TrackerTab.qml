@@ -185,13 +185,55 @@ ColumnLayout {
         font.pixelSize: 12
     }
 
+    readonly property var rows: tab.vm ? tab.vm.visibleChecks : []
+    onRowsChanged: list.reload()
+
     ListView {
         id: list
         Layout.fillWidth: true
         Layout.fillHeight: true
         clip: true
-        model: tab.vm ? tab.vm.visibleChecks : []
         ScrollBar.vertical: ScrollBar { }
+
+        property int seenResetToken: -1
+        property bool reloading: false
+        property string topKey: ""
+        property int topIndex: 0
+        property real topOffset: 0
+
+        onContentYChanged: {
+            if (reloading || count === 0) {
+                return
+            }
+            const index = indexAt(0, contentY + 1)
+            const item = index >= 0 ? itemAtIndex(index) : null
+            if (item) {
+                topIndex = index
+                topOffset = contentY - item.y
+                topKey = tab.vm.keyAt(index)
+            }
+        }
+
+        function reload() {
+            const token = tab.vm ? tab.vm.scrollResetToken : 0
+            const keep = token === seenResetToken && topKey.length > 0
+            seenResetToken = token
+            reloading = true
+            model = tab.rows
+            if (keep && count > 0) {
+                const found = tab.vm.indexOfKey(topKey)
+                positionViewAtIndex(Math.min(found >= 0 ? found : topIndex, count - 1), ListView.Beginning)
+                if (found >= 0) {
+                    contentY += topOffset
+                }
+                returnToBounds()
+            } else {
+                topKey = ""
+            }
+            reloading = false
+        }
+
+        Component.onCompleted: reload()
 
         delegate: Item {
             id: row

@@ -89,8 +89,19 @@ public sealed class TrackerTabViewModel : ViewModelBase
     private int _inLogicCount;
     private bool _solverLoaded;
     private bool _isMultiworld;
+    private int _scrollResetToken;
 
     internal Func<string, bool>? ForceUnlockSender { get; set; }
+
+    /// <summary>Changes whenever the user changes a filter, so the list can jump back to the top only then.</summary>
+    public int ScrollResetToken => _scrollResetToken;
+
+    private void FiltersChanged()
+    {
+        _scrollResetToken++;
+        Raise(nameof(ScrollResetToken));
+        RaiseListChanged();
+    }
 
     public string FilterText
     {
@@ -99,7 +110,7 @@ public sealed class TrackerTabViewModel : ViewModelBase
         {
             if (Set(ref _filterText, value))
             {
-                RaiseListChanged();
+                FiltersChanged();
             }
         }
     }
@@ -111,7 +122,7 @@ public sealed class TrackerTabViewModel : ViewModelBase
         {
             if (Set(ref _gameFilterIndex, value))
             {
-                RaiseListChanged();
+                FiltersChanged();
             }
         }
     }
@@ -123,7 +134,7 @@ public sealed class TrackerTabViewModel : ViewModelBase
         {
             if (Set(ref _hideCollected, value))
             {
-                RaiseListChanged();
+                FiltersChanged();
             }
         }
     }
@@ -135,7 +146,7 @@ public sealed class TrackerTabViewModel : ViewModelBase
         {
             if (Set(ref _onlyInLogic, value))
             {
-                RaiseListChanged();
+                FiltersChanged();
             }
         }
     }
@@ -179,7 +190,7 @@ public sealed class TrackerTabViewModel : ViewModelBase
         _onlyInLogic = false;
         Raise(nameof(HideCollected));
         Raise(nameof(OnlyInLogic));
-        RaiseListChanged();
+        FiltersChanged();
     }
 
     private static string Fold(string text) =>
@@ -247,6 +258,25 @@ public sealed class TrackerTabViewModel : ViewModelBase
 
     public CheckRowViewModel CheckAt(int index) =>
         index >= 0 && index < VisibleChecks.Count ? VisibleChecks[index] : CheckRowViewModel.Empty;
+
+    /// <summary>A stable identity for the visible row at an index, for restoring the scroll position.</summary>
+    public string KeyAt(int index) =>
+        index >= 0 && index < VisibleChecks.Count ? RowKey(VisibleChecks[index]) : "";
+
+    public int IndexOfKey(string key)
+    {
+        for (var i = 0; i < VisibleChecks.Count; i++)
+        {
+            if (RowKey(VisibleChecks[i]) == key)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
+    private static string RowKey(CheckRowViewModel row) => row.GameTag + ":" + row.CheckId;
 
     public void ClickVisible(int index)
     {

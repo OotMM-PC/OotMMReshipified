@@ -173,6 +173,7 @@ public sealed class MainWindowViewModel : ViewModelBase
         {
             Pvp = _settings.EnablePvp,
             FriendlyFire = _settings.EnablePvp && _settings.EnableFriendlyFire,
+            PvpDamagePercent = _settings.PvpDamagePercent,
             DeathLink = _settings.DeathLink,
             Traps = _settings.Traps.Normalized(),
         };

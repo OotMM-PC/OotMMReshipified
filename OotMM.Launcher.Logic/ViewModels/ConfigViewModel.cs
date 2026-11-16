@@ -24,6 +24,7 @@ public sealed class ConfigViewModel : ViewModelBase
     private int _relayPort;
     private bool _hostPvp;
     private bool _hostFriendlyFire;
+    private int _hostPvpDamage = OotMM.Core.Relay.RelayRules.DefaultPvpDamagePercent;
     private int _hostDeathLink;
     private string _multiworldAddress = "";
     private string _playerName = "";
@@ -57,6 +58,7 @@ public sealed class ConfigViewModel : ViewModelBase
         _relayPort = settings.RelayPort;
         _hostPvp = settings.EnablePvp;
         _hostFriendlyFire = settings.EnablePvp && settings.EnableFriendlyFire;
+        _hostPvpDamage = OotMM.Core.Relay.PvpDamage.Clamp(settings.PvpDamagePercent);
         _hostDeathLink = (int)settings.DeathLink;
         MmCard.PortAdultModel = settings.PortOotAdultModel;
         MmCard.PortChildModel = settings.PortOotChildModel;
@@ -258,6 +260,18 @@ public sealed class ConfigViewModel : ViewModelBase
         set
         {
             if (Set(ref _hostFriendlyFire, value && _hostPvp))
+            {
+                FormChanged();
+            }
+        }
+    }
+
+    public int HostPvpDamage
+    {
+        get => _hostPvpDamage;
+        set
+        {
+            if (Set(ref _hostPvpDamage, OotMM.Core.Relay.PvpDamage.Clamp(value)))
             {
                 FormChanged();
             }
@@ -733,6 +747,7 @@ public sealed class ConfigViewModel : ViewModelBase
         _settings.RelayPort = RelayPort;
         _settings.EnablePvp = HostPvp;
         _settings.EnableFriendlyFire = HostFriendlyFire;
+        _settings.PvpDamagePercent = HostPvpDamage;
         _settings.DeathLink = (OotMM.Core.Relay.DeathLinkMode)HostDeathLink;
         _settings.Traps = Traps.Current;
         _settings.PortOotAdultModel = MmCard.PortAdultModel;

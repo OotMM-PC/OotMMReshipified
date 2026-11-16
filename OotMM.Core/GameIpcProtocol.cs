@@ -85,6 +85,7 @@ public static class GameIpcProtocol
                 zTargetHold = settings.ZTargetHold,
                 fairySpotPads = settings.FairySpotPads,
                 potRolling = settings.PotRolling,
+                pvpDamage = settings.PvpDamagePercent,
                 traps = BuildTrapSettings(settings.Traps ?? new TrapTuning()),
             },
         });

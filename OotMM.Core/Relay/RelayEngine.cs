@@ -93,6 +93,8 @@ public sealed class RelayEngine
         BoundPort = ((IPEndPoint)listener.LocalEndPoint!).Port;
         Log($"[relay] multiworld relay listening on port {BoundPort}"
             + (_rules.Pvp ? " (PvP enabled)" : "") + (_rules.Pvp && _rules.FriendlyFire ? " (friendly fire enabled)" : "")
+            + (_rules.Pvp && PvpDamage.Clamp(_rules.PvpDamagePercent) != RelayRules.DefaultPvpDamagePercent
+                ? $" (PvP damage {PvpDamage.Clamp(_rules.PvpDamagePercent)}%)" : "")
             + (_rules.DeathLink != DeathLinkMode.Off ? $" ({DeathLinkModes.Tag(_rules.DeathLink)} death link enabled)" : "")
             + (_rules.Traps.IsOriginal ? "" : " (custom traps)"));
         Log($"[relay] check state persists in {_storeDir}");
@@ -278,6 +280,7 @@ public sealed class RelayEngine
     private string SessionMetaLine() =>
         $"{{\"type\":\"{RelayProtocol.SessionMeta}\",\"pvp\":{(_rules.Pvp ? "true" : "false")}"
         + $",\"friendlyFire\":{(_rules.FriendlyFire ? "true" : "false")}"
+        + $",\"pvpDamage\":{PvpDamage.Clamp(_rules.PvpDamagePercent)}"
         + $",\"deathLinkMode\":\"{DeathLinkModes.Tag(_rules.DeathLink)}\""
         + $",\"timerEnabled\":{(_rules.TimerEnabled ? "true" : "false")}"
         + $",\"timerMin\":{_rules.TimerMinPercent},\"timerMax\":{_rules.TimerMaxPercent}"

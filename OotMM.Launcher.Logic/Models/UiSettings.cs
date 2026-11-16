@@ -18,6 +18,7 @@ public sealed class UiSettings
     public int RelayPort { get; set; } = 42801;
     public bool EnablePvp { get; set; }
     public bool EnableFriendlyFire { get; set; }
+    public int PvpDamagePercent { get; set; } = OotMM.Core.Relay.RelayRules.DefaultPvpDamagePercent;
     public OotMM.Core.Relay.DeathLinkMode DeathLink { get; set; }
 
     public bool EnableDeathLink

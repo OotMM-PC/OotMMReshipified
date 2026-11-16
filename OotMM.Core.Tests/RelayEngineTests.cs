@@ -382,6 +382,21 @@ public class RelayEngineTests : IDisposable
         Assert.Contains("\"friendlyFire\":true", meta);
     }
 
+    [Theory]
+    [InlineData(100, 100)]
+    [InlineData(250, 250)]
+    [InlineData(5, 10)]
+    [InlineData(5000, 1000)]
+    public void SessionMetaAnnouncesPvpDamage(int configured, int announced)
+    {
+        var port = StartEngine(new RelayRules { Pvp = true, PvpDamagePercent = configured });
+        using var p1 = new Wire(port);
+        p1.Send(Hello(1, "p1"));
+        var meta = p1.ReceiveType(RelayProtocol.SessionMeta);
+        Assert.NotNull(meta);
+        Assert.Contains($"\"pvpDamage\":{announced},", meta);
+    }
+
     [Fact]
     public void Allowlist_RejectsProgressAndUnboundFrames()
     {

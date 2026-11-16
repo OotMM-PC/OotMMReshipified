@@ -50,7 +50,8 @@ foreach (var arg in args)
     {
         case "-h" or "--help" or "/?":
             Console.WriteLine("OoTMM dedicated multiworld server (protocol v4)\n"
-                              + "usage: ootmm_server [port] [--pvp] [--friendly-fire] [--death-link=off|team|global]\n"
+                              + "usage: ootmm_server [port] [--pvp] [--friendly-fire] [--pvp-damage=<percent>]\n"
+                              + "                    [--death-link=off|team|global]\n"
                               + "       ootmm_server --register-manifest [--world-state <dir>]\n"
                               + "                    <player1-seed> ... <playerN-seed>\n\n"
                               + "Normal settings load from server.properties next to the executable.");
@@ -64,6 +65,20 @@ foreach (var arg in args)
         case "--death-link":
             config.Rules.DeathLink = DeathLinkMode.Global;
             continue;
+    }
+
+    if (arg.StartsWith("--pvp-damage=", StringComparison.Ordinal))
+    {
+        if (!int.TryParse(arg["--pvp-damage=".Length..], out var pvpDamage)
+            || pvpDamage is < PvpDamage.MinPercent or > PvpDamage.MaxPercent)
+        {
+            Console.Error.WriteLine(
+                $"ootmm_server: invalid argument '{arg}' (expected {PvpDamage.MinPercent}-{PvpDamage.MaxPercent})");
+            return 2;
+        }
+
+        config.Rules.PvpDamagePercent = pvpDamage;
+        continue;
     }
 
     if (arg.StartsWith("--death-link=", StringComparison.Ordinal))
@@ -160,6 +175,14 @@ file sealed class ServerProperties
                             $"[server] server.properties line {lineNo}: invalid death-link value '{value}' (expected off, team or global)");
                     }
 
+                    break;
+                case "pvp-damage" when int.TryParse(value, out var pvpDamage)
+                                       && pvpDamage is >= PvpDamage.MinPercent and <= PvpDamage.MaxPercent:
+                    config.Rules.PvpDamagePercent = pvpDamage;
+                    break;
+                case "pvp-damage":
+                    Console.Error.WriteLine(
+                        $"[server] server.properties line {lineNo}: invalid pvp-damage value '{value}' (expected {PvpDamage.MinPercent}-{PvpDamage.MaxPercent})");
                     break;
                 case "pvp" or "friendly-fire" or "timer-enabled" or "manifest-bootstrap":
                 {
@@ -265,6 +288,9 @@ file sealed class ServerProperties
                 + $"pvp={(config.Rules.Pvp ? "true" : "false")}\n\n"
                 + "# With PvP on, whether teammates can hurt each other.\n"
                 + $"friendly-fire={(config.Rules.FriendlyFire ? "true" : "false")}\n\n"
+                + "# How hard PvP hits land, in percent. At 100 a Master Sword slash costs\n"
+                + $"# one heart. Allowed range {PvpDamage.MinPercent}-{PvpDamage.MaxPercent}.\n"
+                + $"pvp-damage={config.Rules.PvpDamagePercent}\n\n"
                 + "# Shared deaths: off, team (teammates die together) or global (every\n"
                 + "# player in the session dies together).\n"
                 + $"death-link={DeathLinkModes.Tag(config.Rules.DeathLink)}\n\n"

@@ -25,6 +25,20 @@ public sealed class ConfigViewModelTests
     }
 
     [Fact]
+    public void PvpDamageSavesAndStaysInRange()
+    {
+        var settings = new UiSettings { EnablePvp = true, PvpDamagePercent = 200 };
+        var config = new ConfigViewModel(settings, new NoPicker(), () => { }, (_, _, _, _) => { });
+        Assert.Equal(200, config.HostPvpDamage);
+
+        config.HostPvpDamage = 50;
+        Assert.Equal(50, settings.PvpDamagePercent);
+
+        config.HostPvpDamage = 5000;
+        Assert.Equal(1000, config.HostPvpDamage);
+    }
+
+    [Fact]
     public void HostRulesRestoreFromSettings()
     {
         var settings = new UiSettings { EnablePvp = true, EnableFriendlyFire = true, DeathLink = Core.Relay.DeathLinkMode.Team };

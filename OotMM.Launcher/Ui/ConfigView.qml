@@ -209,8 +209,22 @@ Item {
                     lit: view.vm.hostPvp
                     ToolTip.visible: hovered
                     ToolTip.delay: 500
-                    ToolTip.text: "Server rule: players in different teams can attack and knock each other back."
+                    ToolTip.text: "Server rule: players in different teams can fight. Shields block, heavy attacks knock down, and fire, ice and light arrows burn, freeze and shock."
                     onClicked: view.vm.hostPvp = !view.vm.hostPvp
+                }
+
+                Chip {
+                    readonly property var steps: [50, 100, 150, 200, 300]
+                    visible: view.vm.hostRelay && view.vm.hostPvp
+                    text: "PvP damage: " + view.vm.hostPvpDamage + "%"
+                    lit: view.vm.hostPvpDamage !== 100
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 500
+                    ToolTip.text: "Server rule: how hard PvP hits land. At 100% a Master Sword slash costs one heart. Click to change."
+                    onClicked: {
+                        const next = steps.findIndex(step => step > view.vm.hostPvpDamage)
+                        view.vm.hostPvpDamage = steps[next < 0 ? 0 : next]
+                    }
                 }
 
                 Chip {

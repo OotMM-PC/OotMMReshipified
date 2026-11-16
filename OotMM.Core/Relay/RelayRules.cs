@@ -27,14 +27,25 @@ public static class DeathLinkModes
 
 public sealed class RelayRules
 {
+    public const int DefaultPvpDamagePercent = 100;
+
     public bool Pvp { get; set; }
     public bool FriendlyFire { get; set; }
+    public int PvpDamagePercent { get; set; } = DefaultPvpDamagePercent;
     public DeathLinkMode DeathLink { get; set; }
     public bool TimerEnabled { get; set; } = true;
     public int TimerMinPercent { get; set; }
     public int TimerMaxPercent { get; set; } = 250;
     public bool AllowManifestBootstrap { get; set; } = true;
     public TrapTuning Traps { get; set; } = new();
+}
+
+public static class PvpDamage
+{
+    public const int MinPercent = 10;
+    public const int MaxPercent = 1000;
+
+    public static int Clamp(int percent) => Math.Clamp(percent, MinPercent, MaxPercent);
 }
 
 public sealed record VerifiedClientIdentity(

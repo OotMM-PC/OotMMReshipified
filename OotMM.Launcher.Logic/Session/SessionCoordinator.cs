@@ -1338,7 +1338,8 @@ public sealed class SessionCoordinator : IDisposable
             ZTargetHold: _zTargetHold,
             Traps: Traps,
             FairySpotPads: _fairySpotPads,
-            PotRolling: _potRolling);
+            PotRolling: _potRolling,
+            PvpDamagePercent: _multiworld?.PvpDamagePercent ?? Core.Relay.RelayRules.DefaultPvpDamagePercent);
     }
 
     private void LogCheckCollected(string checkKey)

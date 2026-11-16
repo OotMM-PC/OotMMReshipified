@@ -87,6 +87,7 @@ public sealed class MultiworldSync : IDisposable
 
     public bool Pvp { get; private set; }
     public bool FriendlyFire { get; private set; }
+    public int PvpDamagePercent { get; private set; } = RelayRules.DefaultPvpDamagePercent;
     public DeathLinkMode DeathLink { get; private set; }
     public TrapTuning Traps { get; private set; } = new();
     public bool TimerEnabled { get; private set; } = true;
@@ -303,6 +304,8 @@ public sealed class MultiworldSync : IDisposable
                     _lastSessionMeta = line;
                     Pvp = line.Contains("\"pvp\":true");
                     FriendlyFire = line.Contains("\"friendlyFire\":true");
+                    PvpDamagePercent = PvpDamage.Clamp(
+                        RelayProtocol.ExtractIntField(line, "pvpDamage", RelayRules.DefaultPvpDamagePercent));
                     DeathLink = DeathLinkModes.Parse(RelayProtocol.ExtractStringField(line, "deathLinkMode"))
                                 ?? (line.Contains("\"deathLink\":true") ? DeathLinkMode.Global : DeathLinkMode.Team);
                     TimerEnabled = !line.Contains("\"timerEnabled\":false");
@@ -312,7 +315,9 @@ public sealed class MultiworldSync : IDisposable
                     var rules = new List<string>();
                     if (Pvp)
                     {
-                        rules.Add(FriendlyFire ? "PvP with friendly fire" : "PvP");
+                        rules.Add((FriendlyFire ? "PvP with friendly fire" : "PvP")
+                                  + (PvpDamagePercent != RelayRules.DefaultPvpDamagePercent
+                                      ? $" at {PvpDamagePercent}% damage" : ""));
                     }
 
                     if (DeathLink != DeathLinkMode.Off)

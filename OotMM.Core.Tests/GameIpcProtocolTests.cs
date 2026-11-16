@@ -206,6 +206,18 @@ public class GameIpcProtocolTests
     }
 
     [Fact]
+    public void BuildSettingsSnapshot_CarriesPvpDamage()
+    {
+        var plain = new RosterMeta(true, true, false, 100, false, "healthy", 0);
+        var tuned = plain with { PvpDamagePercent = 250 };
+
+        using var plainDocument = JsonDocument.Parse(GameIpcProtocol.BuildSettingsSnapshot(1, plain));
+        using var tunedDocument = JsonDocument.Parse(GameIpcProtocol.BuildSettingsSnapshot(1, tuned));
+        Assert.Equal(100, plainDocument.RootElement.GetProperty("settings").GetProperty("pvpDamage").GetInt32());
+        Assert.Equal(250, tunedDocument.RootElement.GetProperty("settings").GetProperty("pvpDamage").GetInt32());
+    }
+
+    [Fact]
     public void BuildSettingsSnapshot_CarriesQualityOfLifeOptions()
     {
         var settings = new RosterMeta(true, false, false, 100, false, "healthy", 0,

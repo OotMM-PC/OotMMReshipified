@@ -63,6 +63,31 @@ ColumnLayout {
 
     SectionLabel {
         Layout.topMargin: 10
+        text: "Quality of life"
+    }
+
+    GoldCheck {
+        Layout.fillWidth: true
+        text: "Roll into pots to break them (OoT)"
+        on: tab.vm ? tab.vm.potRolling : true
+        ToolTip.visible: hovered
+        ToolTip.delay: 500
+        ToolTip.text: "Rolling into a pot breaks it in Ocarina of Time, the way it already does in Majora's Mask. Applies straight away."
+        onFlipped: value => tab.vm.potRolling = value
+    }
+
+    GoldCheck {
+        Layout.fillWidth: true
+        text: "Show song pads at big fairy spots (OoT)"
+        on: tab.vm ? tab.vm.fairySpotPads : false
+        ToolTip.visible: hovered
+        ToolTip.delay: 500
+        ToolTip.text: "Marks the spots where Sun's Song or Song of Storms calls a big fairy, until that spot's check is collected. The original randomizer shows nothing there. Applies straight away."
+        onFlipped: value => tab.vm.fairySpotPads = value
+    }
+
+    SectionLabel {
+        Layout.topMargin: 10
         text: "Multiplayer"
     }
 

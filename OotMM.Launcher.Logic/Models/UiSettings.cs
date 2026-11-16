@@ -43,6 +43,8 @@ public sealed class UiSettings
     public bool SpeedMatchFramerate { get; set; }
     public bool HoldToZTarget { get; set; }
     public bool RemoteItemPrompts { get; set; } = true;
+    public bool FairySpotPads { get; set; }
+    public bool PotRolling { get; set; } = true;
     public OotMM.Core.TrapTuning Traps { get; set; } = new();
 
     public double UiScale { get; set; } = 1.0;

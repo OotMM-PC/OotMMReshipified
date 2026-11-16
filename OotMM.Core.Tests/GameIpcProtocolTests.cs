@@ -195,6 +195,29 @@ public class GameIpcProtocolTests
     }
 
     [Fact]
+    public void BuildSettingsSnapshot_DefaultsQualityOfLifeOptions()
+    {
+        var settings = new RosterMeta(true, false, false, 100, false, "healthy", 0);
+
+        using var document = JsonDocument.Parse(GameIpcProtocol.BuildSettingsSnapshot(1, settings));
+        var values = document.RootElement.GetProperty("settings");
+        Assert.False(values.GetProperty("fairySpotPads").GetBoolean());
+        Assert.True(values.GetProperty("potRolling").GetBoolean());
+    }
+
+    [Fact]
+    public void BuildSettingsSnapshot_CarriesQualityOfLifeOptions()
+    {
+        var settings = new RosterMeta(true, false, false, 100, false, "healthy", 0,
+                                      FairySpotPads: true, PotRolling: false);
+
+        using var document = JsonDocument.Parse(GameIpcProtocol.BuildSettingsSnapshot(1, settings));
+        var values = document.RootElement.GetProperty("settings");
+        Assert.True(values.GetProperty("fairySpotPads").GetBoolean());
+        Assert.False(values.GetProperty("potRolling").GetBoolean());
+    }
+
+    [Fact]
     public void ReadType_RejectsNonObjectJson() =>
         Assert.Equal("", GameIpcProtocol.ReadType("[]"));
 

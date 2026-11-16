@@ -83,6 +83,8 @@ public static class GameIpcProtocol
                 transportState = settings.TransportState,
                 pendingChecks = settings.PendingChecks,
                 zTargetHold = settings.ZTargetHold,
+                fairySpotPads = settings.FairySpotPads,
+                potRolling = settings.PotRolling,
                 traps = BuildTrapSettings(settings.Traps ?? new TrapTuning()),
             },
         });

@@ -11,6 +11,8 @@ public sealed class OptionsTabViewModel : ViewModelBase
     private bool _cheatGatePending;
     private bool _holdToZTarget;
     private bool _remoteItemPrompts = true;
+    private bool _fairySpotPads;
+    private bool _potRolling = true;
 
     public OptionsTabViewModel(
         int themeIndex, double uiScale, Action<int> onThemeChanged, Action<double> onUiScaleChanged,
@@ -62,6 +64,34 @@ public sealed class OptionsTabViewModel : ViewModelBase
             if (Set(ref _remoteItemPrompts, value))
             {
                 RemoteItemPromptsChanged?.Invoke(value);
+            }
+        }
+    }
+
+    internal Action<bool>? FairySpotPadsChanged { get; set; }
+
+    public bool FairySpotPads
+    {
+        get => _fairySpotPads;
+        set
+        {
+            if (Set(ref _fairySpotPads, value))
+            {
+                FairySpotPadsChanged?.Invoke(value);
+            }
+        }
+    }
+
+    internal Action<bool>? PotRollingChanged { get; set; }
+
+    public bool PotRolling
+    {
+        get => _potRolling;
+        set
+        {
+            if (Set(ref _potRolling, value))
+            {
+                PotRollingChanged?.Invoke(value);
             }
         }
     }

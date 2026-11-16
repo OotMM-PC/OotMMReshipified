@@ -43,6 +43,8 @@ public sealed class SessionCoordinator : IDisposable
     private int _speedPercent = 100;
     private bool _speedSmooth;
     private bool _zTargetHold;
+    private bool _fairySpotPads;
+    private bool _potRolling = true;
     private bool _ipcSettingsDirty = true;
     private readonly List<(ushort SourcePlayer, ItemRef Item)> _pendingRemoteItems = [];
     private readonly List<(Game Game, string Path, int Player)> _pendingLiveModels = [];
@@ -169,6 +171,32 @@ public sealed class SessionCoordinator : IDisposable
             if (_zTargetHold != value)
             {
                 _zTargetHold = value;
+                _ipcSettingsDirty = true;
+            }
+        }
+    }
+
+    public bool FairySpotPads
+    {
+        get => _fairySpotPads;
+        set
+        {
+            if (_fairySpotPads != value)
+            {
+                _fairySpotPads = value;
+                _ipcSettingsDirty = true;
+            }
+        }
+    }
+
+    public bool PotRolling
+    {
+        get => _potRolling;
+        set
+        {
+            if (_potRolling != value)
+            {
+                _potRolling = value;
                 _ipcSettingsDirty = true;
             }
         }
@@ -1308,7 +1336,9 @@ public sealed class SessionCoordinator : IDisposable
             TransportState: transport,
             PendingChecks: (uint)(_multiworld?.PendingChecks ?? 0),
             ZTargetHold: _zTargetHold,
-            Traps: Traps);
+            Traps: Traps,
+            FairySpotPads: _fairySpotPads,
+            PotRolling: _potRolling);
     }
 
     private void LogCheckCollected(string checkKey)

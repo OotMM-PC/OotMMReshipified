@@ -9,7 +9,9 @@ public sealed record RosterMeta(
     string TransportState,
     uint PendingChecks,
     bool ZTargetHold = false,
-    TrapTuning? Traps = null);
+    TrapTuning? Traps = null,
+    bool FairySpotPads = false,
+    bool PotRolling = true);
 
 public static class PresenceRoster
 {

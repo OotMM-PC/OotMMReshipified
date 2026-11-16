@@ -51,6 +51,10 @@ public sealed class RuntimeViewModel : ViewModelBase
             HoldToZTargetChanged = ApplyHoldToZTarget,
             RemoteItemPrompts = settings.RemoteItemPrompts,
             RemoteItemPromptsChanged = ApplyRemoteItemPrompts,
+            FairySpotPads = settings.FairySpotPads,
+            FairySpotPadsChanged = ApplyFairySpotPads,
+            PotRolling = settings.PotRolling,
+            PotRollingChanged = ApplyPotRolling,
         };
         Progress = new ProgressTabViewModel();
         _tabs = [Tracker, Log, SessionTab, Options, Progress];
@@ -95,6 +99,8 @@ public sealed class RuntimeViewModel : ViewModelBase
         coordinator.ZTargetHold = settings.HoldToZTarget || coordinator.ZTargetHold;
         vm.Options.ShowHoldToZTarget(coordinator.ZTargetHold);
         coordinator.RemoteItemPrompts = settings.RemoteItemPrompts;
+        coordinator.FairySpotPads = settings.FairySpotPads;
+        coordinator.PotRolling = settings.PotRolling;
         coordinator.Traps = settings.Traps;
         vm.Tracker.ForceUnlockSender = coordinator.ForceUnlock;
         vm.Options.RestartGame = coordinator.RestartGame;
@@ -310,6 +316,26 @@ public sealed class RuntimeViewModel : ViewModelBase
         if (_coordinator is not null)
         {
             _coordinator.RemoteItemPrompts = prompts;
+        }
+    }
+
+    private void ApplyFairySpotPads(bool pads)
+    {
+        _settings.FairySpotPads = pads;
+        _settings.Save();
+        if (_coordinator is not null)
+        {
+            _coordinator.FairySpotPads = pads;
+        }
+    }
+
+    private void ApplyPotRolling(bool rolling)
+    {
+        _settings.PotRolling = rolling;
+        _settings.Save();
+        if (_coordinator is not null)
+        {
+            _coordinator.PotRolling = rolling;
         }
     }
 

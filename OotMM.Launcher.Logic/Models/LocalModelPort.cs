@@ -10,7 +10,7 @@ public static class LocalModelPort
     public const string AdultArchive = "zz_localmodel_oot_adult.o2r";
     public const string ChildArchive = "zz_localmodel_oot_child.o2r";
     private const string ChildMarkerEntry = "objects/ot_obj_link_child/ootmm_localmodel_marker";
-    private const string PortFormat = "portv3|";
+    private const string PortFormat = "portv4|";
 
     public static ModelPortStatus EnsureAdult(
         string ootExePath, string mmExePath, IReadOnlyList<string> selectedOotModels, bool enabled)
@@ -61,6 +61,7 @@ public static class LocalModelPort
                 return new ModelPortStatus(false, 0);
             }
 
+            AddVoice(sources, output, ootExePath, mmExePath, VoicePort.AdultPrefix);
             File.WriteAllText(sidecar, signature);
             return new ModelPortStatus(true, result.Kept);
         }
@@ -119,6 +120,7 @@ public static class LocalModelPort
                 return new ModelPortStatus(false, 0);
             }
 
+            AddVoice(sources, output, ootExePath, mmExePath, VoicePort.ChildPrefix);
             using (var zip = System.IO.Compression.ZipFile.Open(
                        output, System.IO.Compression.ZipArchiveMode.Update))
             {
@@ -132,6 +134,42 @@ public static class LocalModelPort
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             return new ModelPortStatus(false, 0, ex.Message);
+        }
+    }
+
+    private static int AddVoice(
+        IReadOnlyList<string> sources, string output, string ootExePath, string mmExePath, string ootPrefix)
+    {
+        var ootDir = Path.GetDirectoryName(ootExePath) ?? "";
+        var mmDir = Path.GetDirectoryName(mmExePath) ?? "";
+        string[] ootBase = [Path.Combine(ootDir, "oot.o2r"), Path.Combine(ootDir, "oot-mq.o2r")];
+        try
+        {
+            var ootFont = VoicePort.ReadBaseEntry(ootBase, VoicePort.OotFont);
+            var mmFont = VoicePort.ReadBaseEntry([Path.Combine(mmDir, "mm.o2r")], VoicePort.MmFont);
+            if (ootFont is null || mmFont is null)
+            {
+                return 0;
+            }
+
+            var added = VoicePort.AddSamples(sources, output, VoicePort.MapSlots(ootFont, mmFont, ootPrefix));
+            var (font, split) = VoicePort.SplitSharedSlots(ootFont, mmFont, ootPrefix);
+            if (split.Count == 0)
+            {
+                return added;
+            }
+
+            var filled = VoicePort.AddSamples([.. ootBase.Where(File.Exists).Take(1), .. sources], output, split);
+            if (filled == split.Count)
+            {
+                VoicePort.SetEntry(output, VoicePort.MmFont, font);
+            }
+
+            return added + filled;
+        }
+        catch (InvalidDataException)
+        {
+            return 0;
         }
     }
 

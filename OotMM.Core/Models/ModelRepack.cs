@@ -26,7 +26,7 @@ public static class ModelRepack
     public static bool IsReadableArchive(string path) =>
         IsZipArchive(path) || MpqReader.LooksLikeMpq(path);
 
-    private static IEnumerable<(string Path, Func<byte[]> Load)> ReadArchiveEntries(string input)
+    internal static IEnumerable<(string Path, Func<byte[]> Load)> ReadArchiveEntries(string input)
     {
         if (IsZipArchive(input))
         {

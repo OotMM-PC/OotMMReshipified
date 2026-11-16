@@ -155,42 +155,67 @@ public sealed class TrackerTabViewModel : ViewModelBase
         }
     }
 
-    /// <summary>The filter choices for a game, each with how many uncollected checks hold it, joined by "|".</summary>
+    /// <summary>The filter choices for a game, each with how many checks the list would show for it, joined by "|".</summary>
     public string OotContentLabels => _ootContentLabels;
 
     public string MmContentLabels => _mmContentLabels;
 
-    private string ContentLabels(string gameTag, bool counted)
+    private string ContentLabels(string gameTag, bool counted, string[] terms)
     {
-        var labels = new List<string> { "Any contents" };
-        string Entry(string label, Func<CheckRowViewModel, bool> holds) =>
-            counted ? $"{label} ({_allChecks.Count(r => r.GameTag == gameTag && !r.Collected && holds(r))} left)" : label;
-
-        if (_hasRequiredData)
+        var required = 0;
+        var perKind = new int[ContentKinds.Length];
+        if (counted)
         {
-            labels.Add(Entry("Way of the Hero", r => r.Required));
+            foreach (var row in _allChecks)
+            {
+                if (row.GameTag != gameTag || !PassesToggles(row) || !MatchesSearch(row, terms))
+                {
+                    continue;
+                }
+
+                required += row.Required ? 1 : 0;
+                var kind = Array.FindIndex(ContentKinds, k => k.Kind == row.Content);
+                if (kind >= 0)
+                {
+                    perKind[kind]++;
+                }
+            }
         }
 
-        labels.AddRange(ContentKinds.Select(kind => Entry(kind.Label, r => r.Content == kind.Kind)));
+        var labels = new List<string> { "Any contents" };
+        if (_hasRequiredData)
+        {
+            labels.Add(counted ? $"Way of the Hero ({required})" : "Way of the Hero");
+        }
+
+        labels.AddRange(ContentKinds.Select((kind, i) => counted ? $"{kind.Label} ({perKind[i]})" : kind.Label));
         return string.Join("|", labels);
     }
 
     private void RefreshContentLabels()
     {
-        var oot = ContentLabels("OOT", _contentFiltersEnabled && _ootRevealed);
+        var terms = SearchTerms();
+        var oot = ContentLabels("OOT", _contentFiltersEnabled && _ootRevealed, terms);
         if (oot != _ootContentLabels)
         {
             _ootContentLabels = oot;
             Raise(nameof(OotContentLabels));
         }
 
-        var mm = ContentLabels("MM", _contentFiltersEnabled && _mmRevealed);
+        var mm = ContentLabels("MM", _contentFiltersEnabled && _mmRevealed, terms);
         if (mm != _mmContentLabels)
         {
             _mmContentLabels = mm;
             Raise(nameof(MmContentLabels));
         }
     }
+
+    private bool PassesToggles(CheckRowViewModel row) =>
+        (!_hideCollected || !row.Collected) && (!_onlyInLogic || row.InLogic || row.Collected);
+
+    private string[] SearchTerms() =>
+        _filterText.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(Fold).Where(t => t.Length > 0).ToArray();
 
     public int OotContentFilterIndex
     {
@@ -393,17 +418,14 @@ public sealed class TrackerTabViewModel : ViewModelBase
 
     private List<CheckRowViewModel> FilterChecks()
     {
-        var terms = _filterText.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-            .Select(Fold).Where(t => t.Length > 0).ToArray();
+        var terms = SearchTerms();
         var matches = _allChecks.Where(r =>
             (_gameFilterIndex != 1 || r.GameTag == "OOT")
             && (_gameFilterIndex != 2 || r.GameTag == "MM")
             && MatchesContents(r)
             && MatchesSearch(r, terms)).ToList();
 
-        var rows = matches.Where(r =>
-            (!_hideCollected || !r.Collected)
-            && (!_onlyInLogic || r.InLogic || r.Collected)).ToList();
+        var rows = matches.Where(PassesToggles).ToList();
 
         var hidden = matches.Count(r =>
             terms.Length > 0 || (r.GameTag == "OOT" ? _ootContentFilter : _mmContentFilter) != 0) - rows.Count(r =>

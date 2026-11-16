@@ -95,7 +95,7 @@ ColumnLayout {
         on: !!(tab.vm && tab.vm.contentFilters && tab.vm.contentFiltersAllowed)
         ToolTip.visible: hovered
         ToolTip.delay: 500
-        ToolTip.text: "Adds a contents filter per game to the Tracker tab: keys, tokens, hearts and so on, with how many are left. Each game's filter unlocks with that game's Stone of Agony. The server can turn this off."
+        ToolTip.text: "Adds a contents filter per game to the Tracker tab: keys, tokens, hearts and so on, with a count that follows the Hide collected and In logic toggles. Each game's filter unlocks with that game's Stone of Agony. The server can turn this off."
         onFlipped: value => tab.vm.contentFilters = value
     }
 

@@ -73,24 +73,46 @@ public sealed class TrackerContentFilterTests
 
         Assert.Equal(0, tracker.MmContentFilterIndex);
         Assert.Equal(6, tracker.VisibleChecks.Count);
-        Assert.DoesNotContain("left", tracker.MmContentLabels);
+        Assert.DoesNotContain("(", tracker.MmContentLabels);
     }
 
     [Fact]
-    public void ChoicesCountUncollectedChecksOnlyForUnlockedGames()
+    public void ChoicesCountWhatTheListWouldShowOnlyForUnlockedGames()
     {
         var tracker = Tracker();
         tracker.SetContentAccess(oot: false, mm: true, separateStones: true);
 
-        Assert.DoesNotContain("left", tracker.OotContentLabels);
-        Assert.Contains("Major items (2 left)", tracker.MmContentLabels.Split('|'));
-        Assert.Contains("Skulltula tokens (1 left)", tracker.MmContentLabels.Split('|'));
-        Assert.Contains("Small keys (0 left)", tracker.MmContentLabels.Split('|'));
+        Assert.Equal("Any contents|Major items|Small keys|Boss keys|Skulltula tokens|Stray fairies|Hearts|Souls|Maps and compasses",
+                     tracker.OotContentLabels);
+        Assert.Contains("Major items (2)", tracker.MmContentLabels.Split('|'));
+        Assert.Contains("Skulltula tokens (1)", tracker.MmContentLabels.Split('|'));
+        Assert.Contains("Small keys (0)", tracker.MmContentLabels.Split('|'));
 
         tracker.VisibleChecks.First(c => c.CheckId == "mm-token").Collected = true;
         tracker.NotifyCheckStatesChanged();
 
-        Assert.Contains("Skulltula tokens (0 left)", tracker.MmContentLabels.Split('|'));
+        Assert.Contains("Skulltula tokens (1)", tracker.MmContentLabels.Split('|'));
+    }
+
+    [Fact]
+    public void CountsFollowTheOtherFilters()
+    {
+        var tracker = Tracker();
+        tracker.SetContentAccess(oot: true, mm: true, separateStones: true);
+        Assert.Contains("Major items (2)", tracker.MmContentLabels.Split('|'));
+
+        tracker.OnlyInLogic = false;
+        Assert.Contains("Major items (3)", tracker.MmContentLabels.Split('|'));
+
+        tracker.HideCollected = true;
+        Assert.Contains("Major items (2)", tracker.MmContentLabels.Split('|'));
+
+        tracker.OnlyInLogic = true;
+        Assert.Contains("Major items (1)", tracker.MmContentLabels.Split('|'));
+
+        tracker.FilterText = "token";
+        Assert.Contains("Major items (0)", tracker.MmContentLabels.Split('|'));
+        Assert.Contains("Skulltula tokens (1)", tracker.MmContentLabels.Split('|'));
     }
 
     [Fact]

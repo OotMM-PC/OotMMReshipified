@@ -45,6 +45,7 @@ public sealed class SessionCoordinator : IDisposable
     private bool _zTargetHold;
     private bool _fairySpotPads;
     private bool _potRolling = true;
+    private bool _steadyDeityBeams = true;
     private bool _ipcSettingsDirty = true;
     private readonly List<(ushort SourcePlayer, ItemRef Item)> _pendingRemoteItems = [];
     private readonly List<(Game Game, string Path, int Player)> _pendingLiveModels = [];
@@ -200,6 +201,19 @@ public sealed class SessionCoordinator : IDisposable
             if (_potRolling != value)
             {
                 _potRolling = value;
+                _ipcSettingsDirty = true;
+            }
+        }
+    }
+
+    public bool SteadyDeityBeams
+    {
+        get => _steadyDeityBeams;
+        set
+        {
+            if (_steadyDeityBeams != value)
+            {
+                _steadyDeityBeams = value;
                 _ipcSettingsDirty = true;
             }
         }
@@ -1408,7 +1422,8 @@ public sealed class SessionCoordinator : IDisposable
             Traps: Traps,
             FairySpotPads: _fairySpotPads,
             PotRolling: _potRolling,
-            PvpDamagePercent: _multiworld?.PvpDamagePercent ?? Core.Relay.RelayRules.DefaultPvpDamagePercent);
+            PvpDamagePercent: _multiworld?.PvpDamagePercent ?? Core.Relay.RelayRules.DefaultPvpDamagePercent,
+            SteadyDeityBeams: _steadyDeityBeams);
     }
 
     private void LogCheckCollected(string checkKey)

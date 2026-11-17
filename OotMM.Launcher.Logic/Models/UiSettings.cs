@@ -48,6 +48,7 @@ public sealed class UiSettings
     public bool RemoteItemPrompts { get; set; } = true;
     public bool FairySpotPads { get; set; }
     public bool PotRolling { get; set; } = true;
+    public bool SteadyDeityBeams { get; set; } = true;
     public bool ContentFilters { get; set; }
     public bool EntranceMap { get; set; } = true;
     public OotMM.Core.TrapTuning Traps { get; set; } = new();

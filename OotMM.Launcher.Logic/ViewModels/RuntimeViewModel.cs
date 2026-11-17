@@ -58,6 +58,8 @@ public sealed class RuntimeViewModel : ViewModelBase
             FairySpotPadsChanged = ApplyFairySpotPads,
             PotRolling = settings.PotRolling,
             PotRollingChanged = ApplyPotRolling,
+            SteadyDeityBeams = settings.SteadyDeityBeams,
+            SteadyDeityBeamsChanged = ApplySteadyDeityBeams,
             ContentFilters = settings.ContentFilters,
             ContentFiltersChanged = ApplyContentFilters,
             EntranceMap = settings.EntranceMap,
@@ -112,6 +114,7 @@ public sealed class RuntimeViewModel : ViewModelBase
         coordinator.RemoteItemPrompts = settings.RemoteItemPrompts;
         coordinator.FairySpotPads = settings.FairySpotPads;
         coordinator.PotRolling = settings.PotRolling;
+        coordinator.SteadyDeityBeams = settings.SteadyDeityBeams;
         coordinator.Traps = settings.Traps;
         vm.Tracker.ForceUnlockSender = coordinator.ForceUnlock;
         vm.Map.Attach(coordinator.EntranceMap);
@@ -401,6 +404,16 @@ public sealed class RuntimeViewModel : ViewModelBase
         if (_coordinator is not null)
         {
             _coordinator.PotRolling = rolling;
+        }
+    }
+
+    private void ApplySteadyDeityBeams(bool beams)
+    {
+        _settings.SteadyDeityBeams = beams;
+        _settings.Save();
+        if (_coordinator is not null)
+        {
+            _coordinator.SteadyDeityBeams = beams;
         }
     }
 

@@ -16,6 +16,7 @@ public sealed class OptionsTabViewModel : ViewModelBase
     private string _contentFiltersNote = "";
     private bool _contentFiltersAvailable = true;
     private bool _potRolling = true;
+    private bool _steadyDeityBeams = true;
     private bool _entranceMap = true;
     private string _entranceMapNote = "";
 
@@ -97,6 +98,20 @@ public sealed class OptionsTabViewModel : ViewModelBase
             if (Set(ref _potRolling, value))
             {
                 PotRollingChanged?.Invoke(value);
+            }
+        }
+    }
+
+    internal Action<bool>? SteadyDeityBeamsChanged { get; set; }
+
+    public bool SteadyDeityBeams
+    {
+        get => _steadyDeityBeams;
+        set
+        {
+            if (Set(ref _steadyDeityBeams, value))
+            {
+                SteadyDeityBeamsChanged?.Invoke(value);
             }
         }
     }

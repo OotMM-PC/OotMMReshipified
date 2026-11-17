@@ -12,7 +12,8 @@ public sealed record RosterMeta(
     TrapTuning? Traps = null,
     bool FairySpotPads = false,
     bool PotRolling = true,
-    int PvpDamagePercent = 100);
+    int PvpDamagePercent = 100,
+    bool SteadyDeityBeams = true);
 
 public static class PresenceRoster
 {

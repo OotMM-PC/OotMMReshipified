@@ -111,6 +111,16 @@ ColumnLayout {
 
     GoldCheck {
         Layout.fillWidth: true
+        text: "Fierce Deity beams whenever Z is held (MM)"
+        on: tab.vm ? tab.vm.steadyDeityBeams : true
+        ToolTip.visible: hovered
+        ToolTip.delay: 500
+        ToolTip.text: "Fierce Deity keeps firing sword beams for as long as Z is held. In the original, charging or releasing a spin attack drops the targeting, and the beams stop until Z is pressed again. Applies straight away."
+        onFlipped: value => tab.vm.steadyDeityBeams = value
+    }
+
+    GoldCheck {
+        Layout.fillWidth: true
         visible: !!(tab.vm && tab.vm.contentFiltersAvailable)
         text: "Filter tracker checks by what they hold"
         enabled: !!(tab.vm && tab.vm.contentFiltersAllowed)

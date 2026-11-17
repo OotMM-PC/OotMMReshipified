@@ -350,4 +350,39 @@ public class GameIpcProtocolTests
         Assert.Equal(transition, AnchorPackets.ParseCrossGameTransition(packet));
         Assert.True(AnchorPackets.MatchesSeedIdentity(packet, seed));
     }
+
+    [Fact]
+    public void EntranceTaken_CarriesTheGameSourceAndSerial()
+    {
+        Assert.True(GameIpcProtocol.TryParseEntranceTaken(
+            """{"type":"entranceTaken","game":"mm","source":36864,"serial":7}""",
+            out var game, out var source, out var serial));
+
+        Assert.Equal(Game.Mm, game);
+        Assert.Equal(36864u, source);
+        Assert.Equal(7ul, serial);
+        Assert.Equal("""{"type":"entranceAccepted","serial":7}""", GameIpcProtocol.BuildEntranceAccepted(serial));
+    }
+
+    [Theory]
+    [InlineData("""{"type":"entranceTaken","game":"mm","source":36864}""")]
+    [InlineData("""{"type":"entranceTaken","game":"other","source":1,"serial":1}""")]
+    [InlineData("""{"type":"entranceTaken","game":"oot","source":-1,"serial":1}""")]
+    [InlineData("""{"type":"location","game":"oot","scene":81,"entrance":219}""")]
+    [InlineData("not json")]
+    public void EntranceTaken_RejectsAnythingElse(string json)
+    {
+        Assert.False(GameIpcProtocol.TryParseEntranceTaken(json, out _, out _, out _));
+    }
+
+    [Fact]
+    public void Location_CarriesTheSceneAndEntrance()
+    {
+        Assert.True(GameIpcProtocol.TryParseLocation(
+            """{"type":"location","game":"oot","scene":81,"entrance":219}""", out var location));
+
+        Assert.Equal(new GameLocation(Game.Oot, 81, 219), location);
+        Assert.False(GameIpcProtocol.TryParseLocation("""{"type":"location","game":"oot","scene":81}""", out _));
+        Assert.False(GameIpcProtocol.TryParseLocation("""{"type":"heartbeat"}""", out _));
+    }
 }

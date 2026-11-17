@@ -27,6 +27,7 @@ public sealed class ConfigViewModel : ViewModelBase
     private int _hostPvpDamage = OotMM.Core.Relay.RelayRules.DefaultPvpDamagePercent;
     private int _hostDeathLink;
     private bool _hostContentFilters = true;
+    private bool _hostEntranceMap = true;
     private string _multiworldAddress = "";
     private string _playerName = "";
     private string _statusMessage = "";
@@ -62,6 +63,7 @@ public sealed class ConfigViewModel : ViewModelBase
         _hostPvpDamage = OotMM.Core.Relay.PvpDamage.Clamp(settings.PvpDamagePercent);
         _hostDeathLink = (int)settings.DeathLink;
         _hostContentFilters = settings.HostContentFilters;
+        _hostEntranceMap = settings.HostEntranceMap;
         MmCard.PortAdultModel = settings.PortOotAdultModel;
         MmCard.PortChildModel = settings.PortOotChildModel;
         _multiworldAddress = settings.MultiworldAddress;
@@ -286,6 +288,18 @@ public sealed class ConfigViewModel : ViewModelBase
         set
         {
             if (Set(ref _hostContentFilters, value))
+            {
+                FormChanged();
+            }
+        }
+    }
+
+    public bool HostEntranceMap
+    {
+        get => _hostEntranceMap;
+        set
+        {
+            if (Set(ref _hostEntranceMap, value))
             {
                 FormChanged();
             }
@@ -764,6 +778,7 @@ public sealed class ConfigViewModel : ViewModelBase
         _settings.PvpDamagePercent = HostPvpDamage;
         _settings.DeathLink = (OotMM.Core.Relay.DeathLinkMode)HostDeathLink;
         _settings.HostContentFilters = HostContentFilters;
+        _settings.HostEntranceMap = HostEntranceMap;
         _settings.Traps = Traps.Current;
         _settings.PortOotAdultModel = MmCard.PortAdultModel;
         _settings.PortOotChildModel = MmCard.PortChildModel;

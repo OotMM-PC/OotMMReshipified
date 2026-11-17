@@ -38,6 +38,7 @@ public sealed class RelayRules
     public int TimerMaxPercent { get; set; } = 250;
     public bool AllowManifestBootstrap { get; set; } = true;
     public bool ContentFilters { get; set; } = true;
+    public bool EntranceMap { get; set; } = true;
     public TrapTuning Traps { get; set; } = new();
 }
 

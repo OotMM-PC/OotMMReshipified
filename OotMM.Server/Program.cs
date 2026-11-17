@@ -52,6 +52,7 @@ foreach (var arg in args)
             Console.WriteLine("OoTMM dedicated multiworld server (protocol v4)\n"
                               + "usage: ootmm_server [port] [--pvp] [--friendly-fire] [--pvp-damage=<percent>]\n"
                               + "                    [--death-link=off|team|global] [--no-content-filters]\n"
+                              + "                    [--no-entrance-map]\n"
                               + "       ootmm_server --register-manifest [--world-state <dir>]\n"
                               + "                    <player1-seed> ... <playerN-seed>\n\n"
                               + "Normal settings load from server.properties next to the executable.");
@@ -67,6 +68,9 @@ foreach (var arg in args)
             continue;
         case "--no-content-filters":
             config.Rules.ContentFilters = false;
+            continue;
+        case "--no-entrance-map":
+            config.Rules.EntranceMap = false;
             continue;
     }
 
@@ -187,7 +191,8 @@ file sealed class ServerProperties
                     Console.Error.WriteLine(
                         $"[server] server.properties line {lineNo}: invalid pvp-damage value '{value}' (expected {PvpDamage.MinPercent}-{PvpDamage.MaxPercent})");
                     break;
-                case "pvp" or "friendly-fire" or "timer-enabled" or "manifest-bootstrap" or "content-filters":
+                case "pvp" or "friendly-fire" or "timer-enabled" or "manifest-bootstrap" or "content-filters"
+                    or "entrance-map":
                 {
                     var lowered = value.ToLowerInvariant();
                     var parsed = lowered is "true" or "1" or "yes" or "on";
@@ -204,6 +209,7 @@ file sealed class ServerProperties
                         case "friendly-fire": config.Rules.FriendlyFire = parsed; break;
                         case "manifest-bootstrap": config.Rules.AllowManifestBootstrap = parsed; break;
                         case "content-filters": config.Rules.ContentFilters = parsed; break;
+                        case "entrance-map": config.Rules.EntranceMap = parsed; break;
                         default: config.Rules.TimerEnabled = parsed; break;
                     }
 
@@ -310,6 +316,9 @@ file sealed class ServerProperties
                 + "# checks holding keys, tokens and other items once they own the Stone of Agony.\n"
                 + "# Set false for challenge runs. A server rule; players cannot override it.\n"
                 + $"content-filters={(config.Rules.ContentFilters ? "true" : "false")}\n\n"
+                + "# Whether players may use the launcher's Map tab, which marks each shuffled\n"
+                + "# entrance once they have gone through it. A server rule; players cannot override it.\n"
+                + $"entrance-map={(config.Rules.EntranceMap ? "true" : "false")}\n\n"
                 + "# Trap tuning for every player in the session. The defaults are the original traps.\n"
                 + "# Ice break-out effort in percent (25-400).\n"
                 + "# Damage is dealt over time while the trap lasts, in percent of the original rate (0-1000).\n"

@@ -13,6 +13,7 @@ public sealed record GameIpcHello(
     string Build);
 
 public sealed record InventoryDebugSet(string ItemId, uint Value);
+public sealed record GameLocation(Game Game, int Scene, uint Entrance);
 public sealed record DebugPresentItem(string ItemId, ushort RecipientPlayer);
 
 public static class GameIpcProtocol
@@ -52,6 +53,9 @@ public static class GameIpcProtocol
         public const string SaveRequest = "saveRequest";
         public const string SaveCompleted = "saveCompleted";
         public const string EndgameReached = "endgameReached";
+        public const string EntranceTaken = "entranceTaken";
+        public const string EntranceAccepted = "entranceAccepted";
+        public const string Location = "location";
     }
 
     public static string BuildWelcome(
@@ -208,6 +212,65 @@ public static class GameIpcProtocol
             type = MessageType.CheckAccepted,
             check = checkKey,
         });
+
+    public static string BuildEntranceAccepted(ulong serial) =>
+        JsonSerializer.Serialize(new
+        {
+            type = MessageType.EntranceAccepted,
+            serial,
+        });
+
+    /// <summary>Reads a game's report that the player left through an entrance, named by its generator id.</summary>
+    public static bool TryParseEntranceTaken(string json, out Game game, out uint source, out ulong serial)
+    {
+        game = Game.Oot;
+        source = 0;
+        serial = 0;
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object || ReadString(root, "type") != MessageType.EntranceTaken
+                || GameInfo.TryFromSeedTag(ReadString(root, "game")) is not { } parsed
+                || !root.TryGetProperty("source", out var sourceValue) || !sourceValue.TryGetUInt32(out source)
+                || !root.TryGetProperty("serial", out var serialValue) || !serialValue.TryGetUInt64(out serial))
+            {
+                return false;
+            }
+
+            game = parsed;
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    /// <summary>Reads a game's report of the scene it just loaded and the entrance it loaded through.</summary>
+    public static bool TryParseLocation(string json, out GameLocation? location)
+    {
+        location = null;
+        try
+        {
+            using var document = JsonDocument.Parse(json);
+            var root = document.RootElement;
+            if (root.ValueKind != JsonValueKind.Object || ReadString(root, "type") != MessageType.Location
+                || GameInfo.TryFromSeedTag(ReadString(root, "game")) is not { } game
+                || !root.TryGetProperty("scene", out var scene) || !scene.TryGetInt32(out var sceneId)
+                || !root.TryGetProperty("entrance", out var entrance) || !entrance.TryGetUInt32(out var entranceId))
+            {
+                return false;
+            }
+
+            location = new GameLocation(game, sceneId, entranceId);
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
 
     public static string BuildCompletedChecks(IEnumerable<string> checkKeys) =>
         JsonSerializer.Serialize(new

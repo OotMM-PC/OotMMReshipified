@@ -97,7 +97,8 @@ public sealed class RelayEngine
                 ? $" (PvP damage {PvpDamage.Clamp(_rules.PvpDamagePercent)}%)" : "")
             + (_rules.DeathLink != DeathLinkMode.Off ? $" ({DeathLinkModes.Tag(_rules.DeathLink)} death link enabled)" : "")
             + (_rules.Traps.IsOriginal ? "" : " (custom traps)")
-            + (_rules.ContentFilters ? "" : " (tracker contents filters off)"));
+            + (_rules.ContentFilters ? "" : " (tracker contents filters off)")
+            + (_rules.EntranceMap ? "" : " (entrance map off)"));
         Log($"[relay] check state persists in {_storeDir}");
 
         var lastMeta = SessionMetaLine();
@@ -286,6 +287,7 @@ public sealed class RelayEngine
         + $",\"timerEnabled\":{(_rules.TimerEnabled ? "true" : "false")}"
         + $",\"timerMin\":{_rules.TimerMinPercent},\"timerMax\":{_rules.TimerMaxPercent}"
         + $",\"contentFilters\":{(_rules.ContentFilters ? "true" : "false")}"
+        + $",\"entranceMap\":{(_rules.EntranceMap ? "true" : "false")}"
         + $",\"traps\":{_rules.Traps.ToMetaJson()}}}\n";
 
     private bool ReceiveFrom(ClientConn client)

@@ -16,12 +16,15 @@ public sealed class RuntimeViewModel : ViewModelBase
     private Game _activeGame;
     private bool _showSidebar;
     private int _selectedTabIndex;
+    private bool _showMapTab;
     private bool _isRunning;
     private bool _isFinalizingSync;
     private long _seenReceiptRevision;
     private int _seenEndgameBosses;
     private string _multiworldStatus = "";
     private double _sidebarScale = 1.0;
+    private int _seenEntranceRevision = -1;
+    private MapPosition? _seenMapPosition;
 
     private RuntimeViewModel(
         UiSettings settings,
@@ -57,10 +60,14 @@ public sealed class RuntimeViewModel : ViewModelBase
             PotRollingChanged = ApplyPotRolling,
             ContentFilters = settings.ContentFilters,
             ContentFiltersChanged = ApplyContentFilters,
+            EntranceMap = settings.EntranceMap,
+            EntranceMapChanged = ApplyEntranceMap,
         };
         Tracker.ContentFiltersEnabled = settings.ContentFilters;
         Progress = new ProgressTabViewModel();
-        _tabs = [Tracker, Log, SessionTab, Options, Progress];
+        Map = new MapTabViewModel();
+        _tabs = [Tracker, Log, SessionTab, Options, Progress, Map];
+        _showMapTab = settings.EntranceMap;
 
         _backToConfig = backToConfig;
     }
@@ -77,6 +84,7 @@ public sealed class RuntimeViewModel : ViewModelBase
         vm.Tracker.LoadSampleData();
         vm.Log.LoadSampleData();
         vm.Progress.LoadSampleData();
+        vm.Map.Attach(PreviewMap(settings.SeedPath));
         return vm;
     }
 
@@ -106,6 +114,7 @@ public sealed class RuntimeViewModel : ViewModelBase
         coordinator.PotRolling = settings.PotRolling;
         coordinator.Traps = settings.Traps;
         vm.Tracker.ForceUnlockSender = coordinator.ForceUnlock;
+        vm.Map.Attach(coordinator.EntranceMap);
         vm.Options.RestartGame = coordinator.RestartGame;
 
         var localPlayer = coordinator.Session.Seed.PlayerId;
@@ -149,6 +158,7 @@ public sealed class RuntimeViewModel : ViewModelBase
         vm.RebuildProgress();
         vm.UpdateContentAccess();
         vm.UpdateContentFilterRule();
+        vm.UpdateEntranceMapRule();
         vm.Tracker.NotifyCheckStatesChanged();
         return vm;
     }
@@ -160,8 +170,27 @@ public sealed class RuntimeViewModel : ViewModelBase
     public SessionTabViewModel SessionTab { get; }
     public OptionsTabViewModel Options { get; }
     public ProgressTabViewModel Progress { get; }
+    public MapTabViewModel Map { get; }
 
     public void BackToConfig() => _backToConfig();
+
+    private static EntranceMap? PreviewMap(string seedPath)
+    {
+        var pack = EntranceMapPack.LoadInstalled();
+        if (pack is null || !File.Exists(seedPath))
+        {
+            return null;
+        }
+
+        try
+        {
+            return new EntranceMap(SeedLoader.LoadFromFile(seedPath), pack);
+        }
+        catch (SeedLoadException)
+        {
+            return null;
+        }
+    }
 
     public void ExpandSidebar() => ShowSidebar = true;
 
@@ -249,12 +278,28 @@ public sealed class RuntimeViewModel : ViewModelBase
         get => _selectedTabIndex;
         set
         {
-            if (Set(ref _selectedTabIndex, Math.Clamp(value, 0, _tabs.Length - 1)))
+            var index = Math.Clamp(value, 0, _tabs.Length - 1);
+            if (Set(ref _selectedTabIndex, _tabs[index] == Map && !_showMapTab ? 0 : index))
             {
                 Raise(nameof(CurrentTab));
             }
         }
     }
+
+    /// <summary>False while the player or the server has the entrance map turned off.</summary>
+    public bool ShowMapTab
+    {
+        get => _showMapTab;
+        private set
+        {
+            if (Set(ref _showMapTab, value) && !value && CurrentTab == Map)
+            {
+                SelectedTabIndex = 0;
+            }
+        }
+    }
+
+    public int MapTabIndex => Array.IndexOf(_tabs, Map);
 
     public ViewModelBase CurrentTab => _tabs[_selectedTabIndex];
 
@@ -275,6 +320,13 @@ public sealed class RuntimeViewModel : ViewModelBase
         IsRunning = _coordinator.IsRunning;
         UpdateMultiworldStatus();
         UpdateContentFilterRule();
+        UpdateEntranceMapRule();
+        if (_coordinator.EntranceRevision != _seenEntranceRevision || _coordinator.MapPosition != _seenMapPosition)
+        {
+            _seenEntranceRevision = _coordinator.EntranceRevision;
+            _seenMapPosition = _coordinator.MapPosition;
+            Map.Update(_seenMapPosition);
+        }
 
         var changed = false;
         foreach (var (key, row) in _checkRows)
@@ -361,16 +413,30 @@ public sealed class RuntimeViewModel : ViewModelBase
 
     private void UpdateContentFilterRule()
     {
-        var allowed = _coordinator?.Multiworld?.ContentFilters;
-        var networked = _coordinator?.Multiworld is not null;
         Options.ContentFiltersAvailable =
             _coordinator?.Session.Seed.GetStringSetting("csmc", "always") != "never";
-        Options.ContentFiltersNote = !networked || allowed == true ? ""
-            : allowed == false ? "The server has turned this off for this session."
-            : "Available once the server's rules arrive.";
+        Options.ContentFiltersNote = HostRuleNote(_coordinator?.Multiworld?.ContentFilters);
         Tracker.ContentFiltersEnabled = _settings.ContentFilters && Options.ContentFiltersAvailable
                                         && Options.ContentFiltersAllowed;
     }
+
+    private void ApplyEntranceMap(bool map)
+    {
+        _settings.EntranceMap = map;
+        _settings.Save();
+        UpdateEntranceMapRule();
+    }
+
+    private void UpdateEntranceMapRule()
+    {
+        Options.EntranceMapNote = HostRuleNote(_coordinator?.Multiworld?.EntranceMap);
+        ShowMapTab = _settings.EntranceMap && Options.EntranceMapAllowed;
+    }
+
+    private string HostRuleNote(bool? allowed) =>
+        _coordinator?.Multiworld is null || allowed == true ? ""
+        : allowed == false ? "The server has turned this off for this session."
+        : "Available once the server's rules arrive.";
 
     private void ApplyDevMode(bool devMode)
     {

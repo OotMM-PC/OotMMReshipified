@@ -93,6 +93,9 @@ public sealed class MultiworldSync : IDisposable
     /// <summary>Whether the server allows the tracker's contents filters; null until its rules arrive.</summary>
     public bool? ContentFilters { get; private set; }
 
+    /// <summary>Whether the server allows the entrance map; null until its rules arrive.</summary>
+    public bool? EntranceMap { get; private set; }
+
     public TrapTuning Traps { get; private set; } = new();
     public bool TimerEnabled { get; private set; } = true;
     public int TimerMin { get; private set; }
@@ -316,13 +319,11 @@ public sealed class MultiworldSync : IDisposable
                     TimerMin = RelayProtocol.ExtractIntField(line, "timerMin");
                     TimerMax = RelayProtocol.ExtractIntField(line, "timerMax", 250);
                     Traps = TrapTuning.FromMetaLine(line);
-                    var contentFilters = !line.Contains("\"contentFilters\":false");
-                    if (!contentFilters && ContentFilters != false)
-                    {
-                        EventLogged?.Invoke("The server has turned the tracker's contents filters off.", true);
-                    }
-
-                    ContentFilters = contentFilters;
+                    ContentFilters = ReadHostRule(
+                        line, "contentFilters", ContentFilters,
+                        "The server has turned the tracker's contents filters off.");
+                    EntranceMap = ReadHostRule(
+                        line, "entranceMap", EntranceMap, "The server has turned the entrance map off.");
                     var rules = new List<string>();
                     if (Pvp)
                     {
@@ -419,6 +420,17 @@ public sealed class MultiworldSync : IDisposable
         {
             SyncChanged?.Invoke();
         }
+    }
+
+    private bool ReadHostRule(string metaLine, string key, bool? known, string turnedOff)
+    {
+        var allowed = !metaLine.Contains($"\"{key}\":false");
+        if (!allowed && known != false)
+        {
+            EventLogged?.Invoke(turnedOff, true);
+        }
+
+        return allowed;
     }
 
     public void SubmitLocalPose(string poseBody)

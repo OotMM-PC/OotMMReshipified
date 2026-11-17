@@ -51,6 +51,18 @@ public sealed class ConfigViewModelTests
     }
 
     [Fact]
+    public void EntranceMapRuleDefaultsToAllowedAndSaves()
+    {
+        var settings = new UiSettings();
+        var config = new ConfigViewModel(settings, new NoPicker(), () => { }, (_, _, _, _) => { });
+        Assert.True(config.HostEntranceMap);
+
+        config.HostEntranceMap = false;
+        Assert.False(settings.HostEntranceMap);
+        Assert.False(new ConfigViewModel(settings, new NoPicker(), () => { }, (_, _, _, _) => { }).HostEntranceMap);
+    }
+
+    [Fact]
     public void HostRulesRestoreFromSettings()
     {
         var settings = new UiSettings { EnablePvp = true, EnableFriendlyFire = true, DeathLink = Core.Relay.DeathLinkMode.Team };

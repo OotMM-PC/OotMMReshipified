@@ -250,6 +250,16 @@ Item {
 
                 Chip {
                     visible: view.vm.hostRelay
+                    text: "Entrance map"
+                    lit: view.vm.hostEntranceMap
+                    ToolTip.visible: hovered
+                    ToolTip.delay: 500
+                    ToolTip.text: "Server rule: players may use the Map tab, which marks each shuffled entrance once they have gone through it. Turn off to make everyone remember their own routes."
+                    onClicked: view.vm.hostEntranceMap = !view.vm.hostEntranceMap
+                }
+
+                Chip {
+                    visible: view.vm.hostRelay
                     text: ["Death link: Off", "Death link: Team", "Death link: Global"][view.vm.hostDeathLink]
                     lit: view.vm.hostDeathLink !== 0
                     ToolTip.visible: hovered

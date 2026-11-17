@@ -13,6 +13,10 @@
     </ItemGroup>
 
     <ItemGroup>
+        <None Include="Assets\Maps\*" Link="maps\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    </ItemGroup>
+
+    <ItemGroup>
         <PackageReference Include="QtGroup.Qt.Bridge.CSharp.win-x64" Version="0.5.*" />
     </ItemGroup>
 

@@ -24,6 +24,7 @@
 
   <ItemGroup>
     <None Include="fixtures\**" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\OotMM.Launcher\Assets\Maps\index.json" Link="maps\index.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

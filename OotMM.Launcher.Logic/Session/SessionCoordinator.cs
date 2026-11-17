@@ -53,6 +53,8 @@ public sealed class SessionCoordinator : IDisposable
     private readonly Dictionary<string, ItemRef> _resolvedCheckRewards = new(StringComparer.Ordinal);
     private readonly HashSet<string> _endgameBosses = new(StringComparer.Ordinal);
     private readonly Dictionary<string, int> _renewalGrants = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _discoveredEntrances = new(StringComparer.Ordinal);
+    private readonly EntranceMap? _entranceMap;
 
     public SessionCoordinator(Core.Session session, MultiworldSync? multiworld = null,
                               ModelSyncCoordinator? modelSync = null, Game? startingGame = null)
@@ -61,6 +63,7 @@ public sealed class SessionCoordinator : IDisposable
         _multiworld = multiworld;
         _modelSync = modelSync;
         _inventory = new SessionInventory(session.Seed, session.DebugItemsPath);
+        _entranceMap = EntranceMapPack.LoadInstalled() is { } pack ? new EntranceMap(session.Seed, pack) : null;
         _zTargetHold = session.Seed.Cosmetics.DefaultHold;
         ActiveGame = session.RecoveredTransition?.ToGame ?? startingGame ?? session.Seed.ResolveStartingGame();
         _timer = UiScheduler.CreateTimer(TimeSpan.FromMilliseconds(250), Tick);
@@ -236,6 +239,13 @@ public sealed class SessionCoordinator : IDisposable
     public HashSet<string> CompletedChecks { get; } = [];
 
     public IReadOnlyCollection<string> EndgameBosses => _endgameBosses;
+
+    /// <summary>The seed's entrance map, or null when no map pictures are installed.</summary>
+    public EntranceMap? EntranceMap => _entranceMap;
+
+    public MapPosition? MapPosition => _entranceMap?.Position;
+
+    public int EntranceRevision { get; private set; }
 
     public event Action? StateChanged;
     public event Action<string>? EventLogged;
@@ -434,6 +444,9 @@ public sealed class SessionCoordinator : IDisposable
         _resolvedCheckRewards.Clear();
         _endgameBosses.Clear();
         _renewalGrants.Clear();
+        _discoveredEntrances.Clear();
+        _entranceMap?.Reset();
+        EntranceRevision++;
         ok &= _inventory.TryClearDebugAdjustments();
         ReconcileInventory();
         _stateStamp = DateTime.MinValue;
@@ -862,6 +875,20 @@ public sealed class SessionCoordinator : IDisposable
                 }
             }
 
+            if (doc.RootElement.TryGetProperty("discoveredEntrances", out var entrances)
+                && entrances.ValueKind == System.Text.Json.JsonValueKind.Array)
+            {
+                foreach (var entry in entrances.EnumerateArray())
+                {
+                    if (entry.ValueKind == System.Text.Json.JsonValueKind.String
+                        && _discoveredEntrances.Add(entry.GetString()!)
+                        && _entranceMap?.Discover(entry.GetString()!) == true)
+                    {
+                        EntranceRevision++;
+                    }
+                }
+            }
+
             if (changed)
             {
                 _stateDirty = true;
@@ -887,6 +914,7 @@ public sealed class SessionCoordinator : IDisposable
             resolvedCheckRewards = _resolvedCheckRewards,
             endgameBosses = _endgameBosses.Order(StringComparer.Ordinal),
             renewalGrants = _renewalGrants,
+            discoveredEntrances = _discoveredEntrances.Order(StringComparer.Ordinal),
             sessionValues = _session.LogicalSlot is { } slot
                 ? new Dictionary<string, string> { ["ootmm.activeSlot"] = slot.ToString(System.Globalization.CultureInfo.InvariantCulture) }
                 : new Dictionary<string, string>(),
@@ -1030,6 +1058,17 @@ public sealed class SessionCoordinator : IDisposable
                         }
                         break;
                     }
+                    if (GameIpcProtocol.TryParseEntranceTaken(
+                            ipcEvent.Message, out var takenGame, out var takenSource, out var takenSerial))
+                    {
+                        HandleEntranceTaken(takenGame, takenSource, takenSerial);
+                        break;
+                    }
+                    if (GameIpcProtocol.TryParseLocation(ipcEvent.Message, out var location) && location is not null)
+                    {
+                        HandleLocation(location);
+                        break;
+                    }
                     if (GameIpcProtocol.TryParseCheckCollected(
                             ipcEvent.Message, out var checkKey, out var presentationRequested, out _))
                     {
@@ -1058,6 +1097,36 @@ public sealed class SessionCoordinator : IDisposable
                     break;
             }
         }
+    }
+
+    private void HandleEntranceTaken(Game game, uint source, ulong serial)
+    {
+        if (_entranceMap is { } map)
+        {
+            var key = map.Pack.FindEntrance(game, source)?.Key ?? "";
+            map.Leave(key);
+            if (map.Discover(key))
+            {
+                _discoveredEntrances.Add(key);
+                if (!SaveCompletedState())
+                {
+                    _discoveredEntrances.Remove(key);
+                    map.Restore(_discoveredEntrances);
+                    return;
+                }
+
+                EntranceRevision++;
+                StateChanged?.Invoke();
+            }
+        }
+
+        _ipc?.Send(GameIpcProtocol.BuildEntranceAccepted(serial));
+    }
+
+    private void HandleLocation(GameLocation location)
+    {
+        _entranceMap?.Arrive(location.Game, location.Scene, location.Entrance);
+        StateChanged?.Invoke();
     }
 
     private void FlushLiveModels()

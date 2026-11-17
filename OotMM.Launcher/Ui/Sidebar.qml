@@ -7,15 +7,19 @@ Item {
 
     property var vm
     readonly property real s: vm ? vm.sidebarScale : 1
+    readonly property var mapVm: vm ? vm.map : null
+    readonly property bool wide: !!(mapVm && mapVm.expanded && vm.selectedTabIndex === vm.mapTabIndex)
+    readonly property int fullWidth: wide ? 760 : 380
     readonly property var tabs: [
         { icon: "DungeonMap", label: "Tracker" },
         { icon: "BombersNotebook", label: "Log" },
         { icon: "KokiriSword", label: "Session" },
         { icon: "LensOfTruth", label: "Options" },
-        { icon: "Compass", label: "Progress" }
+        { icon: "Compass", label: "Progress" },
+        { icon: "Map", label: "Map" }
     ]
 
-    implicitWidth: !vm ? 0 : vm.isFinalizingSync ? 380 : vm.showFullSidebar ? Math.round(380 * s) : 44
+    implicitWidth: !vm ? 0 : vm.isFinalizingSync ? 380 : vm.showFullSidebar ? Math.round(fullWidth * s) : 44
 
     Rectangle {
         anchors.fill: parent
@@ -79,7 +83,7 @@ Item {
     Item {
         id: full
         visible: !!(side.vm && side.vm.showFullSidebar)
-        width: 380
+        width: side.fullWidth
         height: side.height / side.s
         scale: side.s
         transformOrigin: Item.TopLeft
@@ -220,6 +224,7 @@ Item {
                         required property var modelData
                         required property int index
                         readonly property bool active: side.vm && side.vm.selectedTabIndex === index
+                        visible: !side.vm || index !== side.vm.mapTabIndex || side.vm.showMapTab
                         Layout.fillWidth: true
                         implicitHeight: 54
                         hoverEnabled: true
@@ -261,7 +266,8 @@ Item {
                                : side.vm.selectedTabIndex === 0 ? trackerTab
                                : side.vm.selectedTabIndex === 1 ? logTab
                                : side.vm.selectedTabIndex === 2 ? sessionTab
-                               : side.vm.selectedTabIndex === 3 ? optionsTab : progressTab
+                               : side.vm.selectedTabIndex === 3 ? optionsTab
+                               : side.vm.selectedTabIndex === 4 ? progressTab : mapTab
             }
         }
     }
@@ -289,5 +295,13 @@ Item {
     Component {
         id: progressTab
         ProgressTab { vm: side.vm.progress }
+    }
+
+    Component {
+        id: mapTab
+        MapTab {
+            vm: side.mapVm
+            wide: side.wide
+        }
     }
 }

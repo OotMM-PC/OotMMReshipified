@@ -68,6 +68,29 @@ ColumnLayout {
 
     GoldCheck {
         Layout.fillWidth: true
+        text: "Show the entrance map"
+        enabled: !!(tab.vm && tab.vm.entranceMapAllowed)
+        opacity: enabled ? 1 : 0.5
+        on: !!(tab.vm && tab.vm.entranceMap && tab.vm.entranceMapAllowed)
+        ToolTip.visible: hovered
+        ToolTip.delay: 500
+        ToolTip.text: "Adds the Map tab, which marks each shuffled entrance once you have gone through it. Entrances are still remembered while this is off. The server can turn this off."
+        onFlipped: value => tab.vm.entranceMap = value
+    }
+
+    Text {
+        Layout.fillWidth: true
+        Layout.leftMargin: 28
+        visible: text.length > 0
+        wrapMode: Text.WordWrap
+        text: tab.vm ? tab.vm.entranceMapNote : ""
+        color: theme.dim
+        font.family: theme.font
+        font.pixelSize: 12
+    }
+
+    GoldCheck {
+        Layout.fillWidth: true
         text: "Roll into pots to break them (OoT)"
         on: tab.vm ? tab.vm.potRolling : true
         ToolTip.visible: hovered

@@ -176,6 +176,7 @@ public sealed class MainWindowViewModel : ViewModelBase
             PvpDamagePercent = _settings.PvpDamagePercent,
             DeathLink = _settings.DeathLink,
             ContentFilters = _settings.HostContentFilters,
+            EntranceMap = _settings.HostEntranceMap,
             Traps = _settings.Traps.Normalized(),
         };
         var engine = new OotMM.Core.Relay.RelayEngine(storeDir, rules);

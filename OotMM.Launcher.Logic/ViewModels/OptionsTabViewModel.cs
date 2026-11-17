@@ -16,6 +16,8 @@ public sealed class OptionsTabViewModel : ViewModelBase
     private string _contentFiltersNote = "";
     private bool _contentFiltersAvailable = true;
     private bool _potRolling = true;
+    private bool _entranceMap = true;
+    private string _entranceMapNote = "";
 
     public OptionsTabViewModel(
         int themeIndex, double uiScale, Action<int> onThemeChanged, Action<double> onUiScaleChanged,
@@ -98,6 +100,35 @@ public sealed class OptionsTabViewModel : ViewModelBase
             }
         }
     }
+
+    internal Action<bool>? EntranceMapChanged { get; set; }
+
+    public bool EntranceMap
+    {
+        get => _entranceMap;
+        set
+        {
+            if (Set(ref _entranceMap, value))
+            {
+                EntranceMapChanged?.Invoke(value);
+            }
+        }
+    }
+
+    /// <summary>Why the entrance map cannot be used right now, or empty when it can.</summary>
+    public string EntranceMapNote
+    {
+        get => _entranceMapNote;
+        internal set
+        {
+            if (Set(ref _entranceMapNote, value))
+            {
+                Raise(nameof(EntranceMapAllowed));
+            }
+        }
+    }
+
+    public bool EntranceMapAllowed => _entranceMapNote.Length == 0;
 
     internal Action<bool>? ContentFiltersChanged { get; set; }
 

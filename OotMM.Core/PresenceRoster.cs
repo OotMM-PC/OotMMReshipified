@@ -13,7 +13,8 @@ public sealed record RosterMeta(
     bool FairySpotPads = false,
     bool PotRolling = true,
     int PvpDamagePercent = 100,
-    bool SteadyDeityBeams = true);
+    bool SteadyDeityBeams = true,
+    bool StopTransformSlide = true);
 
 public static class PresenceRoster
 {

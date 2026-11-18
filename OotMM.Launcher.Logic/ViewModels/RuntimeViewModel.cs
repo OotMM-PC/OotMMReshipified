@@ -60,6 +60,8 @@ public sealed class RuntimeViewModel : ViewModelBase
             PotRollingChanged = ApplyPotRolling,
             SteadyDeityBeams = settings.SteadyDeityBeams,
             SteadyDeityBeamsChanged = ApplySteadyDeityBeams,
+            StopTransformSlide = settings.StopTransformSlide,
+            StopTransformSlideChanged = ApplyStopTransformSlide,
             ContentFilters = settings.ContentFilters,
             ContentFiltersChanged = ApplyContentFilters,
             EntranceMap = settings.EntranceMap,
@@ -115,6 +117,7 @@ public sealed class RuntimeViewModel : ViewModelBase
         coordinator.FairySpotPads = settings.FairySpotPads;
         coordinator.PotRolling = settings.PotRolling;
         coordinator.SteadyDeityBeams = settings.SteadyDeityBeams;
+        coordinator.StopTransformSlide = settings.StopTransformSlide;
         coordinator.Traps = settings.Traps;
         vm.Tracker.ForceUnlockSender = coordinator.ForceUnlock;
         vm.Map.Attach(coordinator.EntranceMap);
@@ -414,6 +417,16 @@ public sealed class RuntimeViewModel : ViewModelBase
         if (_coordinator is not null)
         {
             _coordinator.SteadyDeityBeams = beams;
+        }
+    }
+
+    private void ApplyStopTransformSlide(bool stop)
+    {
+        _settings.StopTransformSlide = stop;
+        _settings.Save();
+        if (_coordinator is not null)
+        {
+            _coordinator.StopTransformSlide = stop;
         }
     }
 

@@ -90,6 +90,7 @@ public static class GameIpcProtocol
                 fairySpotPads = settings.FairySpotPads,
                 potRolling = settings.PotRolling,
                 steadyDeityBeams = settings.SteadyDeityBeams,
+                stopTransformSlide = settings.StopTransformSlide,
                 pvpDamage = settings.PvpDamagePercent,
                 traps = BuildTrapSettings(settings.Traps ?? new TrapTuning()),
             },

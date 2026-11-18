@@ -121,6 +121,16 @@ ColumnLayout {
 
     GoldCheck {
         Layout.fillWidth: true
+        text: "Stop sliding while transforming (MM)"
+        on: tab.vm ? tab.vm.stopTransformSlide : true
+        ToolTip.visible: hovered
+        ToolTip.delay: 500
+        ToolTip.text: "Link stops where he stands when he changes form. Without this he keeps the speed he had and slides on through the transformation. Applies straight away."
+        onFlipped: value => tab.vm.stopTransformSlide = value
+    }
+
+    GoldCheck {
+        Layout.fillWidth: true
         visible: !!(tab.vm && tab.vm.contentFiltersAvailable)
         text: "Filter tracker checks by what they hold"
         enabled: !!(tab.vm && tab.vm.contentFiltersAllowed)

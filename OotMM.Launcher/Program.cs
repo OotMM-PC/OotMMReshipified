@@ -11,6 +11,7 @@ public static class Program
     [STAThread]
     public static void Main()
     {
+        Qt.Application.SetWindowIcon("qrc:/assemblies/OotMM.Launcher/Assets/Icons/App.png");
         Qml.LoadFromRootModule("Main");
         Qml.WaitForExit();
     }

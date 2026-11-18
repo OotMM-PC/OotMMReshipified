@@ -232,8 +232,16 @@ public sealed class LogicSolver
                     node.A = (int)raw[1].GetDouble();
                     node.B = (int)raw[2].GetDouble();
                     break;
-                case "flagon": node.Op = Op.FlagOn; node.U1 = (uint)raw[1].GetDouble(); break;
-                case "flagoff": node.Op = Op.FlagOff; node.U1 = (uint)raw[1].GetDouble(); break;
+                case "flagon":
+                case "flagoff":
+                    if (!raw[1].TryGetInt32(out var flag) || flag is < 0 or > 31)
+                    {
+                        return false;
+                    }
+
+                    node.Op = op == "flagon" ? Op.FlagOn : Op.FlagOff;
+                    node.U1 = 1u << flag;
+                    break;
                 default:
                     return false;
             }

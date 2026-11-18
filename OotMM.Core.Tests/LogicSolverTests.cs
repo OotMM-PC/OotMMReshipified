@@ -164,6 +164,75 @@ public sealed class LogicSolverTests : IDisposable
     }
 
     [Fact]
+    public void RegionStateFlags_AreIndicesThatExcludeEachOther()
+    {
+        var flagsPath = _seedPath + ".flags.json";
+        File.WriteAllText(flagsPath, """
+            {
+              "logic": {
+                "version": 2,
+                "logicMode": "allLocations",
+                "exprs": [
+                  ["t"],
+                  ["flagon", 2],
+                  ["flagoff", 3],
+                  ["and", [1, 2]],
+                  ["flagon", 3],
+                  ["flagoff", 2],
+                  ["and", [4, 5]],
+                  ["flagon", 0],
+                  ["flagoff", 1],
+                  ["and", [7, 8]],
+                  ["flagon", 1],
+                  ["flagoff", 0],
+                  ["and", [10, 11]]
+                ],
+                "areas": {
+                  "OOT SPAWN": {
+                    "g": 0, "t": 3, "a": 0,
+                    "x": { "Winter Area": 3, "Cursed Swamp Area": 9 },
+                    "l": { "Winter Check": 3, "Spring Check": 6, "Cursed Swamp Check": 9, "Cleared Swamp Check": 12 }
+                  },
+                  "Winter Area": {
+                    "g": 0, "t": 3, "a": 0,
+                    "l": { "Winter Area Check": 3, "Spring In Winter Check": 6, "Cursed Swamp In Winter Check": 9 }
+                  },
+                  "Cursed Swamp Area": {
+                    "g": 0, "t": 3, "a": 0,
+                    "l": { "Cleared In Cursed Swamp Check": 12, "Winter In Cursed Swamp Check": 3 }
+                  }
+                },
+                "prices": [],
+                "songEventsOot": [0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+                "songEventsMm": [0,0,0,0,0,0,0,0,0,0,0,0,0],
+                "specials": {},
+                "masksRegular": [],
+                "renewableLocations": [],
+                "licenseLocations": []
+              }
+            }
+            """);
+        var solver = new LogicSolver();
+        Assert.True(solver.LoadFromSeedFile(flagsPath));
+
+        var reachable = solver.Solve(new LogicSolver.Input());
+
+        Assert.Contains("Winter Check", reachable);
+        Assert.Contains("Spring Check", reachable);
+        Assert.Contains("Winter Area Check", reachable);
+        Assert.DoesNotContain("Spring In Winter Check", reachable);
+        Assert.Contains("Cursed Swamp Check", reachable);
+        Assert.Contains("Cleared Swamp Check", reachable);
+        Assert.Contains("Cursed Swamp In Winter Check", reachable);
+        Assert.Contains("Winter In Cursed Swamp Check", reachable);
+        Assert.DoesNotContain("Cleared In Cursed Swamp Check", reachable);
+
+        File.WriteAllText(flagsPath, File.ReadAllText(flagsPath).Replace("[\"flagon\", 3]", "[\"flagon\", 32]"));
+        Assert.False(new LogicSolver().LoadFromSeedFile(flagsPath));
+        File.Delete(flagsPath);
+    }
+
+    [Fact]
     public void SeedWithoutLogic_DoesNotLoad()
     {
         var noLogic = _seedPath + ".nologic.json";

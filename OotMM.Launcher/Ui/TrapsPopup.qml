@@ -55,7 +55,7 @@ PanelPopup {
     Text {
         Layout.fillWidth: true
         wrapMode: Text.WordWrap
-        text: "Server rule: these apply to every player in the session. The defaults are the original traps."
+        text: "Server rule: these apply to every player in the session. The defaults are the original values."
         color: theme.dim
         font.family: theme.font
         font.pixelSize: 12

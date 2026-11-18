@@ -319,7 +319,7 @@ file sealed class ServerProperties
                 + "# Whether players may use the launcher's Map tab, which marks each shuffled\n"
                 + "# entrance once they have gone through it. A server rule; players cannot override it.\n"
                 + $"entrance-map={(config.Rules.EntranceMap ? "true" : "false")}\n\n"
-                + "# Trap tuning for every player in the session. The defaults are the original traps.\n"
+                + "# Trap tuning for every player in the session. The defaults are the original values.\n"
                 + "# Ice break-out effort in percent (25-400).\n"
                 + "# Damage is dealt over time while the trap lasts, in percent of the original rate (0-1000).\n"
                 + $"trap-ice-breakout={config.Rules.Traps.IceBreakoutPercent}\n"

@@ -301,7 +301,7 @@ Item {
                     lit: !!(view.trapsVm && !view.trapsVm.isOriginal)
                     ToolTip.visible: hovered
                     ToolTip.delay: 500
-                    ToolTip.text: "How hard traps hit. The defaults are the original traps."
+                    ToolTip.text: "How hard traps hit. The defaults are the original values."
                     onClicked: trapsPopup.open()
                 }
             }

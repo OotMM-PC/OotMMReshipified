@@ -28,6 +28,8 @@ public sealed class TrackerContentFilterTests
     private static int IndexOf(TrackerTabViewModel tracker, string label) =>
         Array.FindIndex(tracker.OotContentLabels.Split('|'), entry => entry == label || entry.StartsWith(label + " ("));
 
+    private static int Bit(TrackerTabViewModel tracker, string label) => 1 << IndexOf(tracker, label);
+
     private static IEnumerable<string> Visible(TrackerTabViewModel tracker) =>
         tracker.VisibleChecks.Select(c => c.CheckId);
 
@@ -36,13 +38,13 @@ public sealed class TrackerContentFilterTests
     {
         var tracker = Tracker();
 
-        tracker.OotContentFilterIndex = IndexOf(tracker, "Major items");
-        tracker.MmContentFilterIndex = IndexOf(tracker, "Major items");
+        tracker.OotContentFilterMask = Bit(tracker, "Major items");
+        tracker.MmContentFilterMask = Bit(tracker, "Major items");
 
         Assert.False(tracker.OotContentUnlocked);
         Assert.False(tracker.MmContentUnlocked);
-        Assert.Equal(0, tracker.OotContentFilterIndex);
-        Assert.Equal(0, tracker.MmContentFilterIndex);
+        Assert.Equal(0, tracker.OotContentFilterMask);
+        Assert.Equal(0, tracker.MmContentFilterMask);
         Assert.Equal(6, tracker.VisibleChecks.Count);
     }
 
@@ -54,8 +56,8 @@ public sealed class TrackerContentFilterTests
 
         Assert.False(tracker.ShowOotContentFilter);
         Assert.False(tracker.ShowMmContentFilter);
-        tracker.OotContentFilterIndex = 2;
-        Assert.Equal(0, tracker.OotContentFilterIndex);
+        tracker.OotContentFilterMask = 1 << 2;
+        Assert.Equal(0, tracker.OotContentFilterMask);
 
         tracker.ContentFiltersEnabled = true;
         Assert.True(tracker.ShowOotContentFilter);
@@ -67,11 +69,11 @@ public sealed class TrackerContentFilterTests
     {
         var tracker = Tracker();
         tracker.SetContentAccess(oot: true, mm: true, separateStones: true);
-        tracker.MmContentFilterIndex = IndexOf(tracker, "Skulltula tokens");
+        tracker.MmContentFilterMask = Bit(tracker, "Skulltula tokens");
 
         tracker.ContentFiltersEnabled = false;
 
-        Assert.Equal(0, tracker.MmContentFilterIndex);
+        Assert.Equal(0, tracker.MmContentFilterMask);
         Assert.Equal(6, tracker.VisibleChecks.Count);
         Assert.DoesNotContain("(", tracker.MmContentLabels);
     }
@@ -121,11 +123,36 @@ public sealed class TrackerContentFilterTests
         var tracker = Tracker();
         tracker.SetContentAccess(oot: true, mm: true, separateStones: true);
 
-        tracker.MmContentFilterIndex = IndexOf(tracker, "Skulltula tokens");
+        tracker.MmContentFilterMask = Bit(tracker, "Skulltula tokens");
         Assert.Equal(["oot-major", "oot-key", "oot-junk", "mm-token"], Visible(tracker));
 
-        tracker.OotContentFilterIndex = IndexOf(tracker, "Small keys");
+        tracker.OotContentFilterMask = Bit(tracker, "Small keys");
         Assert.Equal(["oot-key", "mm-token"], Visible(tracker));
+    }
+
+    [Fact]
+    public void SeveralChoicesShowTheirUnion()
+    {
+        var tracker = Tracker();
+        tracker.SetContentAccess(oot: true, mm: true, separateStones: true);
+        tracker.GameFilterIndex = 1;
+
+        tracker.OotContentFilterMask = Bit(tracker, "Major items") | Bit(tracker, "Small keys");
+
+        Assert.Equal(["oot-major", "oot-key"], Visible(tracker));
+    }
+
+    [Fact]
+    public void WayOfTheHeroJoinsTheUnionAndStrayBitsAreDropped()
+    {
+        var tracker = Tracker(withRequiredData: true);
+        tracker.SetContentAccess(oot: true, mm: true, separateStones: true);
+        tracker.GameFilterIndex = 1;
+
+        tracker.OotContentFilterMask = 1 | Bit(tracker, "Way of the Hero") | Bit(tracker, "Small keys") | (1 << 20);
+
+        Assert.Equal(Bit(tracker, "Way of the Hero") | Bit(tracker, "Small keys"), tracker.OotContentFilterMask);
+        Assert.Equal(["oot-major", "oot-key"], Visible(tracker));
     }
 
     [Fact]
@@ -134,10 +161,10 @@ public sealed class TrackerContentFilterTests
         var tracker = Tracker();
         tracker.SetContentAccess(oot: false, mm: true, separateStones: true);
 
-        tracker.OotContentFilterIndex = IndexOf(tracker, "Major items");
-        tracker.MmContentFilterIndex = IndexOf(tracker, "Major items");
+        tracker.OotContentFilterMask = Bit(tracker, "Major items");
+        tracker.MmContentFilterMask = Bit(tracker, "Major items");
 
-        Assert.Equal(0, tracker.OotContentFilterIndex);
+        Assert.Equal(0, tracker.OotContentFilterMask);
         Assert.Equal(["oot-major", "oot-key", "oot-junk", "mm-major", "mm-major-done"], Visible(tracker));
         Assert.Equal("Locked: find the OoT Stone of Agony", tracker.OotContentLockedText);
     }
@@ -172,7 +199,7 @@ public sealed class TrackerContentFilterTests
         tracker.SetContentAccess(oot: true, mm: true, separateStones: true);
         tracker.GameFilterIndex = 2;
 
-        tracker.MmContentFilterIndex = IndexOf(tracker, "Major items");
+        tracker.MmContentFilterMask = Bit(tracker, "Major items");
 
         Assert.Equal(["mm-major"], Visible(tracker));
         Assert.Equal(2, tracker.HiddenMatches);
@@ -186,7 +213,7 @@ public sealed class TrackerContentFilterTests
         var tracker = Tracker(withRequiredData: true);
         tracker.SetContentAccess(oot: true, mm: true, separateStones: true);
         tracker.GameFilterIndex = 1;
-        tracker.OotContentFilterIndex = IndexOf(tracker, "Way of the Hero");
+        tracker.OotContentFilterMask = Bit(tracker, "Way of the Hero");
 
         Assert.Equal(["oot-major"], Visible(tracker));
     }
@@ -196,12 +223,12 @@ public sealed class TrackerContentFilterTests
     {
         var tracker = Tracker();
         tracker.SetContentAccess(oot: true, mm: true, separateStones: true);
-        tracker.OotContentFilterIndex = IndexOf(tracker, "Small keys");
-        tracker.MmContentFilterIndex = IndexOf(tracker, "Skulltula tokens");
+        tracker.OotContentFilterMask = Bit(tracker, "Small keys");
+        tracker.MmContentFilterMask = Bit(tracker, "Skulltula tokens");
 
         tracker.SetContentAccess(oot: false, mm: true, separateStones: true);
 
-        Assert.Equal(0, tracker.OotContentFilterIndex);
+        Assert.Equal(0, tracker.OotContentFilterMask);
         Assert.Equal(["oot-major", "oot-key", "oot-junk", "mm-token"], Visible(tracker));
     }
 }

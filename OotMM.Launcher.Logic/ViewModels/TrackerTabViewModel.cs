@@ -145,8 +145,8 @@ public sealed class TrackerTabViewModel : ViewModelBase
             {
                 _ootContentFilter = 0;
                 _mmContentFilter = 0;
-                Raise(nameof(OotContentFilterIndex));
-                Raise(nameof(MmContentFilterIndex));
+                Raise(nameof(OotContentFilterMask));
+                Raise(nameof(MmContentFilterMask));
             }
 
             Raise(nameof(ShowOotContentFilter));
@@ -217,18 +217,19 @@ public sealed class TrackerTabViewModel : ViewModelBase
         _filterText.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
             .Select(Fold).Where(t => t.Length > 0).ToArray();
 
-    public int OotContentFilterIndex
+    /// <summary>The selected filter choices for a game, one bit per choice index; 0 means any contents.</summary>
+    public int OotContentFilterMask
     {
         get => _ootContentFilter;
         set => SetContentFilter(ref _ootContentFilter, _contentFiltersEnabled && _ootRevealed, value,
-                                nameof(OotContentFilterIndex));
+                                nameof(OotContentFilterMask));
     }
 
-    public int MmContentFilterIndex
+    public int MmContentFilterMask
     {
         get => _mmContentFilter;
         set => SetContentFilter(ref _mmContentFilter, _contentFiltersEnabled && _mmRevealed, value,
-                                nameof(MmContentFilterIndex));
+                                nameof(MmContentFilterMask));
     }
 
     public bool OotContentUnlocked => _ootRevealed;
@@ -249,8 +250,8 @@ public sealed class TrackerTabViewModel : ViewModelBase
 
     private void SetContentFilter(ref int field, bool unlocked, int value, string name)
     {
-        var limit = ContentKinds.Length + (_hasRequiredData ? 1 : 0);
-        var next = unlocked ? Math.Clamp(value, 0, limit) : 0;
+        var choices = ContentKinds.Length + (_hasRequiredData ? 2 : 1);
+        var next = unlocked ? value & (((1 << choices) - 1) & ~1) : 0;
         if (field != next)
         {
             field = next;
@@ -273,13 +274,13 @@ public sealed class TrackerTabViewModel : ViewModelBase
         if (!oot && _ootContentFilter != 0)
         {
             _ootContentFilter = 0;
-            Raise(nameof(OotContentFilterIndex));
+            Raise(nameof(OotContentFilterMask));
         }
 
         if (!mm && _mmContentFilter != 0)
         {
             _mmContentFilter = 0;
-            Raise(nameof(MmContentFilterIndex));
+            Raise(nameof(MmContentFilterMask));
         }
 
         Raise(nameof(OotContentUnlocked));
@@ -291,23 +292,25 @@ public sealed class TrackerTabViewModel : ViewModelBase
 
     private bool MatchesContents(CheckRowViewModel row)
     {
-        var index = (row.GameTag == "OOT" ? _ootContentFilter : _mmContentFilter) - 1;
-        if (index < 0)
+        var mask = row.GameTag == "OOT" ? _ootContentFilter : _mmContentFilter;
+        if (mask == 0)
         {
             return true;
         }
 
+        var first = 1;
         if (_hasRequiredData)
         {
-            if (index == 0)
+            if ((mask & 2) != 0 && row.Required)
             {
-                return row.Required;
+                return true;
             }
 
-            index--;
+            first = 2;
         }
 
-        return index < ContentKinds.Length && row.Content == ContentKinds[index].Kind;
+        var kind = Array.FindIndex(ContentKinds, k => k.Kind == row.Content);
+        return kind >= 0 && (mask & (1 << (first + kind))) != 0;
     }
 
     public string FilterText
@@ -536,8 +539,8 @@ public sealed class TrackerTabViewModel : ViewModelBase
             _hasRequiredData = hasRequiredData;
             _ootContentFilter = 0;
             _mmContentFilter = 0;
-            Raise(nameof(OotContentFilterIndex));
-            Raise(nameof(MmContentFilterIndex));
+            Raise(nameof(OotContentFilterMask));
+            Raise(nameof(MmContentFilterMask));
         }
 
         RaiseListChanged();

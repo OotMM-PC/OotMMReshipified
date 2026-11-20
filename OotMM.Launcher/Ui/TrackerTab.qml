@@ -133,7 +133,25 @@ ColumnLayout {
         property string labels
         property string lockedText
         property int selected
-        signal picked(int index)
+        readonly property var choices: labels.split("|")
+        signal picked(int mask)
+
+        function chosen(index) {
+            return index === 0 ? selected === 0 : (selected & (1 << index)) !== 0
+        }
+
+        function toggle(index) {
+            picked(index === 0 ? 0 : selected ^ (1 << index))
+        }
+
+        function summary() {
+            const names = []
+            for (let i = 1; i < choices.length; i++) {
+                if (chosen(i))
+                    names.push(choices[i].replace(/ \(\d+\)$/, ""))
+            }
+            return names.length > 0 ? names.join(", ") : choices[0]
+        }
 
         Layout.fillWidth: true
         spacing: 8
@@ -154,15 +172,56 @@ ColumnLayout {
         }
 
         GoldCombo {
+            id: combo
             Layout.fillWidth: true
             enabled: filter.unlocked
             opacity: enabled ? 1 : 0.6
             tint: filter.game === "MM" ? theme.mm : theme.accent
-            model: filter.labels.split("|")
-            currentIndex: filter.selected
-            displayText: filter.unlocked ? (model[filter.selected] || "") : filter.lockedText
-            onModelChanged: currentIndex = Qt.binding(() => filter.selected)
-            onActivated: index => filter.picked(index)
+            model: filter.choices
+            displayText: filter.unlocked ? filter.summary() : filter.lockedText
+            onActivated: index => {
+                if (popup.visible)
+                    filter.toggle(index)
+            }
+
+            delegate: Item {
+                id: choice
+                required property int index
+                required property var modelData
+                width: combo.width
+                height: 28
+
+                Accessible.role: Accessible.CheckBox
+                Accessible.name: modelData
+                Accessible.checkable: true
+                Accessible.checked: filter.chosen(index)
+                Accessible.onToggleAction: filter.toggle(index)
+                Accessible.onPressAction: filter.toggle(index)
+
+                Rectangle {
+                    anchors.fill: parent
+                    color: hover.containsMouse || combo.highlightedIndex === choice.index
+                           ? theme.alpha(combo.tint, 0.15) : "transparent"
+                }
+
+                GoldCheck {
+                    anchors.verticalCenter: parent.verticalCenter
+                    x: 8
+                    width: parent.width - 16
+                    text: choice.modelData
+                    tint: combo.tint
+                    on: filter.chosen(choice.index)
+                    wrap: false
+                    focusPolicy: Qt.NoFocus
+                }
+
+                MouseArea {
+                    id: hover
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    onClicked: filter.toggle(choice.index)
+                }
+            }
         }
     }
 
@@ -172,8 +231,8 @@ ColumnLayout {
         unlocked: !!(tab.vm && tab.vm.ootContentUnlocked)
         labels: tab.vm ? tab.vm.ootContentLabels : "Any contents"
         lockedText: tab.vm ? tab.vm.ootContentLockedText : ""
-        selected: tab.vm ? tab.vm.ootContentFilterIndex : 0
-        onPicked: index => tab.vm.ootContentFilterIndex = index
+        selected: tab.vm ? tab.vm.ootContentFilterMask : 0
+        onPicked: mask => tab.vm.ootContentFilterMask = mask
     }
 
     ContentFilter {
@@ -182,8 +241,8 @@ ColumnLayout {
         unlocked: !!(tab.vm && tab.vm.mmContentUnlocked)
         labels: tab.vm ? tab.vm.mmContentLabels : "Any contents"
         lockedText: tab.vm ? tab.vm.mmContentLockedText : ""
-        selected: tab.vm ? tab.vm.mmContentFilterIndex : 0
-        onPicked: index => tab.vm.mmContentFilterIndex = index
+        selected: tab.vm ? tab.vm.mmContentFilterMask : 0
+        onPicked: mask => tab.vm.mmContentFilterMask = mask
     }
 
     GoldCheck {

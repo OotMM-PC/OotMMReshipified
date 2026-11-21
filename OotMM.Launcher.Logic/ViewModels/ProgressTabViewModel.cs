@@ -164,6 +164,29 @@ public sealed partial class ProgressTabViewModel : ViewModelBase
         return Meter(label, list.Count(i => i.Complete), list.Count, section);
     }
 
+    private static GoalRowViewModel GoalRow(GoalProgress goal)
+    {
+        var have = Math.Min(goal.Owned, goal.Threshold) + goal.Needs.Sum(n => Math.Min(n.Have, n.Total));
+        var total = goal.Threshold + goal.Needs.Sum(n => n.Total);
+        var lines = new List<string>();
+        if (goal.Parts.Count > 0)
+        {
+            lines.Add($"Any {goal.Threshold} of: " +
+                      string.Join("  ·  ", goal.Parts.Select(p => $"{p.Name} {Count(p.Have, p.Total)}")));
+        }
+
+        if (goal.Needs.Count > 0)
+        {
+            lines.Add((goal.Parts.Count > 0 ? "Also needs: " : "Needs: ") +
+                      string.Join("  ·  ", goal.Needs.Select(n => n.Total == 1
+                          ? $"{n.Name} {(n.Have >= 1 ? "✓" : "○")}"
+                          : $"{n.Name} {Count(n.Have, n.Total)}")));
+        }
+
+        return new GoalRowViewModel(goal.Title, Count(have, total), Fraction(have, total), goal.Satisfied,
+                                    string.Join("\n", lines));
+    }
+
     private void RefreshOverview(ProgressReport report)
     {
         var checks = new List<ProgressMeter> { Meter("All checks", report.Checks.Have, report.Checks.Total) };
@@ -217,12 +240,7 @@ public sealed partial class ProgressTabViewModel : ViewModelBase
             Raise(nameof(Bosses));
         }
 
-        var goals = report.Goals.Where(g => g.Active).Select(g => new GoalRowViewModel(
-            g.Title,
-            Count(Math.Min(g.Owned, g.Threshold), g.Threshold),
-            Fraction(g.Owned, g.Threshold),
-            g.Satisfied,
-            string.Join("  ·  ", g.Parts.Select(p => $"{p.Name} {Count(p.Have, p.Total)}")))).ToList();
+        var goals = report.Goals.Select(GoalRow).ToList();
         if (!goals.SequenceEqual(Goals))
         {
             Goals = new ObservableCollection<GoalRowViewModel>(goals);
@@ -428,6 +446,10 @@ public sealed partial class ProgressTabViewModel : ViewModelBase
             GeneratorVersion = Seed.RequiredGeneratorVersion,
             SeedId = "preview",
             PlayerCount = 2,
+            StringSettings = new Dictionary<string, string>
+            {
+                ["rainbowBridge"] = "custom", ["majoraChild"] = "custom",
+            },
             SpecialConds = new Dictionary<string, Seed.SpecialCond>
             {
                 ["BRIDGE"] = new(4, new Dictionary<string, bool> { ["stones"] = true, ["medallions"] = true }),

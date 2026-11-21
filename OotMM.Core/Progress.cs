@@ -39,11 +39,10 @@ public sealed record ForeignSummary(int Have, int Total);
 
 public sealed record GoalPart(string Name, int Have, int Total);
 
-public sealed record GoalProgress(string Name, string Title, int Owned, int Threshold, IReadOnlyList<GoalPart> Parts)
+public sealed record GoalProgress(
+    string Name, string Title, int Owned, int Threshold, IReadOnlyList<GoalPart> Parts, IReadOnlyList<GoalPart> Needs)
 {
-    public bool Active => Threshold > 0;
-
-    public bool Satisfied => Owned >= Threshold;
+    public bool Satisfied => Owned >= Threshold && Needs.All(n => n.Have >= n.Total);
 }
 
 public sealed class ProgressReport
@@ -72,13 +71,20 @@ public sealed class ProgressReport
         new("Stone Tower Temple", Game.Mm, "ST", [0x16, 0x18, 0x36], "MM_STONE_TOWER_TEMPLE_"),
     ];
 
+    private static readonly string[] Medallions =
+    [
+        "OOT_MEDALLION_FOREST", "OOT_MEDALLION_FIRE", "OOT_MEDALLION_WATER",
+        "OOT_MEDALLION_SPIRIT", "OOT_MEDALLION_SHADOW", "OOT_MEDALLION_LIGHT",
+    ];
+
+    private static readonly string[] Remains =
+        ["MM_REMAINS_ODOLWA", "MM_REMAINS_GOHT", "MM_REMAINS_GYORG", "MM_REMAINS_TWINMOLD"];
+
     private static readonly (string Field, string Name, string[] Ids, bool Unique)[] GoalFields =
     [
         ("stones", "Spiritual Stones", ["OOT_STONE_EMERALD", "OOT_STONE_RUBY", "OOT_STONE_SAPPHIRE"], false),
-        ("medallions", "Medallions", ["OOT_MEDALLION_FOREST", "OOT_MEDALLION_FIRE", "OOT_MEDALLION_WATER",
-                                      "OOT_MEDALLION_SPIRIT", "OOT_MEDALLION_SHADOW", "OOT_MEDALLION_LIGHT"], false),
-        ("remains", "Boss Remains",
-         ["MM_REMAINS_ODOLWA", "MM_REMAINS_GOHT", "MM_REMAINS_GYORG", "MM_REMAINS_TWINMOLD"], false),
+        ("medallions", "Medallions", Medallions, false),
+        ("remains", "Boss Remains", Remains, false),
         ("skullsGold", "Gold Skulltula tokens", ["OOT_GS_TOKEN"], false),
         ("skullsSwamp", "Swamp Skulltula tokens", ["MM_GS_TOKEN_SWAMP"], false),
         ("skullsOcean", "Ocean Skulltula tokens", ["MM_GS_TOKEN_OCEAN"], false),
@@ -115,13 +121,33 @@ public sealed class ProgressReport
         ("coinsYellow", "Yellow coins", ["OOT_COIN_YELLOW", "MM_COIN_YELLOW"], false),
     ];
 
-    private static readonly (string Name, string Title)[] GoalNames =
+    private const int ClockTowerRoofSongEvent = 12;
+    private const int OathToOrder = 19;
+    private const int GoronLullaby = 15;
+    private const int LullabyIntro = 16;
+
+    private static readonly (string Key, string Name, int Notes, string[] Buttons)[] MmSongs =
     [
-        ("BRIDGE", "Rainbow Bridge"),
-        ("MOON", "Moon access"),
-        ("LACS", "Light Arrow cutscene"),
-        ("GANON_BK", "Ganon's Boss Key"),
-        ("MAJORA", "Majora fight"),
+        ("ZELDA", "Zelda's Lullaby", 6, ["C_UP", "C_RIGHT", "C_LEFT"]),
+        ("EPONA", "Epona's Song", 6, ["C_UP", "C_RIGHT", "C_LEFT"]),
+        ("SARIA", "Saria's Song", 6, ["C_DOWN", "C_RIGHT", "C_LEFT"]),
+        ("STORMS", "Song of Storms", 6, ["A", "C_DOWN", "C_UP"]),
+        ("SUN", "Sun's Song", 6, ["C_RIGHT", "C_DOWN", "C_UP"]),
+        ("TIME", "Song of Time", 6, ["A", "C_RIGHT", "C_DOWN"]),
+        ("TP_FOREST", "Minuet of Forest", 6, ["A", "C_UP", "C_RIGHT", "C_LEFT"]),
+        ("TP_FIRE", "Bolero of Fire", 8, ["A", "C_RIGHT", "C_DOWN"]),
+        ("TP_WATER", "Serenade of Water", 5, ["A", "C_RIGHT", "C_DOWN", "C_LEFT"]),
+        ("TP_SPIRIT", "Requiem of Spirit", 6, ["A", "C_RIGHT", "C_DOWN"]),
+        ("TP_SHADOW", "Nocturne of Shadow", 7, ["A", "C_RIGHT", "C_DOWN", "C_LEFT"]),
+        ("TP_LIGHT", "Prelude of Light", 6, ["C_UP", "C_RIGHT", "C_LEFT"]),
+        ("HEALING", "Song of Healing", 6, ["C_LEFT", "C_RIGHT", "C_DOWN"]),
+        ("SOARING", "Song of Soaring", 6, ["C_DOWN", "C_UP", "C_LEFT"]),
+        ("AWAKENING", "Sonata of Awakening", 7, ["C_UP", "C_RIGHT", "C_LEFT", "A"]),
+        ("GORON", "Goron Lullaby", 8, ["A", "C_RIGHT", "C_LEFT"]),
+        ("GORON_HALF", "Lullaby Intro", 6, ["A", "C_RIGHT", "C_LEFT"]),
+        ("ZORA", "New Wave Bossa Nova", 7, ["C_LEFT", "C_RIGHT", "C_UP", "C_DOWN"]),
+        ("EMPTINESS", "Elegy of Emptiness", 7, ["C_LEFT", "C_RIGHT", "C_UP", "C_DOWN"]),
+        ("ORDER", "Oath to Order", 6, ["C_RIGHT", "C_DOWN", "C_UP", "A"]),
     ];
 
     private static readonly string[] SoulPrefixes =
@@ -322,57 +348,156 @@ public sealed class ProgressReport
 
     private IReadOnlyList<GoalProgress> BuildGoals(Seed seed)
     {
+        var goal = seed.GetStringSetting("goal", "both");
+        var bosses = goal is not ("triforce" or "triforce3");
+        var games = seed.GetStringSetting("games", "ootmm");
         var goals = new List<GoalProgress>();
-        foreach (var (goalName, title) in GoalNames)
-        {
-            if (!seed.SpecialConds.TryGetValue(goalName, out var cond))
-            {
-                continue;
-            }
 
-            var parts = new List<GoalPart>();
-            var owned = 0;
-            var uniqueOwned = new HashSet<string>(StringComparer.Ordinal);
-            if (cond.Count > 0)
-            {
-                foreach (var (field, name, ids, unique) in GoalFields)
-                {
-                    if (!cond.Field(field))
-                    {
-                        continue;
-                    }
-
-                    if (unique)
-                    {
-                        parts.Add(new GoalPart(name, ids.Count(id => Have(id) > 0), ids.Count(id => Pool(id) > 0)));
-                        owned += ids.Count(id => Have(id) > 0 && uniqueOwned.Add(id));
-                    }
-                    else
-                    {
-                        parts.Add(new GoalPart(name, ids.Sum(Have), ids.Sum(Pool)));
-                        owned += ids.Sum(Have);
-                    }
-                }
-            }
-
-            goals.Add(new GoalProgress(goalName, title, owned, cond.Count, parts));
-        }
-
-        switch (seed.GetStringSetting("goal", "both"))
+        switch (goal)
         {
             case "triforce":
-                goals.Insert(0, new GoalProgress("TRIFORCE", "Triforce Hunt", Have("SHARED_TRIFORCE"),
-                                                 seed.GetIntSetting("triforceGoal", 20), []));
+                goals.Add(new GoalProgress("TRIFORCE", "Triforce Hunt", Have("SHARED_TRIFORCE"),
+                                           seed.GetIntSetting("triforceGoal", 20), [], []));
                 break;
             case "triforce3":
                 string[] named = ["SHARED_TRIFORCE_POWER", "SHARED_TRIFORCE_COURAGE", "SHARED_TRIFORCE_WISDOM"];
-                goals.Insert(0, new GoalProgress("TRIFORCE", "Triforce Quest", named.Count(id => Have(id) > 0),
-                                                 named.Length, []));
+                goals.Add(new GoalProgress("TRIFORCE", "Triforce Quest", named.Count(id => Have(id) > 0),
+                                           named.Length, [], []));
                 break;
+        }
+
+        if (games != "mm")
+        {
+            var bridge = seed.GetStringSetting("rainbowBridge", "medallions");
+            AddGoal(goals, seed, "BRIDGE", "Rainbow Bridge", bridge == "custom", bridge switch
+            {
+                "vanilla" =>
+                [
+                    SpiritAndShadow(),
+                    new GoalPart("Light Arrows", AnyOwned("OOT_ARROW_LIGHT", "SHARED_ARROW_LIGHT"), 1),
+                ],
+                "medallions" => [Distinct("Medallions", Medallions)],
+                _ => [],
+            });
+
+            var lacs = seed.GetStringSetting("lacs", "vanilla");
+            List<GoalPart> lacsNeeds = lacs == "custom" ? [] : [SpiritAndShadow()];
+            if (seed.GetBoolSetting("soulsNpcOot"))
+            {
+                lacsNeeds.Add(new GoalPart("Soul of Sheik", AnyOwned("OOT_SOUL_NPC_SHEIK"), 1));
+                lacsNeeds.Add(new GoalPart("Soul of Zelda", AnyOwned("OOT_SOUL_NPC_ZELDA"), 1));
+            }
+
+            AddGoal(goals, seed, "LACS", "Light Arrow cutscene", lacs == "custom", lacsNeeds);
+
+            if (bosses)
+            {
+                var key = seed.GetStringSetting("ganonBossKey", "removed");
+                AddGoal(goals, seed, "GANON_BK", "Ganon's Boss Key", key == "custom",
+                        key is "removed" or "custom"
+                            ? []
+                            : [new GoalPart("Ganon's Boss Key", AnyOwned("OOT_BOSS_KEY_GANON"), 1)]);
+            }
+        }
+
+        if (games != "oot")
+        {
+            var moon = seed.GetStringSetting("moon", "vanilla");
+            List<GoalPart> moonNeeds = moon == "vanilla" ? [Distinct("Boss Remains", Remains)] : [];
+            if (!seed.GetBoolSetting("openMoon"))
+            {
+                moonNeeds.AddRange(RoofSong(seed));
+            }
+
+            AddGoal(goals, seed, "MOON", "Moon access", moon == "custom", moonNeeds);
+
+            if (bosses)
+            {
+                AddGoal(goals, seed, "MAJORA", "Majora fight", seed.GetStringSetting("majoraChild", "none") == "custom",
+                        seed.GetBoolSetting("soulsNpcMm")
+                            ? [new GoalPart("Soul of Moon Children", AnyOwned("MM_SOUL_NPC_MOON_CHILDREN"), 1)]
+                            : []);
+            }
         }
 
         return goals;
     }
+
+    private void AddGoal(
+        List<GoalProgress> goals, Seed seed, string name, string title, bool custom, List<GoalPart> needs)
+    {
+        var parts = new List<GoalPart>();
+        var owned = 0;
+        var threshold = 0;
+        if (custom && seed.SpecialConds.TryGetValue(name, out var cond) && cond.Count > 0)
+        {
+            threshold = cond.Count;
+            var uniqueOwned = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var (field, partName, ids, unique) in GoalFields)
+            {
+                if (!cond.Field(field))
+                {
+                    continue;
+                }
+
+                if (unique)
+                {
+                    parts.Add(new GoalPart(partName, ids.Count(id => Have(id) > 0), ids.Count(id => Pool(id) > 0)));
+                    owned += ids.Count(id => Have(id) > 0 && uniqueOwned.Add(id));
+                }
+                else
+                {
+                    parts.Add(new GoalPart(partName, ids.Sum(Have), ids.Sum(Pool)));
+                    owned += ids.Sum(Have);
+                }
+            }
+        }
+
+        if (threshold > 0 || needs.Count > 0)
+        {
+            goals.Add(new GoalProgress(name, title, owned, threshold, parts, needs));
+        }
+    }
+
+    private int AnyOwned(params string[] ids) => ids.Any(id => Have(id) > 0) ? 1 : 0;
+
+    private GoalPart Distinct(string name, string[] ids) => new(name, ids.Count(id => Have(id) > 0), ids.Length);
+
+    private GoalPart SpiritAndShadow() =>
+        Distinct("Spirit and Shadow Medallions", ["OOT_MEDALLION_SPIRIT", "OOT_MEDALLION_SHADOW"]);
+
+    private IEnumerable<GoalPart> RoofSong(Seed seed)
+    {
+        var song = seed.SongEventsMm.Count > ClockTowerRoofSongEvent ? seed.SongEventsMm[ClockTowerRoofSongEvent]
+                                                                      : OathToOrder;
+        var (key, name, notes, buttons) = MmSongs[song];
+        var owned = song switch
+        {
+            GoronLullaby => GoronOwned(),
+            LullabyIntro => GoronOwned() || (seed.GetStringSetting("progressiveGoronLullabyMm", "progressive")
+                                                 == "progressive" && SongOwned(key, "GORON", notes)),
+            _ => SongOwned(key, key, notes),
+        };
+        yield return new GoalPart($"{name} on the Clock Tower roof", owned ? 1 : 0, 1);
+
+        var ocarinas = seed.GetBoolSetting("sharedOcarina") && !seed.GetBoolSetting("fairyOcarinaMm") ? 2 : 1;
+        var ocarina = Have("MM_OCARINA") >= ocarinas || Have("SHARED_OCARINA") >= ocarinas;
+        yield return new GoalPart("Ocarina", ocarina ? 1 : 0, 1);
+
+        if (seed.GetBoolSetting("ocarinaButtonsShuffleMm"))
+        {
+            var prefix = seed.GetBoolSetting("sharedOcarinaButtons") ? "SHARED_BUTTON_" : "MM_BUTTON_";
+            yield return new GoalPart($"Ocarina buttons for {name}", buttons.Count(b => Have(prefix + b) > 0),
+                                      buttons.Length);
+        }
+    }
+
+    private bool GoronOwned() =>
+        SongOwned("GORON", "GORON", 8) || Have("MM_SONG_GORON_HALF") >= 2 || Have("SHARED_SONG_GORON_HALF") >= 2;
+
+    private bool SongOwned(string key, string noteKey, int notes) =>
+        Have($"MM_SONG_{key}") > 0 || Have($"SHARED_SONG_{key}") > 0
+        || Have($"MM_SONG_NOTE_{noteKey}") >= notes || Have($"SHARED_SONG_NOTE_{noteKey}") >= notes;
 
     private static List<ItemProgress> Bucket(SortedDictionary<ItemGroup, List<ItemProgress>> groups, ItemGroup group)
     {

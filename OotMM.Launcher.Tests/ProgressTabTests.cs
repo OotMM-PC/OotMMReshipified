@@ -1,3 +1,4 @@
+using OotMM.Core;
 using OotMM.Launcher.ViewModels;
 
 namespace OotMM.Launcher.Tests;
@@ -25,9 +26,38 @@ public sealed class ProgressTabTests
         Assert.Equal("Defeat Ganon and Majora to finish.", tab.GoalText);
         var bridge = tab.Goals.Single(g => g.Name == "Rainbow Bridge");
         Assert.Equal("2 / 4", bridge.CountText);
-        Assert.Equal("Spiritual Stones 2 / 2  ·  Medallions 0 / 2", bridge.Detail);
+        Assert.Equal("Any 4 of: Spiritual Stones 2 / 2  ·  Medallions 0 / 2", bridge.Detail);
         Assert.False(bridge.Satisfied);
+        var moon = tab.Goals.Single(g => g.Name == "Moon access");
+        Assert.Equal("1 / 6", moon.CountText);
+        Assert.Equal("Needs: Boss Remains 1 / 4  ·  Oath to Order on the Clock Tower roof ○  ·  Ocarina ○",
+                     moon.Detail);
+        var majora = tab.Goals.Single(g => g.Name == "Majora fight");
+        Assert.Equal("Any 2 of: Boss Remains 1 / 2", majora.Detail);
         Assert.Equal(["Items", "Songs", "Dungeons cleared", "Souls"], tab.Collection.Select(m => m.Label));
+    }
+
+    [Fact]
+    public void TriforceRowsHaveNoBreakdown()
+    {
+        var seed = new Seed
+        {
+            Format = Seed.CurrentFormat,
+            GeneratorVersion = Seed.RequiredGeneratorVersion,
+            SeedId = "S",
+            StringSettings = new Dictionary<string, string>
+            {
+                ["goal"] = "triforce", ["games"] = "mm", ["moon"] = "open",
+            },
+            BoolSettings = new Dictionary<string, bool> { ["openMoon"] = true },
+            NumberSettings = new Dictionary<string, double> { ["triforceGoal"] = 20 },
+        };
+        var tab = new ProgressTabViewModel();
+        tab.SetReport(ProgressReport.Build(seed, [], new Dictionary<string, int> { ["SHARED_TRIFORCE"] = 3 }),
+                      "triforce", false, false, false);
+
+        var triforce = Assert.Single(tab.Goals);
+        Assert.Equal(("Triforce Hunt", "3 / 20", ""), (triforce.Name, triforce.CountText, triforce.Detail));
     }
 
     [Fact]

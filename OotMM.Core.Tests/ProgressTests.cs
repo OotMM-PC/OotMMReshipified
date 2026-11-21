@@ -21,6 +21,7 @@ public class ProgressTests
             SeedId = "S",
             PlayerId = 1,
             PlayerCount = 2,
+            StringSettings = new Dictionary<string, string> { ["rainbowBridge"] = "custom" },
             SpecialConds = new Dictionary<string, Seed.SpecialCond>
             {
                 ["BRIDGE"] = new(bridgeCount, new Dictionary<string, bool> { ["stones"] = true }),
@@ -128,11 +129,11 @@ public class ProgressTests
         Assert.Single(report.Souls(Game.Mm, SoulSub.Boss));
         Assert.Empty(report.Souls(Game.Oot, SoulSub.Boss));
 
-        var bridge = Assert.Single(report.Goals);
+        var bridge = report.Goals[0];
         Assert.Equal(("BRIDGE", "Rainbow Bridge"), (bridge.Name, bridge.Title));
         Assert.Equal(2, bridge.Owned);
         Assert.Equal(new GoalPart("Spiritual Stones", 2, 2), Assert.Single(bridge.Parts));
-        Assert.True(bridge.Active);
+        Assert.Empty(bridge.Needs);
         Assert.True(bridge.Satisfied);
 
         Assert.False(BuildReport(out _, bridgeCount: 3).Goals[0].Satisfied);
@@ -169,6 +170,7 @@ public class ProgressTests
             Format = Seed.CurrentFormat,
             GeneratorVersion = Seed.RequiredGeneratorVersion,
             SeedId = "S",
+            StringSettings = new Dictionary<string, string> { ["moon"] = "custom" },
             SpecialConds = new Dictionary<string, Seed.SpecialCond>
             {
                 ["MOON"] = new(2, new Dictionary<string, bool> { ["masksRegular"] = true, ["masksOot"] = true }),
@@ -177,9 +179,220 @@ public class ProgressTests
         List<(ItemPlacement, bool)> checks = [(Placement(Game.Oot, "A", "SHARED_MASK_KEATON", owner: 1), true)];
         var report = ProgressReport.Build(seed, checks, new Dictionary<string, int> { ["SHARED_MASK_KEATON"] = 1 });
 
-        var moon = Assert.Single(report.Goals);
+        var moon = report.Goals.Single(g => g.Name == "MOON");
         Assert.Equal(1, moon.Owned);
         Assert.Equal(2, moon.Parts.Count);
+    }
+
+    private static IReadOnlyList<GoalProgress> Goals(
+        Dictionary<string, string>? strings = null, Dictionary<string, bool>? bools = null,
+        Dictionary<string, int>? have = null, Dictionary<string, Seed.SpecialCond>? conds = null,
+        int[]? songEventsMm = null)
+    {
+        var seed = new Seed
+        {
+            Format = Seed.CurrentFormat,
+            GeneratorVersion = Seed.RequiredGeneratorVersion,
+            SeedId = "S",
+            StringSettings = strings ?? [],
+            BoolSettings = bools ?? [],
+            SpecialConds = conds ?? [],
+            SongEventsMm = songEventsMm ?? [],
+        };
+        return ProgressReport.Build(seed, [], have ?? []).Goals;
+    }
+
+    private static GoalProgress Goal(IReadOnlyList<GoalProgress> goals, string name) =>
+        goals.Single(g => g.Name == name);
+
+    [Fact]
+    public void DefaultModesFollowOg()
+    {
+        var goals = Goals();
+
+        Assert.Equal(["BRIDGE", "LACS", "MOON"], goals.Select(g => g.Name));
+        Assert.Equal([new GoalPart("Medallions", 0, 6)], Goal(goals, "BRIDGE").Needs);
+        Assert.Equal([new GoalPart("Spirit and Shadow Medallions", 0, 2)], Goal(goals, "LACS").Needs);
+        Assert.Equal(
+            [
+                new GoalPart("Boss Remains", 0, 4), new GoalPart("Oath to Order on the Clock Tower roof", 0, 1),
+                new GoalPart("Ocarina", 0, 1),
+            ],
+            Goal(goals, "MOON").Needs);
+    }
+
+    [Fact]
+    public void VanillaMoonNeedsEveryRemainsAndAPlayableRoofSong()
+    {
+        Dictionary<string, int> have = new()
+        {
+            ["MM_REMAINS_ODOLWA"] = 1, ["MM_REMAINS_GOHT"] = 1, ["MM_REMAINS_GYORG"] = 1, ["MM_SONG_ORDER"] = 1,
+            ["MM_OCARINA"] = 1,
+        };
+        var moon = Goal(Goals(have: have), "MOON");
+        Assert.Equal(new GoalPart("Boss Remains", 3, 4), moon.Needs[0]);
+        Assert.False(moon.Satisfied);
+
+        have["MM_REMAINS_TWINMOLD"] = 1;
+        Assert.True(Goal(Goals(have: have), "MOON").Satisfied);
+
+        have.Remove("MM_OCARINA");
+        Assert.False(Goal(Goals(have: have), "MOON").Satisfied);
+    }
+
+    [Fact]
+    public void RoofSongNeedsTheOcarinaAndItsButtons()
+    {
+        Dictionary<string, bool> bools = new() { ["sharedOcarina"] = true, ["ocarinaButtonsShuffleMm"] = true };
+        Dictionary<string, int> have = new()
+        {
+            ["MM_SONG_ORDER"] = 1, ["SHARED_OCARINA"] = 1, ["MM_BUTTON_A"] = 1, ["MM_BUTTON_C_UP"] = 1,
+        };
+        var moon = Goal(Goals(bools: bools, have: have), "MOON");
+        Assert.Equal([new GoalPart("Ocarina", 0, 1), new GoalPart("Ocarina buttons for Oath to Order", 2, 4)],
+                     moon.Needs.Skip(2));
+
+        bools["fairyOcarinaMm"] = true;
+        bools["sharedOcarinaButtons"] = true;
+        have["SHARED_BUTTON_C_RIGHT"] = 1;
+        var shared = Goal(Goals(bools: bools, have: have), "MOON");
+        Assert.Equal([new GoalPart("Ocarina", 1, 1), new GoalPart("Ocarina buttons for Oath to Order", 1, 4)],
+                     shared.Needs.Skip(2));
+    }
+
+    [Fact]
+    public void ShuffledRoofSongIsTheOneNeeded()
+    {
+        int[] events = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 7];
+        var moon = Goal(Goals(have: new() { ["MM_SONG_ORDER"] = 1 }, songEventsMm: events), "MOON");
+        Assert.Equal(new GoalPart("Bolero of Fire on the Clock Tower roof", 0, 1), moon.Needs[1]);
+
+        Assert.Equal(1, Goal(Goals(have: new() { ["SHARED_SONG_NOTE_TP_FIRE"] = 8 }, songEventsMm: events), "MOON")
+                            .Needs[1].Have);
+        Assert.Equal(0, Goal(Goals(have: new() { ["MM_SONG_NOTE_TP_FIRE"] = 5, ["SHARED_SONG_NOTE_TP_FIRE"] = 3 },
+                                   songEventsMm: events), "MOON").Needs[1].Have);
+    }
+
+    [Fact]
+    public void GoronRoofSongs()
+    {
+        int[] events = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 15];
+        Assert.Equal(new GoalPart("Goron Lullaby on the Clock Tower roof", 1, 1),
+                     Goal(Goals(have: new() { ["MM_SONG_GORON_HALF"] = 2 }, songEventsMm: events), "MOON").Needs[1]);
+        Assert.Equal(0, Goal(Goals(have: new() { ["MM_SONG_GORON_HALF"] = 1, ["SHARED_SONG_GORON_HALF"] = 1 },
+                                   songEventsMm: events), "MOON").Needs[1].Have);
+
+        events[12] = 16;
+        Assert.Equal(1, Goal(Goals(have: new() { ["MM_SONG_GORON"] = 1 }, songEventsMm: events), "MOON").Needs[1].Have);
+        Assert.Equal(1, Goal(Goals(have: new() { ["MM_SONG_NOTE_GORON"] = 6 }, songEventsMm: events), "MOON")
+                            .Needs[1].Have);
+        var single = Goals(strings: new() { ["progressiveGoronLullabyMm"] = "single" },
+                           have: new() { ["MM_SONG_GORON_HALF"] = 1 }, songEventsMm: events);
+        Assert.Equal(0, Goal(single, "MOON").Needs[1].Have);
+    }
+
+    [Fact]
+    public void OpenAndCustomMoon()
+    {
+        var open = Goal(Goals(strings: new() { ["moon"] = "open" },
+                              have: new() { ["SHARED_SONG_ORDER"] = 1, ["MM_OCARINA"] = 1 }),
+                        "MOON");
+        Assert.True(open.Satisfied);
+        Assert.Equal(["Oath to Order on the Clock Tower roof", "Ocarina"], open.Needs.Select(n => n.Name));
+
+        Assert.DoesNotContain(Goals(strings: new() { ["moon"] = "open" }, bools: new() { ["openMoon"] = true }),
+                              g => g.Name == "MOON");
+
+        var custom = Goal(Goals(strings: new() { ["moon"] = "custom" },
+                                have: new() { ["MM_REMAINS_GOHT"] = 1 },
+                                conds: new()
+                                {
+                                    ["MOON"] = new(1, new Dictionary<string, bool> { ["remains"] = true }),
+                                }),
+                          "MOON");
+        Assert.Equal((1, 1), (custom.Owned, custom.Threshold));
+        Assert.False(custom.Satisfied);
+        Assert.Equal(["Oath to Order on the Clock Tower roof", "Ocarina"], custom.Needs.Select(n => n.Name));
+    }
+
+    [Fact]
+    public void BridgeModes()
+    {
+        var vanilla = Goal(Goals(strings: new() { ["rainbowBridge"] = "vanilla" },
+                                 have: new()
+                                 {
+                                     ["OOT_MEDALLION_SPIRIT"] = 1, ["OOT_MEDALLION_SHADOW"] = 1,
+                                     ["SHARED_ARROW_LIGHT"] = 1,
+                                 }),
+                           "BRIDGE");
+        Assert.Equal([new GoalPart("Spirit and Shadow Medallions", 2, 2), new GoalPart("Light Arrows", 1, 1)],
+                     vanilla.Needs);
+        Assert.True(vanilla.Satisfied);
+
+        Assert.DoesNotContain(Goals(strings: new() { ["rainbowBridge"] = "open" }), g => g.Name == "BRIDGE");
+    }
+
+    [Fact]
+    public void StaleSpecialConditionsAreIgnoredUnlessCustom()
+    {
+        Dictionary<string, Seed.SpecialCond> conds = new()
+        {
+            ["BRIDGE"] = new(3, new Dictionary<string, bool> { ["stones"] = true }),
+            ["MAJORA"] = new(3, new Dictionary<string, bool> { ["remains"] = true }),
+        };
+        var goals = Goals(conds: conds);
+
+        Assert.Empty(Goal(goals, "BRIDGE").Parts);
+        Assert.DoesNotContain(goals, g => g.Name == "MAJORA");
+    }
+
+    [Fact]
+    public void GanonBossKeyModes()
+    {
+        Assert.DoesNotContain(Goals(), g => g.Name == "GANON_BK");
+
+        var anywhere = Goal(Goals(strings: new() { ["ganonBossKey"] = "anywhere" }), "GANON_BK");
+        Assert.Equal([new GoalPart("Ganon's Boss Key", 0, 1)], anywhere.Needs);
+        var vanilla = Goal(Goals(strings: new() { ["ganonBossKey"] = "vanilla" },
+                                 have: new() { ["OOT_BOSS_KEY_GANON"] = 1 }), "GANON_BK");
+        Assert.True(vanilla.Satisfied);
+
+        var custom = Goal(Goals(strings: new() { ["ganonBossKey"] = "custom" },
+                                conds: new()
+                                {
+                                    ["GANON_BK"] = new(2, new Dictionary<string, bool> { ["stones"] = true }),
+                                }),
+                          "GANON_BK");
+        Assert.Empty(custom.Needs);
+        Assert.Equal(2, custom.Threshold);
+    }
+
+    [Fact]
+    public void SoulsAreNeededWhenNpcSoulsAreShuffled()
+    {
+        var goals = Goals(bools: new() { ["soulsNpcOot"] = true, ["soulsNpcMm"] = true },
+                          have: new() { ["OOT_SOUL_NPC_ZELDA"] = 1 });
+
+        Assert.Equal(["Spirit and Shadow Medallions", "Soul of Sheik", "Soul of Zelda"],
+                     Goal(goals, "LACS").Needs.Select(n => n.Name));
+        Assert.Equal(1, Goal(goals, "LACS").Needs[2].Have);
+        var majora = Goal(goals, "MAJORA");
+        Assert.Equal(0, majora.Threshold);
+        Assert.Equal("Soul of Moon Children", Assert.Single(majora.Needs).Name);
+    }
+
+    [Fact]
+    public void TriforceAndSingleGameSeedsDropRows()
+    {
+        var triforce = Goals(strings: new()
+                             {
+                                 ["goal"] = "triforce", ["ganonBossKey"] = "anywhere", ["majoraChild"] = "custom",
+                             },
+                             conds: new() { ["MAJORA"] = new(1, new Dictionary<string, bool> { ["remains"] = true }) });
+        Assert.Equal(["TRIFORCE", "BRIDGE", "LACS", "MOON"], triforce.Select(g => g.Name));
+
+        Assert.Equal(["MOON"], Goals(strings: new() { ["games"] = "mm" }).Select(g => g.Name));
+        Assert.Equal(["BRIDGE", "LACS"], Goals(strings: new() { ["games"] = "oot" }).Select(g => g.Name));
     }
 
     [Theory]

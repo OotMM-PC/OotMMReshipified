@@ -93,6 +93,38 @@ public sealed class ProgressTabTests
     }
 
     [Fact]
+    public void FoundSaysWhoFoundEachMajorItemAndWhere()
+    {
+        var tab = Tab("Found");
+
+        Assert.True(tab.ShowList);
+        Assert.False(tab.ShowMissingOnly);
+        Assert.Contains(tab.Rows, r => r is { Text: "Hookshot", Detail: "You · C10", Level: 2 });
+        Assert.Contains(tab.Rows, r => r is { IsHeader: true, Text: "Songs", CountText: "2" });
+        Assert.DoesNotContain(tab.Rows, r => r.Text is "Hookshot" && r.Detail == "You · C11");
+        Assert.DoesNotContain(tab.Rows, r => r.Text.Contains("Arrows") || r.Text.Contains("Token"));
+
+        tab.GameIndex = 1;
+        Assert.Contains(tab.Rows, r => r is { Text: "Goron Mask", Detail: "Player 2 · F1" });
+        Assert.True(tab.ShowFoundFilter);
+
+        tab.FoundFilter = "player 2";
+        Assert.Equal(["Masks 1", "Goron Mask"],
+                     tab.Rows.Select(r => r.IsHeader ? $"{r.Text} {r.CountText}" : r.Text));
+        tab.FoundFilter = "deku";
+        Assert.Equal(["Deku Mask"], tab.Rows.Where(r => !r.IsHeader).Select(r => r.Text));
+        tab.FoundFilter = "nothing like this";
+        Assert.Empty(tab.Rows);
+        Assert.Equal("No found items match.", tab.EmptyText);
+        tab.FoundFilter = "";
+
+        tab.OpenSection(tab.Sections.Single(s => s.Label == "Items").Key);
+        Assert.False(tab.ShowFoundFilter);
+        Assert.True(tab.ShowMissingOnly);
+        Assert.All(tab.Rows, r => Assert.Equal("", r.Detail));
+    }
+
+    [Fact]
     public void SoulsDropThePrefixAndShareAcrossGames()
     {
         var tab = Tab("Souls");

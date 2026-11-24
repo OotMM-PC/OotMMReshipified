@@ -65,6 +65,7 @@ ColumnLayout {
         }
 
         GoldCheck {
+            visible: !!(tab.vm && tab.vm.showMissingOnly)
             text: "Missing only"
             wrap: false
             on: !!(tab.vm && tab.vm.missingOnly)
@@ -74,6 +75,40 @@ ColumnLayout {
             onFlipped: value => {
                 tab.vm.missingOnly = value
                 list.contentY = 0
+            }
+        }
+    }
+
+    Field {
+        id: foundSearch
+        Layout.fillWidth: true
+        visible: !!(tab.vm && tab.vm.showFoundFilter)
+        rightPadding: clearFound.visible ? clearFound.width + 12 : 9
+        placeholderText: "Search items, players or checks"
+        text: tab.vm ? tab.vm.foundFilter : ""
+        onTextEdited: {
+            tab.vm.foundFilter = text
+            list.contentY = 0
+        }
+        onAccepted: focus = false
+        Keys.onEscapePressed: {
+            tab.vm.foundFilter = ""
+            focus = false
+        }
+
+        LinkButton {
+            id: clearFound
+            anchors.right: parent.right
+            anchors.rightMargin: 9
+            anchors.verticalCenter: parent.verticalCenter
+            visible: foundSearch.text.length > 0
+            text: "✕"
+            ToolTip.visible: hovered
+            ToolTip.delay: 500
+            ToolTip.text: "Clear the search"
+            onClicked: {
+                tab.vm.foundFilter = ""
+                foundSearch.forceActiveFocus()
             }
         }
     }
@@ -324,15 +359,17 @@ ColumnLayout {
                     required property var modelData
                     required property int index
                     readonly property bool header: modelData.isHeader
+                    readonly property bool twoLine: !header && modelData.detail.length > 0
                     readonly property color tone: modelData.level === 2 ? theme.success
                                                 : modelData.level === 1 ? theme.warning : theme.dim
                     width: listColumn.width
-                    height: header ? (index === 0 ? 26 : 40) : 22
+                    height: header ? (index === 0 ? 26 : 40) : twoLine ? 38 : 22
 
                     RowLayout {
                         anchors.left: parent.left
                         anchors.right: parent.right
                         anchors.bottom: parent.bottom
+                        anchors.bottomMargin: row.twoLine ? 16 : 0
                         height: row.header ? 26 : 22
                         spacing: 8
 
@@ -352,6 +389,7 @@ ColumnLayout {
                             textFormat: Text.PlainText
                             text: row.modelData.text
                             color: row.header ? theme.accentBright
+                                 : row.twoLine ? theme.text
                                  : row.modelData.level === 2 ? theme.success
                                  : row.modelData.level === 1 ? theme.text : theme.dim
                             font.family: theme.font
@@ -365,6 +403,21 @@ ColumnLayout {
                             font.family: theme.font
                             font.pixelSize: 12
                         }
+                    }
+
+                    Text {
+                        visible: row.twoLine
+                        anchors.left: parent.left
+                        anchors.leftMargin: 20
+                        anchors.right: parent.right
+                        anchors.bottom: parent.bottom
+                        anchors.bottomMargin: 2
+                        elide: Text.ElideRight
+                        textFormat: Text.PlainText
+                        text: row.modelData.detail
+                        color: theme.dim
+                        font.family: theme.font
+                        font.pixelSize: 11
                     }
 
                     Rectangle {

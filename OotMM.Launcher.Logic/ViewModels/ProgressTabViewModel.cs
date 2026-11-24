@@ -12,7 +12,7 @@ public sealed record GoalRowViewModel(string Name, string CountText, double Frac
 
 public sealed record StatusChip(string Text, bool Ok);
 
-public sealed record ProgressRow(bool IsHeader, string Text, string CountText, int Level);
+public sealed record ProgressRow(bool IsHeader, string Text, string CountText, int Level, string Detail = "");
 
 public sealed record DungeonRowViewModel(
     bool IsHeader, string Name, string ChecksText, bool Done, ObservableCollection<StatusChip> Chips);
@@ -24,6 +24,7 @@ public sealed partial class ProgressTabViewModel : ViewModelBase
     private const int SongsSection = 2;
     private const int DungeonsSection = 3;
     private const int SoulsSection = 4;
+    private const int FoundSection = 5;
 
     private const int Missing = 0;
     private const int Partial = 1;
@@ -37,6 +38,7 @@ public sealed partial class ProgressTabViewModel : ViewModelBase
     private int _sectionIndex;
     private int _gameIndex;
     private bool _missingOnly;
+    private string _foundFilter = "";
     private string _dungeonSignature = "";
 
     public int SectionIndex
@@ -76,11 +78,26 @@ public sealed partial class ProgressTabViewModel : ViewModelBase
         }
     }
 
+    /// <summary>Text that narrows Found to items whose name, finder or check contains it.</summary>
+    public string FoundFilter
+    {
+        get => _foundFilter;
+        set
+        {
+            if (Set(ref _foundFilter, value ?? ""))
+            {
+                RefreshRows();
+            }
+        }
+    }
+
     public ObservableCollection<ProgressSection> Sections { get; private set; } = [new(Overview, "Overview")];
 
     public bool ShowOverview => SectionIndex == Overview;
     public bool ShowDungeons => SectionIndex == DungeonsSection;
-    public bool ShowList => SectionIndex is ItemsSection or SongsSection or SoulsSection;
+    public bool ShowList => SectionIndex is ItemsSection or SongsSection or SoulsSection or FoundSection;
+    public bool ShowMissingOnly => SectionIndex != FoundSection;
+    public bool ShowFoundFilter => SectionIndex == FoundSection;
 
     public ObservableCollection<ProgressMeter> CheckMeters { get; private set; } = [];
     public string GoalText { get; private set; } = "";
@@ -93,7 +110,9 @@ public sealed partial class ProgressTabViewModel : ViewModelBase
 
     public ObservableCollection<ProgressRow> Rows { get; private set; } = [];
     public bool HasRows => Rows.Count > 0;
-    public string EmptyText => MissingOnly ? "Nothing left to find here." : "This seed has none of these.";
+    public string EmptyText => SectionIndex == FoundSection
+        ? _foundFilter.Trim().Length > 0 ? "No found items match." : "No major items found yet."
+        : MissingOnly ? "Nothing left to find here." : "This seed has none of these.";
 
     public void OpenSection(int section) => SectionIndex = section;
 
@@ -123,6 +142,8 @@ public sealed partial class ProgressTabViewModel : ViewModelBase
             sections.Add(new ProgressSection(SoulsSection, "Souls"));
         }
 
+        sections.Add(new ProgressSection(FoundSection, "Found"));
+
         if (!sections.SequenceEqual(Sections))
         {
             Sections = new ObservableCollection<ProgressSection>(sections);
@@ -140,6 +161,8 @@ public sealed partial class ProgressTabViewModel : ViewModelBase
         Raise(nameof(ShowOverview));
         Raise(nameof(ShowDungeons));
         Raise(nameof(ShowList));
+        Raise(nameof(ShowMissingOnly));
+        Raise(nameof(ShowFoundFilter));
     }
 
     private static IEnumerable<ItemProgress> Both(Func<Game, IReadOnlyList<ItemProgress>> list) =>
@@ -346,31 +369,13 @@ public sealed partial class ProgressTabViewModel : ViewModelBase
         if (_report is { } report && ShowList)
         {
             var game = GameIndex == 0 ? Game.Oot : Game.Mm;
-            IEnumerable<(string Title, IReadOnlyList<ItemProgress> Items)> groups = SectionIndex switch
+            if (SectionIndex == FoundSection)
             {
-                ItemsSection => report.ItemGroups(game).Select(g => (GroupTitle(g.Group), g.Items))
-                    .Append(("Rusty keys", report.RustyKeys(game))),
-                SongsSection => [("Songs", report.Songs(game))],
-                _ => Enum.GetValues<SoulSub>().Select(sub => (SoulTitle(sub), report.Souls(game, sub))),
-            };
-            foreach (var (title, items) in groups)
+                AddFoundRows(rows, report, game);
+            }
+            else
             {
-                var shown = items.Where(i => !MissingOnly || !i.Complete)
-                    .Select(i => (Name: ShortName(i.Name), Item: i))
-                    .OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
-                    .ToList();
-                if (shown.Count == 0)
-                {
-                    continue;
-                }
-
-                var complete = items.Count(i => i.Complete);
-                rows.Add(new ProgressRow(true, title, Count(complete, items.Count),
-                                         complete >= items.Count ? Complete : Missing));
-                rows.AddRange(shown.Select(e => new ProgressRow(
-                    false, e.Name,
-                    e.Item.Total > 1 ? Count(e.Item.Have, e.Item.Total) : "",
-                    e.Item.Complete ? Complete : e.Item.Owned ? Partial : Missing)));
+                AddListRows(rows, report, game);
             }
         }
 
@@ -383,6 +388,61 @@ public sealed partial class ProgressTabViewModel : ViewModelBase
         Raise(nameof(HasRows));
         Raise(nameof(EmptyText));
     }
+
+    private void AddListRows(List<ProgressRow> rows, ProgressReport report, Game game)
+    {
+        IEnumerable<(string Title, IReadOnlyList<ItemProgress> Items)> groups = SectionIndex switch
+        {
+            ItemsSection => report.ItemGroups(game).Select(g => (GroupTitle(g.Group), g.Items))
+                .Append(("Rusty keys", report.RustyKeys(game))),
+            SongsSection => [("Songs", report.Songs(game))],
+            _ => Enum.GetValues<SoulSub>().Select(sub => (SoulTitle(sub), report.Souls(game, sub))),
+        };
+        foreach (var (title, items) in groups)
+        {
+            var shown = items.Where(i => !MissingOnly || !i.Complete)
+                .Select(i => (Name: ShortName(i.Name), Item: i))
+                .OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            if (shown.Count == 0)
+            {
+                continue;
+            }
+
+            var complete = items.Count(i => i.Complete);
+            rows.Add(new ProgressRow(true, title, Count(complete, items.Count),
+                                     complete >= items.Count ? Complete : Missing));
+            rows.AddRange(shown.Select(e => new ProgressRow(
+                false, e.Name,
+                e.Item.Total > 1 ? Count(e.Item.Have, e.Item.Total) : "",
+                e.Item.Complete ? Complete : e.Item.Owned ? Partial : Missing)));
+        }
+    }
+
+    private void AddFoundRows(List<ProgressRow> rows, ProgressReport report, Game game)
+    {
+        var filter = _foundFilter.Trim();
+        var groups = report.Found(game)
+            .Select(f => (Name: ShortName(f.ItemName), Item: f,
+                          Detail: $"{(f.Finder == report.PlayerId ? "You" : $"Player {f.Finder}")} · {f.CheckName}"))
+            .Where(e => filter.Length == 0 || e.Name.Contains(filter, StringComparison.OrdinalIgnoreCase)
+                        || e.Detail.Contains(filter, StringComparison.OrdinalIgnoreCase))
+            .GroupBy(e => e.Item.Group)
+            .OrderBy(g => FoundGroupOrder(g.Key));
+        foreach (var group in groups)
+        {
+            var items = group.OrderBy(e => e.Name, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(e => e.Item.CheckName, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+            rows.Add(new ProgressRow(true, group.Key is { } key ? GroupTitle(key) : "Songs", items.Count.ToString(),
+                                     Complete));
+            rows.AddRange(items.Select(e => new ProgressRow(false, e.Name, "", Complete, e.Detail)));
+        }
+    }
+
+    /// <summary>Where a group sits in Found; songs, which have no group, come right after Items.</summary>
+    private static int FoundGroupOrder(ItemGroup? group) =>
+        group is { } known ? (int)known * 2 : (int)ItemGroup.Items * 2 + 1;
 
     private static string GroupTitle(ItemGroup group) => group switch
     {
@@ -512,7 +572,7 @@ public sealed partial class ProgressTabViewModel : ViewModelBase
         var foreign = new List<(ItemPlacement, bool)>
         {
             (new ItemPlacement(new CheckRef(Game.Oot, "F1", "F1", [], null, "", null),
-                               new ItemRef(Game.Mm, "MM_MASK_GORON", "Goron Mask"), null, 1, 2, false), false),
+                               new ItemRef(Game.Mm, "MM_MASK_GORON", "Goron Mask"), null, 1, 2, false), true),
         };
         SetReport(ProgressReport.Build(seed, placements, counts, foreign), "both", true, false, false);
     }

@@ -45,6 +45,9 @@ public sealed record GoalProgress(
     public bool Satisfied => Owned >= Threshold && Needs.All(n => n.Have >= n.Total);
 }
 
+/// <summary>A major item the player received: what it is, which check held it and which player found it.</summary>
+public sealed record FoundItem(string ItemId, string ItemName, ItemGroup? Group, string CheckName, ushort Finder);
+
 public sealed class ProgressReport
 {
     private sealed record DungeonDef(string Name, Game Game, string Token, uint[] Scenes, string CheckPrefix = "");
@@ -166,8 +169,13 @@ public sealed class ProgressReport
     public IReadOnlyList<ItemProgress> Souls(Game game, SoulSub sub) =>
         (game == Game.Oot ? _soulsOot : _soulsMm)[(int)sub];
     public IReadOnlyList<GoalProgress> Goals { get; }
+    public ushort PlayerId { get; }
+
+    /// <summary>Major items received, listed under each game they belong to; songs have no group.</summary>
+    public IReadOnlyList<FoundItem> Found(Game game) => game == Game.Oot ? _foundOot : _foundMm;
 
     private readonly List<ItemGroupProgress> _groupsOot = [], _groupsMm = [];
+    private readonly List<FoundItem> _foundOot = [], _foundMm = [];
     private readonly List<ItemProgress> _songsOot = [], _songsMm = [];
     private readonly List<ItemProgress> _rustyOot = [], _rustyMm = [];
     private readonly List<ItemProgress>[] _soulsOot;
@@ -240,6 +248,38 @@ public sealed class ProgressReport
         _groupsOot.AddRange(groupsOot.Where(g => g.Value.Count > 0).Select(g => new ItemGroupProgress(g.Key, g.Value)));
         _groupsMm.AddRange(groupsMm.Where(g => g.Value.Count > 0).Select(g => new ItemGroupProgress(g.Key, g.Value)));
         Goals = BuildGoals(seed);
+        PlayerId = seed.PlayerId;
+        foreach (var (placement, collected) in checks.Concat(foreignChecks))
+        {
+            if (collected && placement.IsFor(seed.PlayerId) && IsListedMajor(placement.Item, out var group))
+            {
+                var checkName = placement.Check.Name.Length > 0 ? placement.Check.Name
+                    : seed.FindPlacement(placement.Check.Game, placement.Check.Id)?.Check.Name ?? placement.Check.Id;
+                var itemName = placement.Item.Name.Length > 0 ? placement.Item.Name
+                    : _names.GetValueOrDefault(placement.Item.Id, placement.Item.Id);
+                AddPerGame(placement.Item.Id,
+                           new FoundItem(placement.Item.Id, itemName, group, checkName, placement.SourcePlayer),
+                           _foundOot, _foundMm);
+            }
+        }
+    }
+
+    private static bool IsListedMajor(ItemRef item, out ItemGroup? group)
+    {
+        group = null;
+        if (!ContainerContents.IsMajorItem(item.Game, item.Id))
+        {
+            return false;
+        }
+
+        var name = ItemGrouping.StripGame(item.Id);
+        if (name.StartsWith("SONG_", StringComparison.Ordinal))
+        {
+            return !name.StartsWith("SONG_NOTE_", StringComparison.Ordinal);
+        }
+
+        group = ItemGrouping.Classify(item.Id);
+        return group is not (null or ItemGroup.Tokens);
     }
 
     private void AddToPool(ItemRef item, int count)
@@ -509,7 +549,7 @@ public sealed class ProgressReport
         return list;
     }
 
-    private static void AddPerGame(string id, ItemProgress item, List<ItemProgress> oot, List<ItemProgress> mm)
+    private static void AddPerGame<T>(string id, T item, List<T> oot, List<T> mm)
     {
         if (!id.StartsWith("MM_", StringComparison.Ordinal))
         {

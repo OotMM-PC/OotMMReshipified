@@ -425,4 +425,54 @@ public class ProgressTests
     [InlineData("SHARED_SOUL_NPC_MALON")]
     public void ItemGrouping_LeavesOutConsumablesAndItemsShownElsewhere(string id) =>
         Assert.Null(ItemGrouping.Classify(id));
+
+    [Fact]
+    public void FoundListsReceivedMajorItemsWithWhoFoundThemAndWhere()
+    {
+        static ItemPlacement Remote(Game game, string checkId, string itemId, ushort finder) =>
+            new(new CheckRef(game, checkId, "", [], null, "", null),
+                new ItemRef(itemId.StartsWith("MM_") ? Game.Mm : Game.Oot, itemId, itemId + " name"),
+                null, 1, finder, false);
+
+        var pot = new ItemPlacement(new CheckRef(Game.Oot, "OOT_POT", "OOT Kakariko Pot", [], null, "", null),
+                                    new ItemRef(Game.Oot, "OOT_HOOKSHOT", "Progressive Hookshot (OoT)"),
+                                    null, 1, 1, false);
+        var grotto = new ItemPlacement(new CheckRef(Game.Mm, "MM_GROTTO", "MM Swamp Grotto", [], null, "", null),
+                                       new ItemRef(Game.Mm, "MM_RUPEE_RED", "Red Rupee"), null, 1, 1, false);
+        var seed = new Seed
+        {
+            Format = Seed.CurrentFormat,
+            GeneratorVersion = Seed.RequiredGeneratorVersion,
+            SeedId = "S",
+            PlayerId = 1,
+            PlayerCount = 3,
+            Placements = [pot, grotto],
+        };
+        List<(ItemPlacement, bool)> checks =
+        [
+            (pot, true),
+            (grotto, true),
+            (Placement(Game.Oot, "ARROWS", "OOT_ARROWS_10", owner: 1), true),
+            (Placement(Game.Oot, "TOKEN", "OOT_GS_TOKEN", owner: 1), true),
+            (Placement(Game.Oot, "NOTE", "OOT_SONG_NOTE_TIME", owner: 1), true),
+            (Placement(Game.Oot, "BOW", "OOT_BOW", owner: 1), false),
+            (Placement(Game.Oot, "THEIRS", "OOT_HAMMER", owner: 2), true),
+        ];
+        List<(ItemPlacement, bool)> foreign =
+        [
+            (Remote(Game.Mm, "MM_GROTTO", "MM_MASK_GORON", 3), true),
+            (Remote(Game.Oot, "OOT_UNKNOWN", "SHARED_SONG_EPONA", 2), true),
+            (Remote(Game.Oot, "OOT_LATER", "OOT_LENS", 2), false),
+        ];
+
+        var report = ProgressReport.Build(seed, checks, [], foreign);
+
+        static string Row(FoundItem f) => $"{f.ItemId}|{f.Group}|{f.CheckName}|{f.Finder}";
+        Assert.Equal(["OOT_HOOKSHOT|Items|OOT Kakariko Pot|1", "SHARED_SONG_EPONA||OOT_UNKNOWN|2"],
+                     report.Found(Game.Oot).Select(Row));
+        Assert.Equal(["MM_MASK_GORON|Masks|MM Swamp Grotto|3", "SHARED_SONG_EPONA||OOT_UNKNOWN|2"],
+                     report.Found(Game.Mm).Select(Row));
+        Assert.Equal("Progressive Hookshot (OoT)", report.Found(Game.Oot)[0].ItemName);
+        Assert.Equal(1, report.PlayerId);
+    }
 }

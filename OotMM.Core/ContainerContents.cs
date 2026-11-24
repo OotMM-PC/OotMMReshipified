@@ -70,6 +70,9 @@ public static partial class ContainerContents
         return kind;
     }
 
+    /// <summary>Whether og counts an item as major, by its own id rather than what the check shows.</summary>
+    public static bool IsMajorItem(Game game, string itemId) => Lookup(game, itemId) == ContentClass.Major;
+
     /// <summary>Whether a game shows what its checks hold, given the seed's rule and the items the player owns.</summary>
     public static bool IsRevealed(Seed seed, Game game, Func<string, bool> owns)
     {

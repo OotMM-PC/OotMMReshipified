@@ -38,6 +38,7 @@ public sealed class MapTabViewModel : ViewModelBase
     private double _mapHeight;
     private string _linkAreaId = "";
     private bool _insideView;
+    private string _searchText = "";
     private IReadOnlyList<MapEntranceView> _views = [];
 
     public bool Available => _map is not null;
@@ -102,6 +103,22 @@ public sealed class MapTabViewModel : ViewModelBase
         get => _expanded;
         set => Set(ref _expanded, value);
     }
+
+    /// <summary>Text that lists matching entrances from every area in place of the current one.</summary>
+    public string SearchText
+    {
+        get => _searchText;
+        set
+        {
+            if (Set(ref _searchText, value ?? ""))
+            {
+                Raise(nameof(Searching));
+                Refresh();
+            }
+        }
+    }
+
+    public bool Searching => _searchText.Trim().Length > 0;
 
     public void Attach(EntranceMap? map)
     {
@@ -184,6 +201,7 @@ public sealed class MapTabViewModel : ViewModelBase
 
         _viewId = _linkAreaId;
         _showOutside = false;
+        EndSearch();
         Refresh();
     }
 
@@ -196,7 +214,16 @@ public sealed class MapTabViewModel : ViewModelBase
             Set(ref _follow, false, nameof(Follow));
         }
 
+        EndSearch();
         Refresh();
+    }
+
+    private void EndSearch()
+    {
+        if (Set(ref _searchText, "", nameof(SearchText)))
+        {
+            Raise(nameof(Searching));
+        }
     }
 
     private void Refresh()
@@ -229,10 +256,14 @@ public sealed class MapTabViewModel : ViewModelBase
 
         var area = pack.FindArea(_viewId);
         var linkInThisView = _linkAreaId.Length > 0 && _linkAreaId == _viewId;
-        _insideView = interior is not null && linkInThisView && !_showOutside;
+        _insideView = interior is not null && linkInThisView && !_showOutside && !Searching;
         Areas = new ObservableCollection<MapAreaItem>(AreaItems(pack));
 
-        if (_insideView)
+        if (Searching)
+        {
+            ShowSearch(pack);
+        }
+        else if (_insideView)
         {
             ShowInterior(pack, interior!, outside!, insideName);
         }
@@ -299,7 +330,7 @@ public sealed class MapTabViewModel : ViewModelBase
         AddGroup(rows, "Found", MapPinState.Found, area.Game, numbers, cameIndex, linkWentInside);
         if (_showFixed)
         {
-            AddGroup(rows, "Fixed exits", MapPinState.Fixed, area.Game, numbers, cameIndex, linkWentInside);
+            AddGroup(rows, "Fixed entrances", MapPinState.Fixed, area.Game, numbers, cameIndex, linkWentInside);
         }
 
         Rows = new ObservableCollection<MapRowItem>(rows);
@@ -317,25 +348,87 @@ public sealed class MapTabViewModel : ViewModelBase
             return;
         }
 
-        rows.Add(new MapRowItem(HeaderRow, header, "", "", "", "", false, false, "", -1, ""));
+        rows.Add(HeaderOf(header));
         foreach (var view in ordered)
         {
-            var known = view.State != MapPinState.Unexplored;
-            var otherGame = known && view.DestinationGame != game
-                ? GameInfo.ToSeedTag(view.DestinationGame).ToUpperInvariant() : "";
-            rows.Add(new MapRowItem(
-                EntranceRow,
-                view.Door,
-                known ? $"→ {view.Destination}" : "not explored yet",
-                otherGame,
-                numbers.TryGetValue(view.PinIndex, out var number) ? number.ToString() : "",
-                Style(view),
-                view.LeadsToDungeon,
-                view.Kind == MapPinKind.Grotto,
+            rows.Add(EntranceRowOf(
+                view, game, numbers,
                 view.PinIndex >= 0 && view.PinIndex == cameIndex ? linkWentInside ? "went in" : "came in here" : "",
                 view.PinIndex,
-                known && view.DestinationArea != _viewId ? view.DestinationArea : ""));
+                view.State != MapPinState.Unexplored && view.DestinationArea != _viewId ? view.DestinationArea : ""));
         }
+    }
+
+    private static MapRowItem HeaderOf(string text) =>
+        new(HeaderRow, text, "", "", "", "", false, false, "", -1, "");
+
+    private static MapRowItem EntranceRowOf(
+        MapEntranceView view, Game game, IReadOnlyDictionary<int, int> numbers, string pill, int pinIndex,
+        string target)
+    {
+        var known = view.State != MapPinState.Unexplored;
+        return new MapRowItem(
+            EntranceRow,
+            view.Door,
+            known ? $"→ {view.Destination}" : "not explored yet",
+            known && view.DestinationGame != game ? GameInfo.ToSeedTag(view.DestinationGame).ToUpperInvariant() : "",
+            numbers.TryGetValue(view.PinIndex, out var number) ? number.ToString() : "",
+            Style(view),
+            view.LeadsToDungeon,
+            view.Kind == MapPinKind.Grotto,
+            pill,
+            pinIndex,
+            target);
+    }
+
+    private void ShowSearch(EntranceMapPack pack)
+    {
+        var query = _searchText.Trim();
+        var rows = new List<MapRowItem>();
+        var matches = 0;
+        foreach (var game in new[] { Game.Oot, Game.Mm })
+        {
+            var tag = GameInfo.ToSeedTag(game);
+            foreach (var area in pack.Areas.Where(a => a.Game == game))
+            {
+                var views = _map!.PinsOf(area);
+                matches += AddMatches(rows, query, area.Title, area.Id, game, views, Numbers(area, views));
+            }
+
+            matches += AddMatches(rows, query, "Dungeons and others", UnpinnedPrefix + tag, game, _map!.Unpinned(game),
+                                  new Dictionary<int, int>());
+        }
+
+        Rows = new ObservableCollection<MapRowItem>(rows);
+        SetPicture("", 1, 1);
+        Pins = [];
+        CountText = matches switch
+        {
+            0 => "No entrances match",
+            1 => "1 entrance matches",
+            _ => $"{matches} entrances match",
+        };
+        CountComplete = false;
+    }
+
+    private int AddMatches(
+        List<MapRowItem> rows, string query, string areaTitle, string areaId, Game game,
+        IReadOnlyList<MapEntranceView> views, IReadOnlyDictionary<int, int> numbers)
+    {
+        bool Matches(string text) => text.Contains(query, StringComparison.OrdinalIgnoreCase);
+        var hits = views.Where(v => (v.Tracked || _showFixed)
+                                    && (Matches(v.Door) || Matches(areaTitle) || Matches(v.Destination)))
+                        .OrderBy(v => numbers.GetValueOrDefault(v.PinIndex, int.MaxValue))
+                        .ThenBy(v => v.Door, StringComparer.Ordinal)
+                        .ToList();
+        if (hits.Count == 0)
+        {
+            return 0;
+        }
+
+        rows.Add(HeaderOf($"{GameInfo.ToSeedTag(game).ToUpperInvariant()} · {areaTitle}"));
+        rows.AddRange(hits.Select(v => EntranceRowOf(v, game, numbers, "", -1, areaId)));
+        return hits.Count;
     }
 
     private void ShowInterior(EntranceMapPack pack, MapInterior interior, MapArea outside, string name)
@@ -427,8 +520,10 @@ public sealed class MapTabViewModel : ViewModelBase
         Raise(nameof(Pins));
     }
 
-    private Dictionary<int, int> Numbers(MapArea area) =>
-        _views.Where(v => v.Tracked)
+    private Dictionary<int, int> Numbers(MapArea area) => Numbers(area, _views);
+
+    private static Dictionary<int, int> Numbers(MapArea area, IReadOnlyList<MapEntranceView> views) =>
+        views.Where(v => v.Tracked)
               .OrderBy(v => area.Pins[v.PinIndex].Y)
               .ThenBy(v => area.Pins[v.PinIndex].X)
               .Select((view, order) => (view.PinIndex, Number: order + 1))

@@ -345,6 +345,36 @@ Item {
             }
         }
 
+        Field {
+            id: search
+            Layout.fillWidth: true
+            rightPadding: clearSearch.visible ? clearSearch.width + 12 : 9
+            placeholderText: "Search entrances"
+            text: tab.vm ? tab.vm.searchText : ""
+            onTextEdited: tab.vm.searchText = text
+            onAccepted: focus = false
+            Keys.onEscapePressed: {
+                tab.vm.searchText = ""
+                focus = false
+            }
+
+            LinkButton {
+                id: clearSearch
+                anchors.right: parent.right
+                anchors.rightMargin: 9
+                anchors.verticalCenter: parent.verticalCenter
+                visible: search.text.length > 0
+                text: "✕"
+                ToolTip.visible: hovered
+                ToolTip.delay: 500
+                ToolTip.text: "Clear the search"
+                onClicked: {
+                    tab.vm.searchText = ""
+                    search.forceActiveFocus()
+                }
+            }
+        }
+
         Rectangle {
             Layout.fillWidth: true
             visible: !!(tab.vm && tab.vm.notice.length > 0)
@@ -503,13 +533,13 @@ Item {
                     }
 
                     GoldCheck {
-                        visible: !!(tab.vm && tab.vm.hasPicture && !tab.vm.showingInterior)
-                        text: "Fixed exits"
+                        visible: !!(tab.vm && ((tab.vm.hasPicture && !tab.vm.showingInterior) || tab.vm.searching))
+                        text: "Fixed entrances"
                         wrap: false
                         on: tab.vm ? tab.vm.showFixed : false
                         ToolTip.visible: hovered
                         ToolTip.delay: 500
-                        ToolTip.text: "Also show exits this seed does not shuffle."
+                        ToolTip.text: "Also show entrances this seed does not shuffle."
                         onFlipped: value => tab.vm.showFixed = value
                     }
                 }

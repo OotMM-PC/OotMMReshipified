@@ -11,15 +11,16 @@ public sealed class EntranceMapTests : IDisposable
           "areas": [
             {"id": "oot-field", "game": "oot", "title": "Field", "image": "oot-field.jpg", "width": 800, "height": 600,
              "pins": [
-               {"x": 0.1, "y": 0.2, "kind": "exit", "door": "Village exit", "entrances": ["OOT_VILLAGE_FROM_FIELD"]},
-               {"x": 0.5, "y": 0.5, "kind": "exit", "door": "Temple exit", "entrances": ["OOT_TEMPLE"]},
+               {"x": 0.1, "y": 0.2, "kind": "exit", "door": "Village entrance",
+                "entrances": ["OOT_VILLAGE_FROM_FIELD"]},
+               {"x": 0.5, "y": 0.5, "kind": "exit", "door": "Temple entrance", "entrances": ["OOT_TEMPLE"]},
                {"x": 0.7, "y": 0.3, "kind": "grotto", "door": "Field Grotto", "entrances": ["OOT_GROTTO_FIELD"]},
-               {"x": 0.9, "y": 0.9, "kind": "exit", "door": "Shop exit", "entrances": []}
+               {"x": 0.9, "y": 0.9, "kind": "exit", "door": "Shop entrance", "entrances": []}
              ]},
             {"id": "oot-village", "game": "oot", "title": "Village", "image": "oot-village.jpg", "width": 640,
              "height": 480,
              "pins": [
-               {"x": 0.2, "y": 0.8, "kind": "exit", "door": "Field exit",
+               {"x": 0.2, "y": 0.8, "kind": "exit", "door": "Field entrance",
                 "entrances": ["OOT_FIELD_FROM_VILLAGE", "OOT_FIELD_FROM_VILLAGE_NIGHT"]}
              ]}
           ],
@@ -204,7 +205,7 @@ public sealed class EntranceMapTests : IDisposable
         var listed = map.Unpinned(Game.Oot);
 
         Assert.Equal(["OOT_MOUNTAIN_FROM_CAVE"], listed.Select(e => e.Key));
-        Assert.Equal("Cave: Mountain exit", listed[0].Door);
+        Assert.Equal("Cave: Mountain entrance", listed[0].Door);
         Assert.Equal(-1, listed[0].PinIndex);
         Assert.Empty(map.Unpinned(Game.Mm));
     }

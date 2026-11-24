@@ -12,15 +12,16 @@ public sealed class MapTabTests : IDisposable
           "areas": [
             {"id": "oot-field", "game": "oot", "title": "Field", "image": "oot-field.jpg", "width": 800, "height": 600,
              "pins": [
-               {"x": 0.50, "y": 0.50, "kind": "exit", "door": "Village exit", "entrances": ["OOT_VILLAGE_FROM_FIELD"]},
-               {"x": 0.51, "y": 0.50, "kind": "exit", "door": "Temple exit", "entrances": ["OOT_TEMPLE"]},
+               {"x": 0.50, "y": 0.50, "kind": "exit", "door": "Village entrance",
+                "entrances": ["OOT_VILLAGE_FROM_FIELD"]},
+               {"x": 0.51, "y": 0.50, "kind": "exit", "door": "Temple entrance", "entrances": ["OOT_TEMPLE"]},
                {"x": 0.50, "y": 0.51, "kind": "grotto", "door": "Field Grotto", "entrances": ["OOT_GROTTO_FIELD"]},
-               {"x": 0.90, "y": 0.90, "kind": "exit", "door": "Shop exit", "entrances": []}
+               {"x": 0.90, "y": 0.90, "kind": "exit", "door": "Shop entrance", "entrances": []}
              ]},
             {"id": "oot-village", "game": "oot", "title": "Village", "image": "oot-village.jpg", "width": 640,
              "height": 480,
              "pins": [
-               {"x": 0.2, "y": 0.8, "kind": "exit", "door": "Field exit", "entrances": ["OOT_FIELD_FROM_VILLAGE"]}
+               {"x": 0.2, "y": 0.8, "kind": "exit", "door": "Field entrance", "entrances": ["OOT_FIELD_FROM_VILLAGE"]}
              ]}
           ],
           "interiors": {
@@ -115,17 +116,17 @@ public sealed class MapTabTests : IDisposable
     }
 
     [Fact]
-    public void FixedExitsStayOffTheMapUntilAsked()
+    public void FixedEntrancesStayOffTheMapUntilAsked()
     {
         var (tab, _) = Tab();
 
         Assert.Equal(2, tab.Pins.Count);
-        Assert.DoesNotContain(tab.Rows, r => r.Text == "Shop exit");
+        Assert.DoesNotContain(tab.Rows, r => r.Text == "Shop entrance");
 
         tab.ShowFixed = true;
 
         Assert.Equal(4, tab.Pins.Count);
-        Assert.Contains(tab.Rows, r => r.Text == "Shop exit" && r.Detail == "→ Shop");
+        Assert.Contains(tab.Rows, r => r.Text == "Shop entrance" && r.Detail == "→ Shop");
     }
 
     [Fact]
@@ -143,12 +144,12 @@ public sealed class MapTabTests : IDisposable
         Assert.Equal("Field", tab.Title);
         Assert.Equal("2 of 2 entrances found here", tab.CountText);
         Assert.True(tab.CountComplete);
-        var temple = tab.Rows.Single(r => r.Text == "Temple exit");
+        var temple = tab.Rows.Single(r => r.Text == "Temple entrance");
         Assert.Equal("→ Village", temple.Detail);
         Assert.Equal("came in here", temple.Pill);
         Assert.Equal("oot-village", temple.Target);
         Assert.True(tab.Pins.Single(p => p.PinIndex == 1).Came);
-        Assert.True(tab.Rows.Single(r => r.Text == "Village exit").Dungeon);
+        Assert.True(tab.Rows.Single(r => r.Text == "Village entrance").Dungeon);
     }
 
     [Fact]
@@ -209,7 +210,7 @@ public sealed class MapTabTests : IDisposable
         Assert.Equal("Field", tab.Title);
         Assert.Equal("Link is inside Temple", tab.Notice);
         Assert.False(tab.NoticeJumps);
-        Assert.Equal("went in", tab.Rows.Single(r => r.Text == "Village exit").Pill);
+        Assert.Equal("went in", tab.Rows.Single(r => r.Text == "Village entrance").Pill);
     }
 
     [Fact]
@@ -224,12 +225,95 @@ public sealed class MapTabTests : IDisposable
         Assert.False(tab.HasPicture);
         Assert.Empty(tab.Pins);
         Assert.Equal("0 of 1 entrances found", tab.CountText);
-        Assert.Contains(tab.Rows, r => r.Text == "Temple: Field exit" && r.Detail == "not explored yet");
+        Assert.Contains(tab.Rows, r => r.Text == "Temple: Field entrance" && r.Detail == "not explored yet");
 
         map.Discover("OOT_FIELD_FROM_TEMPLE");
         tab.Update(null);
 
-        Assert.Contains(tab.Rows, r => r.Text == "Temple: Field exit" && r.Detail == "→ Field" && r.Target == "oot-field");
+        Assert.Contains(tab.Rows,
+                        r => r.Text == "Temple: Field entrance" && r.Detail == "→ Field" && r.Target == "oot-field");
+    }
+
+    [Fact]
+    public void SearchListsMatchesFromEveryAreaWithoutRevealingUnexploredDestinations()
+    {
+        var (tab, map) = Tab();
+
+        tab.SearchText = "village";
+
+        Assert.True(tab.Searching);
+        Assert.False(tab.HasPicture);
+        Assert.Empty(tab.Pins);
+        Assert.Equal("1 entrance matches", tab.CountText);
+        Assert.Equal(["OOT · Field", "Village entrance"], tab.Rows.Select(r => r.Text));
+        Assert.Equal("oot-field", tab.Rows[1].Target);
+
+        map.Discover("OOT_TEMPLE");
+        tab.Update(null);
+
+        Assert.Equal("2 entrances match", tab.CountText);
+        Assert.Contains(tab.Rows, r => r.Text == "Temple entrance" && r.Detail == "→ Village");
+    }
+
+    [Fact]
+    public void SearchCoversListOnlyEntrancesAndFixedOnesWhenShown()
+    {
+        var (tab, _) = Tab();
+
+        tab.SearchText = "SHOP";
+        Assert.Equal("No entrances match", tab.CountText);
+        Assert.Empty(tab.Rows);
+
+        tab.ShowFixed = true;
+        Assert.Contains(tab.Rows, r => r.Text == "Shop entrance" && r.Detail == "→ Shop");
+
+        tab.SearchText = "temple:";
+        Assert.Equal(["OOT · Dungeons and others", "Temple: Field entrance"], tab.Rows.Select(r => r.Text));
+        Assert.Equal("not explored yet", tab.Rows[1].Detail);
+    }
+
+    [Fact]
+    public void PickingASearchResultClearsTheSearchAndShowsItsArea()
+    {
+        var (tab, _) = Tab();
+        tab.Update(new MapPosition(Game.Oot, 82, 385, "", ""));
+        tab.SearchText = "temple:";
+
+        tab.ActivateRow(1);
+
+        Assert.Equal("", tab.SearchText);
+        Assert.False(tab.Searching);
+        Assert.Equal("Dungeons and others", tab.Title);
+        Assert.False(tab.Follow);
+
+        tab.SearchText = "village entrance";
+        tab.ActivateRow(1);
+
+        Assert.Equal("Field", tab.Title);
+        Assert.True(tab.HasPicture);
+        Assert.Equal(2, tab.Pins.Count);
+    }
+
+    [Fact]
+    public void PickingAnAreaOrLinkEndsTheSearch()
+    {
+        var (tab, _) = Tab();
+        tab.Update(new MapPosition(Game.Oot, 81, 219, "", ""));
+
+        tab.SearchText = "temple";
+        tab.SelectArea(tab.Areas.ToList().FindIndex(a => a.Title == "Village"));
+
+        Assert.False(tab.Searching);
+        Assert.Equal("Village", tab.Title);
+        Assert.True(tab.HasPicture);
+        Assert.Equal("No shuffled entrances here", tab.CountText);
+
+        tab.SearchText = "temple";
+        tab.ShowLink();
+
+        Assert.False(tab.Searching);
+        Assert.Equal("Field", tab.Title);
+        Assert.Equal(2, tab.Pins.Count);
     }
 
     [Fact]

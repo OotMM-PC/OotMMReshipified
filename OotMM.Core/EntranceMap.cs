@@ -162,7 +162,7 @@ public sealed class EntranceMap
             .Select(m =>
             {
                 var entrance = _pack.Entrances[m.From];
-                return View(-1, m.From, $"{entrance.From}: {entrance.Name} exit", MapPinKind.Exit,
+                return View(-1, m.From, $"{entrance.From}: {entrance.Name} entrance", MapPinKind.Exit,
                             _discovered.Contains(m.From), game);
             })];
 
@@ -171,7 +171,7 @@ public sealed class EntranceMap
         var state = !_shuffled.ContainsKey(key) ? MapPinState.Fixed
             : found ? MapPinState.Found : MapPinState.Unexplored;
         var target = TargetOf(key);
-        var fallback = door.EndsWith(" exit", StringComparison.Ordinal) ? door[..^5] : door;
+        var fallback = door.EndsWith(" entrance", StringComparison.Ordinal) ? door[..^9] : door;
         return new MapEntranceView(
             index,
             key,
